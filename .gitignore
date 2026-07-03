@@ -1,0 +1,15 @@
+# .NET / WinUI build outputs
+bin/
+obj/
+out/
+
+# User-local IDE and tooling state
+.vs/
+.vscode/
+*.user
+*.suo
+*.rsuser
+
+# Windows and logs
+Thumbs.db
+*.log

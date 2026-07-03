@@ -1,0 +1,41 @@
+{
+  "package": "fowan-logo-dev-assets",
+  "version": "0.1.0",
+  "generatedAt": "2026-06-30",
+  "brand": {
+    "name": "Fowan",
+    "chineseName": "伏案",
+    "tagline": "Fowan Orchestrates Workflows with AI, Natively.",
+    "concept": "FA monogram: F as a focused operator; A as desk/computer."
+  },
+  "colors": {
+    "navy": {
+      "hex": "#0A1A3D",
+      "usage": "Primary logo / app icon background"
+    },
+    "blue": {
+      "hex": "#1E5BFF",
+      "usage": "Laptop screen accent"
+    },
+    "gray": {
+      "hex": "#8A95A8",
+      "usage": "Secondary text / dividers"
+    },
+    "white": {
+      "hex": "#FFFFFF",
+      "usage": "Background / reversed logo"
+    }
+  },
+  "entryPoints": {
+    "svgMark": "svg/fowan-mark-color.svg",
+    "svgLogo": "svg/fowan-logo-horizontal-color.svg",
+    "appIconSvg": "svg/fowan-app-icon.svg",
+    "windowsIco": "windows/fowan.ico",
+    "iosAppIconSet": "ios/AppIcon.appiconset",
+    "macosIconSet": "macos/AppIcon.iconset",
+    "androidRes": "android/res",
+    "webFavicon": "web/favicon.ico",
+    "svgLogoWhite": "svg/fowan-logo-horizontal-white.svg",
+    "androidVectorForeground": "android/res/drawable/fowan_mark_foreground.xml"
+  }
+}

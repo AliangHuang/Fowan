@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Fowan app icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071331"/>
+      <stop offset="1" stop-color="#0A1A3D"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <g transform="translate(198 262) scale(1.75)">
+
+  <g id="fowan-fa-mark" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- F: leaning worker body/head/back + short arm -->
+    <path d="M74 218 C70 171 73 111 82 66 C85 52 96 46 110 46 H156" stroke="#FFFFFF" stroke-width="25"/>
+    <path d="M84 113 H156" stroke="#FFFFFF" stroke-width="23"/>
+    <path d="M92 149 H176" stroke="#FFFFFF" stroke-width="18"/>
+    <!-- A: desk/table structure -->
+    <path d="M154 218 L184 149 H284 L314 218" stroke="#FFFFFF" stroke-width="25"/>
+    <path d="M173 149 H286" stroke="#FFFFFF" stroke-width="20"/>
+    <!-- Compact screen/laptop lid: fuller than the early draft, still simple -->
+    <path d="M199 76 H286 C292 76 296 81 294 87 L278 140 H179 L194 87 C196 80 191 76 199 76 Z" fill="#1E5BFF" stroke="none"/>
+  </g>
+  </g>
+</svg>

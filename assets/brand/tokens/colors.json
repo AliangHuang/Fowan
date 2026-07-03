@@ -1,0 +1,26 @@
+{
+  "brand": "Fowan / 伏案",
+  "colors": {
+    "navy": {
+      "hex": "#0A1A3D",
+      "usage": "Primary logo / app icon background"
+    },
+    "blue": {
+      "hex": "#1E5BFF",
+      "usage": "Laptop screen accent"
+    },
+    "gray": {
+      "hex": "#8A95A8",
+      "usage": "Secondary text / dividers"
+    },
+    "white": {
+      "hex": "#FFFFFF",
+      "usage": "Background / reversed logo"
+    }
+  },
+  "typography": {
+    "latinFallback": "Inter, SF Pro Display, Segoe UI, Arial, Helvetica, sans-serif",
+    "chineseFallback": "Noto Sans CJK SC, PingFang SC, Microsoft YaHei, sans-serif",
+    "note": "SVG wordmark uses editable text with fallback fonts; convert text to outlines in final design tooling if exact rendering is required. No font files are included."
+  }
+}

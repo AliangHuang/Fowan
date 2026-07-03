@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="300" viewBox="0 0 1120 300" role="img" aria-label="Fowan 伏案 monochrome logo">
+  <g transform="translate(20 20) scale(1.0)">
+
+  <g id="fowan-fa-mark" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- F: leaning worker body/head/back + short arm -->
+    <path d="M74 218 C70 171 73 111 82 66 C85 52 96 46 110 46 H156" stroke="#242424" stroke-width="25"/>
+    <path d="M84 113 H156" stroke="#242424" stroke-width="23"/>
+    <path d="M92 149 H176" stroke="#242424" stroke-width="18"/>
+    <!-- A: desk/table structure -->
+    <path d="M154 218 L184 149 H284 L314 218" stroke="#242424" stroke-width="25"/>
+    <path d="M173 149 H286" stroke="#242424" stroke-width="20"/>
+    <!-- Compact screen/laptop lid: fuller than the early draft, still simple -->
+    <path d="M199 76 H286 C292 76 296 81 294 87 L278 140 H179 L194 87 C196 80 191 76 199 76 Z" fill="#242424" stroke="none"/>
+  </g>
+  </g>
+  <text x="420" y="166" fill="#242424" font-family="Inter, SF Pro Display, Segoe UI, Arial, Helvetica, sans-serif" font-size="92" font-weight="650" letter-spacing="-3">Fowan</text>
+  <text x="815" y="166" fill="#242424" font-family="Noto Sans CJK SC, PingFang SC, Microsoft YaHei, Inter, SF Pro Display, Segoe UI, Arial, Helvetica, sans-serif" font-size="58" font-weight="600">伏案</text>
+</svg>
