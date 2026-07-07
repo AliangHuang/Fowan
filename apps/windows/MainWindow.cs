@@ -54,6 +54,7 @@ public sealed class MainWindow : Window
     private static string DefaultAvatarAssetPath => UserDefaults.BuiltInAvatarPaths[0];
 
     private readonly SettingsStore _settingsStore = new();
+    private readonly UpdateService _updateService = new();
     private readonly LocalizationService _loc = new();
     private readonly List<string> _captures = [];
 
@@ -85,6 +86,7 @@ public sealed class MainWindow : Window
     private bool _isTrayIconVisible;
     private bool _ownsTrayIconHandle;
     private bool _isExitRequested;
+    private bool _isUpdateDialogOpen;
 
     public MainWindow()
     {
@@ -115,6 +117,34 @@ public sealed class MainWindow : Window
     }
 
     private string L(string key) => _loc.Get(key);
+
+    public void QueueStartupUpdateCheck()
+    {
+        if (!_userSettings.UpdateCheckEnabled)
+        {
+            StartupTrace.Mark("Update check disabled");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1200);
+                var update = await _updateService.CheckForUpdateAsync();
+                if (update is null)
+                {
+                    return;
+                }
+
+                DispatcherQueue.TryEnqueue(() => _ = ShowUpdatePromptAsync(update));
+            }
+            catch (Exception exception)
+            {
+                StartupTrace.Mark($"Update check failed: {exception.GetType().Name}");
+            }
+        });
+    }
 
     private void ConfigureWindow()
     {
@@ -1435,6 +1465,156 @@ public sealed class MainWindow : Window
         }
     }
 
+    private async Task ShowUpdatePromptAsync(UpdateInfo update)
+    {
+        if (_isUpdateDialogOpen || !ShouldPromptForUpdate(update))
+        {
+            return;
+        }
+
+        _isUpdateDialogOpen = true;
+        try
+        {
+            var disableUpdateCheck = new CheckBox
+            {
+                Content = L("Update_DisableCheck")
+            };
+
+            var stack = new StackPanel
+            {
+                Spacing = 14,
+                MaxWidth = 520,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = string.Format(L("Update_Description"), UpdateService.CurrentVersion(), update.Version),
+                        TextWrapping = TextWrapping.WrapWholeWords,
+                        Foreground = ThemeBrush("TextFillColorPrimaryBrush"),
+                        LineHeight = 20
+                    }
+                }
+            };
+
+            if (!string.IsNullOrWhiteSpace(update.Notes))
+            {
+                stack.Children.Add(new TextBlock
+                {
+                    Text = L("Update_Notes"),
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Foreground = ThemeBrush("TextFillColorPrimaryBrush")
+                });
+                stack.Children.Add(new TextBlock
+                {
+                    Text = update.Notes,
+                    TextWrapping = TextWrapping.WrapWholeWords,
+                    Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+                    LineHeight = 20
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(update.ReleaseNotesUrl))
+            {
+                var releaseNotesButton = new Button
+                {
+                    Content = L("Update_OpenReleaseNotes"),
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                releaseNotesButton.Click += (_, _) => OpenExternalUrl(update.ReleaseNotesUrl);
+                stack.Children.Add(releaseNotesButton);
+            }
+
+            stack.Children.Add(disableUpdateCheck);
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = _root.XamlRoot,
+                Title = string.Format(L("Update_Title"), update.Version),
+                Content = stack,
+                PrimaryButtonText = L("Update_ActionInstall"),
+                SecondaryButtonText = L("Update_ActionIgnore"),
+                CloseButtonText = L("Update_ActionLater"),
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            var result = await dialog.ShowAsync();
+            var shouldDisableUpdateCheck = disableUpdateCheck.IsChecked == true;
+            if (shouldDisableUpdateCheck)
+            {
+                _userSettings.UpdateCheckEnabled = false;
+                _userSettings.IgnoredUpdateVersion = string.Empty;
+                SaveUserSettings();
+            }
+
+            if (result == ContentDialogResult.Secondary)
+            {
+                if (!shouldDisableUpdateCheck)
+                {
+                    _userSettings.IgnoredUpdateVersion = update.Version;
+                    SaveUserSettings();
+                }
+
+                return;
+            }
+
+            if (result == ContentDialogResult.Primary)
+            {
+                await DownloadAndRunUpdateAsync(update);
+            }
+        }
+        finally
+        {
+            _isUpdateDialogOpen = false;
+        }
+    }
+
+    private bool ShouldPromptForUpdate(UpdateInfo update)
+    {
+        return _userSettings.UpdateCheckEnabled &&
+            !string.Equals(_userSettings.IgnoredUpdateVersion, update.Version, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task DownloadAndRunUpdateAsync(UpdateInfo update)
+    {
+        ShowInfo(string.Format(L("Update_DownloadStarted"), update.Version), InfoBarSeverity.Warning);
+        try
+        {
+            var installerPath = await _updateService.DownloadInstallerAsync(update);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = installerPath,
+                WorkingDirectory = Path.GetDirectoryName(installerPath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+
+            _isExitRequested = true;
+            DisposeTrayIcon();
+            Close();
+            Application.Current.Exit();
+        }
+        catch (Exception exception)
+        {
+            ShowInfo(string.Format(L("Update_InstallFailed"), exception.Message), InfoBarSeverity.Error);
+        }
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Opening release notes is a convenience action; update install remains available.
+        }
+    }
+
     private static string? ResolveTodoExecutablePath()
     {
         var baseDirectory = AppContext.BaseDirectory;
@@ -1722,10 +1902,15 @@ public sealed class MainWindow : Window
 
     private void SaveUserSettingsAndRebuild()
     {
-        _settingsStore.Save(_userSettings);
-        _settings = _userSettings;
+        SaveUserSettings();
         _loc.SetLanguage(_settings.Language);
         BuildShell();
+    }
+
+    private void SaveUserSettings()
+    {
+        _settingsStore.Save(_userSettings);
+        _settings = _userSettings;
     }
 
     private void RegisterShellKeyboardAccelerators()
@@ -2113,10 +2298,27 @@ public sealed class MainWindow : Window
         });
         closeBehaviorBox.SelectedIndex = _userSettings.CloseBehavior == CloseBehaviorIds.Exit ? 1 : 0;
 
+        var updateCheckWasEnabled = _userSettings.UpdateCheckEnabled;
+        var updateCheckSwitch = new ToggleSwitch
+        {
+            Header = L("Settings_UpdateCheck"),
+            IsOn = _userSettings.UpdateCheckEnabled,
+            OnContent = L("Settings_UpdateCheck_On"),
+            OffContent = L("Settings_UpdateCheck_Off"),
+            MinWidth = 260
+        };
+
         var stack = new StackPanel { Spacing = 18 };
         stack.Children.Add(themeBox);
         stack.Children.Add(languageBox);
         stack.Children.Add(closeBehaviorBox);
+        stack.Children.Add(updateCheckSwitch);
+        stack.Children.Add(new TextBlock
+        {
+            Text = L("Settings_UpdateCheck_Description"),
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = ThemeBrush("TextFillColorSecondaryBrush")
+        });
         stack.Children.Add(new TextBlock { Text = L("Settings_Startup"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
         stack.Children.Add(new TextBlock { Text = L("Settings_Privacy"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
         stack.Children.Add(new TextBlock { Text = L("Settings_About"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
@@ -2140,6 +2342,12 @@ public sealed class MainWindow : Window
         _userSettings.Theme = ((ComboBoxItem)themeBox.SelectedItem).Tag?.ToString() ?? "system";
         _userSettings.Language = ((ComboBoxItem)languageBox.SelectedItem).Tag?.ToString() ?? "system";
         _userSettings.CloseBehavior = ((ComboBoxItem)closeBehaviorBox.SelectedItem).Tag?.ToString() ?? CloseBehaviorIds.MinimizeToTray;
+        _userSettings.UpdateCheckEnabled = updateCheckSwitch.IsOn;
+        if (!updateCheckSwitch.IsOn || (!updateCheckWasEnabled && updateCheckSwitch.IsOn))
+        {
+            _userSettings.IgnoredUpdateVersion = string.Empty;
+        }
+
         SaveUserSettingsAndRebuild();
     }
 

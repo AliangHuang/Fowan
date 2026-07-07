@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
     [string]$Version,
+    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')]
+    [string]$ReleaseRepository = "AliangHuang/Fowan",
     [switch]$SkipInstaller
 )
 
@@ -135,6 +137,40 @@ function Write-ReleaseNotes {
     Set-Content -LiteralPath $combinedPath -Value $combined -Encoding UTF8
 
     return $combinedPath
+}
+
+function Write-UpdateManifest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SetupExe,
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+        [Parameter(Mandatory = $true)]
+        [string]$ReleaseRepository,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputRoot
+    )
+
+    $setupFileName = Split-Path -Leaf $SetupExe
+    $releaseTag = "v$Version"
+    $releaseBaseUrl = "https://github.com/$ReleaseRepository/releases/download/$releaseTag"
+    $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $SetupExe).Hash.ToLowerInvariant()
+    $manifestPath = Join-Path $OutputRoot "fowan-update.json"
+    $manifest = [ordered]@{
+        version = $Version
+        channel = "stable"
+        installerUrl = "$releaseBaseUrl/$setupFileName"
+        installerSha256 = $setupHash
+        releaseNotesUrl = "https://github.com/$ReleaseRepository/releases/tag/$releaseTag"
+        notes = "Fowan $Version release."
+    }
+
+    $json = $manifest | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText(
+        $manifestPath,
+        $json + [System.Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false))
+    return $manifestPath
 }
 
 function Resolve-Iscc {
@@ -272,4 +308,11 @@ if (-not (Test-Path -LiteralPath $setupExe -PathType Leaf)) {
     throw "Installer compiler completed, but expected setup executable was not found: $setupExe"
 }
 
+$updateManifestPath = Write-UpdateManifest `
+    -SetupExe $setupExe `
+    -Version $Version `
+    -ReleaseRepository $ReleaseRepository `
+    -OutputRoot $installerRoot
+
 Write-Host "Fowan Windows installer: $setupExe"
+Write-Host "Update manifest: $updateManifestPath"

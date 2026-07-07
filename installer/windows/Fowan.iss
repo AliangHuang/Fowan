@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.1"
 #endif
 
 #ifndef SourceDir
@@ -72,6 +72,7 @@ var
 function LoadPackagedReleaseNotes(var ReleaseNotes: string): Boolean;
 var
   ReleaseNotesFile: string;
+  ReleaseNotesText: AnsiString;
 begin
   Result := False;
   ExtractTemporaryFile('release-notes.txt');
@@ -81,7 +82,11 @@ begin
     exit;
   end;
 
-  Result := LoadStringFromFile(ReleaseNotesFile, ReleaseNotes);
+  Result := LoadStringFromFile(ReleaseNotesFile, ReleaseNotesText);
+  if Result then
+  begin
+    ReleaseNotes := ReleaseNotesText;
+  end;
 end;
 
 procedure ShowUpdateReleaseNotes(InstalledVersion: string);

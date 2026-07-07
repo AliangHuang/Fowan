@@ -91,17 +91,23 @@ update flow, privacy agreement, shortcuts, and uninstall data handling.
 Build the offline x64 installer staging output from the repository root:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.0 -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.1.1 -SkipInstaller
 ```
 
 Build the final setup executable on a machine with Inno Setup 6 installed:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.0
+.\scripts\package-windows.ps1 -Version 0.1.1
 ```
 
-The setup executable is written to:
+The setup executable and GitHub Release update manifest are written to:
 
 ```text
-out/installer/windows/win-x64/FowanSetup-0.1.0-win-x64.exe
+out/installer/windows/win-x64/FowanSetup-0.1.1-win-x64.exe
+out/installer/windows/win-x64/fowan-update.json
 ```
+
+For auto-update checks, upload both files to a public GitHub Release tagged
+`v0.1.1`. The toolbox reads
+`https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`
+on startup when automatic update checks are enabled.

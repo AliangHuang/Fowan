@@ -2,8 +2,8 @@
   <PropertyGroup>
     <FowanTargetFramework>net8.0-windows10.0.19041.0</FowanTargetFramework>
     <FowanWindowsAppSdkVersion>2.2.0</FowanWindowsAppSdkVersion>
-    <FowanVersion Condition="'$(FowanVersion)' == ''">0.1.0</FowanVersion>
-    <FowanAssemblyVersion Condition="'$(FowanAssemblyVersion)' == ''">0.1.0.0</FowanAssemblyVersion>
+    <FowanVersion Condition="'$(FowanVersion)' == ''">0.1.1</FowanVersion>
+    <FowanAssemblyVersion Condition="'$(FowanAssemblyVersion)' == ''">0.1.1.0</FowanAssemblyVersion>
     <Version>$(FowanVersion)</Version>
     <PackageVersion>$(FowanVersion)</PackageVersion>
     <AssemblyVersion>$(FowanAssemblyVersion)</AssemblyVersion>

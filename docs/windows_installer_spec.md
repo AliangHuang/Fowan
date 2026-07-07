@@ -51,6 +51,8 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - changelog 必须按 `## <version> - <date>` 分段记录。打包脚本使用 `-Version` 参数抽取对应版本段落。
 - 打包脚本只能把当前 `-Version` 对应段落写入 `ReleaseNotes` staging 目录；不得把完整 changelog 历史放进安装包。
 - 如果某个随包组件缺少当前版本的 changelog 段落，打包必须失败，避免发布没有更新说明的安装包。
+- 最终安装包生成后，打包脚本必须在同一目录生成 `fowan-update.json`，供工具箱从 GitHub Release 检查自动更新。
+- `fowan-update.json` 必须包含 `version`、`channel`、`installerUrl`、`installerSha256`、`releaseNotesUrl` 和 `notes` 字段；稳定版发布使用 `channel: stable`。
 
 ## 用户数据规范
 
@@ -144,13 +146,14 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.0
+.\scripts\package-windows.ps1 -Version 0.1.1
 ```
 
 输出安装包：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.0-win-x64.exe
+out\installer\windows\win-x64\FowanSetup-0.1.1-win-x64.exe
+out\installer\windows\win-x64\fowan-update.json
 ```
 
 如果当前机器没有安装 Inno Setup 编译器，脚本仍应生成安装 staging 目录，并提示安装 Inno Setup 后重新运行。
@@ -162,6 +165,14 @@ out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt
 out\installer\windows\win-x64\app\ReleaseNotes\toolbox.md
 out\installer\windows\win-x64\app\ReleaseNotes\todo.md
 ```
+
+GitHub Release 自动更新发布要求：
+
+- Release tag 使用 `v<version>`，例如 `v0.1.1`。
+- Release 必须公开可读，客户端不内置 GitHub token。
+- Release assets 必须包含 `FowanSetup-<version>-win-x64.exe` 和 `fowan-update.json`。
+- 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
+- 客户端必须校验 `installerSha256` 后才能启动安装器。
 
 打包脚本会从 Microsoft 官方固定链接下载 Visual C++ Redistributable x64 到：
 
@@ -180,5 +191,6 @@ out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe
 - 安装时可以选择创建或不创建桌面快捷方式。
 - 安装后开始菜单可以启动工具箱，工具箱可以启动 Todo，Todo 可以启动 Sticky。
 - 新版本安装包可以识别旧版本并询问是否更新。
+- 工具箱启动后可以通过公开 GitHub Release 检查稳定版更新，用户可立即更新、忽略当前版本、稍后提醒或禁用自动检查。
 - 默认卸载删除程序和快捷方式，但保留所有用户数据。
 - 干净卸载先在公共桌面生成备份 zip，再删除所有用户的 Fowan 数据。

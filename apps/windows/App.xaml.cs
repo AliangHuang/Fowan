@@ -51,6 +51,7 @@ public partial class App : Application
             mainWindow.Activate();
             StartupTrace.Mark("Window activated");
             StartActivationListener(mainWindow);
+            mainWindow.QueueStartupUpdateCheck();
             _ = StartupTrace.FlushAsync("window activated");
         }
         catch (Exception exception)

@@ -70,6 +70,13 @@ public sealed class SettingsStore
             changed = true;
         }
 
+        var ignoredUpdateVersion = settings.IgnoredUpdateVersion?.Trim() ?? string.Empty;
+        if (!string.Equals(settings.IgnoredUpdateVersion, ignoredUpdateVersion, StringComparison.Ordinal))
+        {
+            settings.IgnoredUpdateVersion = ignoredUpdateVersion;
+            changed = true;
+        }
+
         var userDisplayName = settings.UserDisplayName?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(userDisplayName))
         {

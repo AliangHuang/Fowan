@@ -9,6 +9,8 @@ public sealed class ClientSettings
     public string AvatarPath { get; set; } = string.Empty;
     public bool IsProfileInitialized { get; set; }
     public bool IsSidebarCollapsed { get; set; }
+    public bool UpdateCheckEnabled { get; set; } = true;
+    public string IgnoredUpdateVersion { get; set; } = string.Empty;
 }
 
 public static class UserDefaults
