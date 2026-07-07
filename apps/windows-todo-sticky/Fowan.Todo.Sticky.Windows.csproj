@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Todo.Sticky.Windows</RootNamespace>
+    <AssemblyName>Fowan.Todo.Sticky.Windows</AssemblyName>
+    <FowanTodoOutputConfiguration Condition="'$(Configuration)' == 'Release'">release</FowanTodoOutputConfiguration>
+    <FowanTodoOutputConfiguration Condition="'$(Configuration)' != 'Release'">debug</FowanTodoOutputConfiguration>
+    <OutputPath>..\..\out\windows-todo\$(FowanTodoOutputConfiguration)\</OutputPath>
+    <PublishDir>$(OutputPath)</PublishDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>..\windows-todo\Assets\fowan-todo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\windows-todo-core\Fowan.Todo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\windows-todo\Assets\fowan-todo.ico" Link="Assets\fowan-todo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\windows-todo\Assets\fowan-todo-app-icon-256.png" Link="Assets\fowan-todo-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

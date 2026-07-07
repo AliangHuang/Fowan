@@ -14,7 +14,7 @@ Toolbox Home experience as an interactive WinUI 3 desktop app.
 - Theme preference: system, light, dark.
 - Language preference: system, zh-CN, en-US.
 - Local settings file under `%LOCALAPPDATA%\Fowan\client-settings.json`.
-- Default workspace root under `%LOCALAPPDATA%\Fowan\Workspaces`.
+- User data root under `%LOCALAPPDATA%\Fowan`.
 
 The app does not connect to the Rust desktop engine yet. Quick Capture is kept
 as a disabled tool card until the capture flow is re-enabled.

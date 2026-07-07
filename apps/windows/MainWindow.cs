@@ -8,10 +8,12 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using Windows.UI;
+using Ellipse = Microsoft.UI.Xaml.Shapes.Ellipse;
 
 namespace Fowan.Windows;
 
@@ -19,9 +21,39 @@ public sealed class MainWindow : Window
 {
     private const double SidebarExpandedWidth = 238;
     private const double SidebarCollapsedWidth = 76;
+    private const int ToolCardDoubleClickMilliseconds = 500;
+    private const string TodoToolId = "todo";
+    private const string TodoExecutableName = "Fowan.Todo.Windows.exe";
+    private const int ShowWindowHide = 0;
+    private const int ShowWindowRestore = 9;
+    private const int GwlWndProc = -4;
+    private const uint NotifyIconId = 1;
+    private const uint WmApp = 0x8000;
+    private const uint WmTrayIcon = WmApp + 0x46;
+    private const uint WmClose = 0x0010;
+    private const int WmLButtonUp = 0x0202;
+    private const int WmLButtonDoubleClick = 0x0203;
+    private const int WmRButtonUp = 0x0205;
+    private const uint TrayCommandRestore = 1001;
+    private const uint TrayCommandExit = 1002;
+    private const uint NimAdd = 0x00000000;
+    private const uint NimDelete = 0x00000002;
+    private const uint NifMessage = 0x00000001;
+    private const uint NifIcon = 0x00000002;
+    private const uint NifTip = 0x00000004;
+    private const uint MfString = 0x00000000;
+    private const uint MfSeparator = 0x00000800;
+    private const uint TpmRightButton = 0x0002;
+    private const uint TpmReturnCmd = 0x0100;
+    private const uint TpmNonotify = 0x0080;
+    private const uint ImageIcon = 1;
+    private const uint LoadFromFile = 0x00000010;
+    private const uint LoadDefaultSize = 0x00000040;
+    private static readonly IntPtr IdiApplication = new(32512);
+    private static readonly string[] AvatarImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif"];
+    private static string DefaultAvatarAssetPath => UserDefaults.BuiltInAvatarPaths[0];
 
     private readonly SettingsStore _settingsStore = new();
-    private readonly WorkspaceService _workspaceService = new();
     private readonly LocalizationService _loc = new();
     private readonly List<string> _captures = [];
 
@@ -37,6 +69,8 @@ public sealed class MainWindow : Window
     private TextBlock _pageTitle = new();
     private TextBlock _resultSummary = new();
     private int _toastVersion;
+    private string _lastToolCardClickId = string.Empty;
+    private DateTimeOffset _lastToolCardClickAt = DateTimeOffset.MinValue;
 
     private string _selectedCategoryId = "all";
     private string _searchText = string.Empty;
@@ -45,14 +79,20 @@ public sealed class MainWindow : Window
     private ToolSortMode _sortMode = ToolSortMode.Name;
     private ToolCard _selectedTool = ToolCatalog.Tools.First(tool => tool.Id == "settings");
     private readonly List<string> _pinnedToolIds = [];
+    private WndProcDelegate? _trayWndProc;
+    private IntPtr _originalWndProc;
+    private IntPtr _trayIconHandle;
+    private bool _isTrayIconVisible;
+    private bool _ownsTrayIconHandle;
+    private bool _isExitRequested;
 
     public MainWindow()
     {
         StartupTrace.Mark("MainWindow ctor begin");
         _userSettings = _settingsStore.Load();
         StartupTrace.Mark("Settings loaded");
-        var settingsChanged = _workspaceService.EnsureInitialized(_userSettings);
-        StartupTrace.Mark("Workspace initialized");
+        var settingsChanged = SettingsStore.Normalize(_userSettings);
+        StartupTrace.Mark("Settings normalized");
         if (settingsChanged)
         {
             _settingsStore.Save(_userSettings);
@@ -63,14 +103,15 @@ public sealed class MainWindow : Window
             StartupTrace.Mark("User settings unchanged");
         }
 
-        _settings = _workspaceService.LoadEffectiveSettings(_userSettings, ensureInitialized: false);
-        StartupTrace.Mark("Effective settings loaded");
+        _settings = _userSettings;
         _loc.SetLanguage(_settings.Language);
         StartupTrace.Mark("Localization loaded");
+        SelectFirstCurrentTool();
         ConfigureWindow();
         StartupTrace.Mark("Window configured");
         BuildShell();
         StartupTrace.Mark("Shell built");
+        Closed += (_, _) => DisposeTrayIcon();
     }
 
     private string L(string key) => _loc.Get(key);
@@ -95,6 +136,11 @@ public sealed class MainWindow : Window
                 workArea.X + Math.Max(0, (workArea.Width - width) / 2),
                 workArea.Y + Math.Max(0, (workArea.Height - height) / 2)));
 
+            if (appWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.Maximize();
+            }
+
             ExtendsContentIntoTitleBar = true;
             appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
             appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
@@ -104,6 +150,8 @@ public sealed class MainWindow : Window
             {
                 appWindow.SetIcon(iconPath);
             }
+
+            InstallWindowMessageHook();
         }
         catch
         {
@@ -205,7 +253,6 @@ public sealed class MainWindow : Window
 
         var grid = new Grid { ColumnSpacing = 18 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(178) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -240,10 +287,6 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         });
         grid.Children.Add(brand);
-
-        var workspace = BuildWorkspaceButton();
-        Grid.SetColumn(workspace, 1);
-        grid.Children.Add(workspace);
 
         var searchShell = new Border
         {
@@ -343,38 +386,52 @@ public sealed class MainWindow : Window
         Grid.SetColumn(shortcut, 3);
         searchGrid.Children.Add(shortcut);
         searchShell.Child = searchGrid;
-        Grid.SetColumn(searchShell, 2);
+        Grid.SetColumn(searchShell, 1);
         grid.Children.Add(searchShell);
 
         var engineStatus = BuildEngineStatusButton();
-        Grid.SetColumn(engineStatus, 3);
+        Grid.SetColumn(engineStatus, 2);
         grid.Children.Add(engineStatus);
+
+        var sort = BuildSortButton();
+        Grid.SetColumn(sort, 3);
+        grid.Children.Add(sort);
 
         var settingsButton = HeaderIconButton("\uE713", L("Tool_Settings"));
         settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
         Grid.SetColumn(settingsButton, 4);
         grid.Children.Add(settingsButton);
 
-        var account = new Border
-        {
-            Width = 42,
-            Height = 42,
-            CornerRadius = new CornerRadius(21),
-            Background = ThemeBrush("AvatarBackground"),
-            Child = new TextBlock
-            {
-                Text = L("Account_Initial"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontSize = 18,
-                Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-            }
-        };
+        var account = HeaderIconButton(string.Empty, _settings.UserDisplayName);
+        account.Width = 46;
+        account.Height = 46;
+        account.Content = AvatarView(42);
+        account.Click += async (_, _) => await ShowProfileDialogAsync();
+        AutomationProperties.SetName(account, _settings.UserDisplayName);
+        ToolTipService.SetToolTip(account, _settings.UserDisplayName);
         Grid.SetColumn(account, 5);
         grid.Children.Add(account);
 
         border.Child = grid;
         return border;
+    }
+
+    private Ellipse AvatarView(double size, string? avatarPath = null)
+    {
+        return new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Fill = new ImageBrush
+            {
+                ImageSource = new BitmapImage(FileUri(ResolvedAvatarPath(avatarPath))),
+                Stretch = Stretch.UniformToFill,
+                AlignmentX = AlignmentX.Center,
+                AlignmentY = AlignmentY.Center
+            },
+            Stroke = ThemeBrush("CardStrokeColorDefaultBrush"),
+            StrokeThickness = 1
+        };
     }
 
     private FrameworkElement BuildCategoryPane()
@@ -511,6 +568,7 @@ public sealed class MainWindow : Window
             }
 
             _selectedCategoryId = category.Id;
+            SelectFirstCurrentTool();
             RefreshCategories();
             RefreshToolGrid();
         };
@@ -530,7 +588,6 @@ public sealed class MainWindow : Window
 
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var titleStack = new StackPanel
@@ -570,11 +627,6 @@ public sealed class MainWindow : Window
         viewToggle.Children.Add(listViewButton);
         Grid.SetColumn(viewToggle, 1);
         header.Children.Add(viewToggle);
-
-        var sort = BuildSortButton();
-        sort.Margin = new Thickness(14, 0, 0, 0);
-        Grid.SetColumn(sort, 2);
-        header.Children.Add(sort);
 
         root.Children.Add(header);
 
@@ -767,8 +819,8 @@ public sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         AddDetailRow(grid, 0, L("Detail_Category"), L(CategoryNameKey(tool.CategoryId)));
-        AddDetailRow(grid, 1, L("Detail_Version"), "1.0.0");
-        AddDetailRow(grid, 2, L("Detail_Updated"), DateTime.Now.ToString("yyyy-MM-dd"));
+        AddDetailRow(grid, 1, L("Detail_Version"), string.IsNullOrWhiteSpace(tool.Version) ? "-" : tool.Version);
+        AddDetailRow(grid, 2, L("Detail_Updated"), string.IsNullOrWhiteSpace(tool.UpdatedAt) ? "-" : tool.UpdatedAt);
         AddDetailRow(grid, 3, L("Detail_Publisher"), "Fowan");
         AddDetailRow(grid, 4, L("Detail_RequiredCapabilities"),
             tool.RequiredCapabilities.Count == 0 ? "-" : string.Join(", ", tool.RequiredCapabilities));
@@ -926,6 +978,15 @@ public sealed class MainWindow : Window
         };
     }
 
+    private void SelectFirstCurrentTool()
+    {
+        var firstTool = CurrentTools().FirstOrDefault();
+        if (firstTool is not null)
+        {
+            _selectedTool = firstTool;
+        }
+    }
+
     private FrameworkElement BuildToolCard(ToolCard tool)
     {
         var selected = tool.Id == _selectedTool.Id;
@@ -937,10 +998,11 @@ public sealed class MainWindow : Window
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Background = new SolidColorBrush(Colors.Transparent),
             MinHeight = 140,
-            UseSystemFocusVisuals = false
+            UseSystemFocusVisuals = false,
+            IsDoubleTapEnabled = true
         };
         ConfigureToolCardButton(button);
-        button.Click += (_, _) => SelectTool(tool);
+        button.Click += async (_, _) => await HandleToolCardClickAsync(tool);
         button.KeyDown += async (_, args) =>
         {
             if (args.Key == global::Windows.System.VirtualKey.Enter && tool.Status == ToolStatus.Available)
@@ -1007,10 +1069,11 @@ public sealed class MainWindow : Window
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Background = new SolidColorBrush(Colors.Transparent),
             MinHeight = 86,
-            UseSystemFocusVisuals = false
+            UseSystemFocusVisuals = false,
+            IsDoubleTapEnabled = true
         };
         ConfigureToolCardButton(button);
-        button.Click += (_, _) => SelectTool(tool);
+        button.Click += async (_, _) => await HandleToolCardClickAsync(tool);
         button.KeyDown += async (_, args) =>
         {
             if (args.Key == global::Windows.System.VirtualKey.Enter && tool.Status == ToolStatus.Available)
@@ -1279,9 +1342,35 @@ public sealed class MainWindow : Window
 
     private void SelectTool(ToolCard tool)
     {
+        if (_selectedTool.Id == tool.Id)
+        {
+            return;
+        }
+
         _selectedTool = tool;
         RefreshToolGrid();
         _detailPanel.Child = BuildDetailContent();
+    }
+
+    private async Task HandleToolCardClickAsync(ToolCard tool)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var isDoubleClick =
+            string.Equals(_lastToolCardClickId, tool.Id, StringComparison.OrdinalIgnoreCase) &&
+            now - _lastToolCardClickAt <= TimeSpan.FromMilliseconds(ToolCardDoubleClickMilliseconds);
+
+        if (isDoubleClick)
+        {
+            _lastToolCardClickId = string.Empty;
+            _lastToolCardClickAt = DateTimeOffset.MinValue;
+            SelectTool(tool);
+            await ExecutePrimaryActionAsync(tool);
+            return;
+        }
+
+        _lastToolCardClickId = tool.Id;
+        _lastToolCardClickAt = now;
+        SelectTool(tool);
     }
 
     private async Task ExecutePrimaryActionAsync(ToolCard tool)
@@ -1291,8 +1380,12 @@ public sealed class MainWindow : Window
             return;
         }
 
+        var openedExternalTool = false;
         switch (tool.Id)
         {
+            case TodoToolId:
+                openedExternalTool = await LaunchTodoToolAsync();
+                break;
             case "quick-capture":
                 await ShowQuickCaptureDialogAsync();
                 break;
@@ -1304,9 +1397,282 @@ public sealed class MainWindow : Window
                 break;
             case "toolbox-home":
                 _selectedCategoryId = "all";
+                SelectFirstCurrentTool();
                 RefreshCategories();
                 RefreshToolGrid();
                 break;
+        }
+
+        if (openedExternalTool)
+        {
+            MinimizeToolboxToTray();
+        }
+    }
+
+    private Task<bool> LaunchTodoToolAsync()
+    {
+        var executablePath = ResolveTodoExecutablePath();
+        if (executablePath is null)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchMissing"), L("Tool_Todo")), InfoBarSeverity.Error);
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true
+            });
+            return Task.FromResult(true);
+        }
+        catch (Exception exception)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Todo"), exception.Message), InfoBarSeverity.Error);
+            return Task.FromResult(false);
+        }
+    }
+
+    private static string? ResolveTodoExecutablePath()
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        var candidates = new List<string>
+        {
+            Path.Combine(baseDirectory, TodoExecutableName),
+            Path.Combine(baseDirectory, "Tools", "Todo", TodoExecutableName)
+        };
+
+        var repoRoot = FindRepoRoot(baseDirectory);
+        if (repoRoot is not null)
+        {
+            foreach (var configuration in BuildConfigurationCandidates(baseDirectory))
+            {
+                candidates.Add(Path.Combine(repoRoot, "out", "windows-todo", configuration.ToLowerInvariant(), TodoExecutableName));
+            }
+        }
+
+        return candidates
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(File.Exists);
+    }
+
+    private static string? FindRepoRoot(string startDirectory)
+    {
+        var directory = new DirectoryInfo(startDirectory);
+        for (var depth = 0; directory is not null && depth < 12; depth++)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Fowan.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<string> BuildConfigurationCandidates(string baseDirectory)
+    {
+        var configurations = new List<string>();
+        var directory = new DirectoryInfo(baseDirectory);
+        while (directory is not null)
+        {
+            if (directory.Name.Equals("Debug", StringComparison.OrdinalIgnoreCase) ||
+                directory.Name.Equals("Release", StringComparison.OrdinalIgnoreCase))
+            {
+                configurations.Add(directory.Name.Equals("Release", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug");
+                break;
+            }
+
+            directory = directory.Parent;
+        }
+
+        if (configurations.Count == 0)
+        {
+            configurations.Add("Debug");
+        }
+
+        configurations.Add("Release");
+        configurations.Add("Debug");
+        return configurations.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private void MinimizeToolboxToTray()
+    {
+        EnsureTrayIcon();
+        ShowWindow(WindowHandle(), ShowWindowHide);
+    }
+
+    private void RestoreToolboxFromTray()
+    {
+        ShowWindow(WindowHandle(), ShowWindowRestore);
+        Activate();
+        SetForegroundWindow(WindowHandle());
+    }
+
+    internal void RestoreFromExternalActivation()
+    {
+        RestoreToolboxFromTray();
+    }
+
+    private void EnsureTrayIcon()
+    {
+        InstallWindowMessageHook();
+        if (_isTrayIconVisible)
+        {
+            return;
+        }
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "fowan.ico");
+        if (File.Exists(iconPath))
+        {
+            _trayIconHandle = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 0, 0, LoadFromFile | LoadDefaultSize);
+            _ownsTrayIconHandle = _trayIconHandle != IntPtr.Zero;
+        }
+        else
+        {
+            _trayIconHandle = LoadIcon(IntPtr.Zero, IdiApplication);
+            _ownsTrayIconHandle = false;
+        }
+        var data = CreateNotifyIconData();
+        _isTrayIconVisible = Shell_NotifyIcon(NimAdd, ref data);
+    }
+
+    private void InstallWindowMessageHook()
+    {
+        if (_originalWndProc != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _trayWndProc = WindowProc;
+        _originalWndProc = SetWindowLongPtr(
+            WindowHandle(),
+            GwlWndProc,
+            Marshal.GetFunctionPointerForDelegate(_trayWndProc));
+    }
+
+    private IntPtr WindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        if (message == WmClose &&
+            !_isExitRequested &&
+            _userSettings.CloseBehavior != CloseBehaviorIds.Exit)
+        {
+            MinimizeToolboxToTray();
+            return IntPtr.Zero;
+        }
+
+        if (message == WmTrayIcon)
+        {
+            var trayEvent = lParam.ToInt32();
+            if (trayEvent is WmLButtonUp or WmLButtonDoubleClick)
+            {
+                DispatcherQueue.TryEnqueue(RestoreToolboxFromTray);
+                return IntPtr.Zero;
+            }
+
+            if (trayEvent == WmRButtonUp)
+            {
+                DispatcherQueue.TryEnqueue(ShowTrayContextMenu);
+                return IntPtr.Zero;
+            }
+        }
+
+        return CallWindowProc(_originalWndProc, hwnd, message, wParam, lParam);
+    }
+
+    private void ShowTrayContextMenu()
+    {
+        var menu = CreatePopupMenu();
+        if (menu == IntPtr.Zero)
+        {
+            return;
+        }
+
+        try
+        {
+            AppendMenu(menu, MfString, new UIntPtr(TrayCommandRestore), L("Tray_OpenToolbox"));
+            AppendMenu(menu, MfSeparator, UIntPtr.Zero, null);
+            AppendMenu(menu, MfString, new UIntPtr(TrayCommandExit), L("Tray_Exit"));
+
+            if (!GetCursorPos(out var point))
+            {
+                return;
+            }
+
+            SetForegroundWindow(WindowHandle());
+            var command = TrackPopupMenu(
+                menu,
+                TpmReturnCmd | TpmRightButton | TpmNonotify,
+                point.X,
+                point.Y,
+                0,
+                WindowHandle(),
+                IntPtr.Zero);
+
+            switch (command)
+            {
+                case TrayCommandRestore:
+                    RestoreToolboxFromTray();
+                    break;
+                case TrayCommandExit:
+                    ExitToolboxFromTray();
+                    break;
+            }
+        }
+        finally
+        {
+            DestroyMenu(menu);
+        }
+    }
+
+    private void ExitToolboxFromTray()
+    {
+        _isExitRequested = true;
+        DisposeTrayIcon();
+        Close();
+    }
+
+    private NotifyIconData CreateNotifyIconData()
+    {
+        return new NotifyIconData
+        {
+            cbSize = (uint)Marshal.SizeOf<NotifyIconData>(),
+            hWnd = WindowHandle(),
+            uID = NotifyIconId,
+            uFlags = NifMessage | NifIcon | NifTip,
+            uCallbackMessage = WmTrayIcon,
+            hIcon = _trayIconHandle,
+            szTip = "Fowan"
+        };
+    }
+
+    private void DisposeTrayIcon()
+    {
+        if (_isTrayIconVisible)
+        {
+            var data = CreateNotifyIconData();
+            Shell_NotifyIcon(NimDelete, ref data);
+            _isTrayIconVisible = false;
+        }
+
+        if (_trayIconHandle != IntPtr.Zero && _ownsTrayIconHandle)
+        {
+            DestroyIcon(_trayIconHandle);
+        }
+
+        _trayIconHandle = IntPtr.Zero;
+        _ownsTrayIconHandle = false;
+
+        if (_originalWndProc != IntPtr.Zero)
+        {
+            SetWindowLongPtr(WindowHandle(), GwlWndProc, _originalWndProc);
+            _originalWndProc = IntPtr.Zero;
+            _trayWndProc = null;
         }
     }
 
@@ -1350,28 +1716,14 @@ public sealed class MainWindow : Window
         }
 
         _sortMode = sortMode;
+        SelectFirstCurrentTool();
         BuildShell();
-    }
-
-    private void SetWorkspace(string workspaceId)
-    {
-        var workspace = _userSettings.Workspaces.FirstOrDefault(item => item.Id == workspaceId);
-        if (workspace is null || _userSettings.WorkspaceId == workspace.Id)
-        {
-            return;
-        }
-
-        _userSettings.WorkspaceId = workspace.Id;
-        var message = string.Format(L("Workspace_Switched"), WorkspaceName(workspace));
-        SaveUserSettingsAndRebuild();
-        ShowInfo(message, InfoBarSeverity.Success);
     }
 
     private void SaveUserSettingsAndRebuild()
     {
-        _workspaceService.EnsureInitialized(_userSettings);
         _settingsStore.Save(_userSettings);
-        _settings = _workspaceService.LoadEffectiveSettings(_userSettings, ensureInitialized: false);
+        _settings = _userSettings;
         _loc.SetLanguage(_settings.Language);
         BuildShell();
     }
@@ -1406,457 +1758,22 @@ public sealed class MainWindow : Window
         _root.KeyboardAccelerators.Add(clearSearch);
     }
 
-    private async Task ShowCreateWorkspaceDialogAsync()
+    private async Task<string?> PickAvatarImagePathAsync()
     {
-        var nameBox = new TextBox
+        var picker = new FileOpenPicker
         {
-            PlaceholderText = L("Workspace_NamePlaceholder"),
-            Text = string.Empty,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Height = 48,
-            FontSize = 18,
-            Padding = new Thickness(14, 8, 14, 8),
-            CornerRadius = new CornerRadius(7),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            Background = ThemeBrush("ControlSurface")
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary
         };
 
-        var createDirectoryMode = new RadioButton
+        foreach (var extension in AvatarImageExtensions)
         {
-            Content = L("Workspace_CreateDirectoryModeShort"),
-            GroupName = "WorkspaceCreateMode",
-            IsChecked = true,
-            FontSize = 16,
-            Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-        };
-        var existingDirectoryMode = new RadioButton
-        {
-            Content = L("Workspace_ExistingDirectoryModeShort"),
-            GroupName = "WorkspaceCreateMode",
-            FontSize = 16,
-            Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-        };
-
-        string? selectedDirectory = null;
-        var updatingDirectoryText = false;
-        var modeCards = new List<Border>();
-
-        var pathLabel = new TextBlock
-        {
-            Text = L("Workspace_DefaultRootLabel"),
-            FontSize = 13,
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush")
-        };
-        var selectedDirectoryBox = new TextBox
-        {
-            Text = _workspaceService.PreviewNewWorkspaceDisplayPath(nameBox.Text),
-            PlaceholderText = L("Workspace_NoFolderSelected"),
-            FontSize = 17,
-            Foreground = ThemeBrush("TextFillColorPrimaryBrush"),
-            BorderThickness = new Thickness(0),
-            Background = new SolidColorBrush(Colors.Transparent),
-            Padding = new Thickness(0, 5, 0, 0),
-            Height = 40,
-            MinHeight = 40,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        ApplyFlatTextBoxStyle(selectedDirectoryBox);
-        AutomationProperties.SetName(selectedDirectoryBox, L("Workspace_SelectedFolderLabel"));
-
-        void SetDirectoryText(string value)
-        {
-            if (selectedDirectoryBox.Text == value)
-            {
-                return;
-            }
-
-            updatingDirectoryText = true;
-            selectedDirectoryBox.Text = value;
-            updatingDirectoryText = false;
+            picker.FileTypeFilter.Add(extension);
         }
-
-        var chooseFolder = new Button
-        {
-            Content = L("Workspace_ChooseFolder"),
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Padding = new Thickness(18, 10, 18, 10),
-            CornerRadius = new CornerRadius(6),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            Background = ThemeBrush("ControlSurface"),
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
-            Opacity = 0.55
-        };
-        ToolTipService.SetToolTip(chooseFolder, L("Workspace_ChooseFolder"));
-        AutomationProperties.SetName(chooseFolder, L("Workspace_ChooseFolder"));
-        chooseFolder.Click += async (_, _) =>
-        {
-            var folder = await PickWorkspaceFolderAsync();
-            if (string.IsNullOrWhiteSpace(folder))
-            {
-                return;
-            }
-
-            selectedDirectory = folder;
-            SetDirectoryText(folder);
-            pathLabel.Text = L("Workspace_SelectedFolderLabel");
-            existingDirectoryMode.IsChecked = true;
-            if (string.IsNullOrWhiteSpace(nameBox.Text))
-            {
-                nameBox.Text = new DirectoryInfo(folder).Name;
-            }
-        };
-
-        var pathPreview = new Border
-        {
-            CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            Background = ThemeBrush("ControlSurface"),
-            Padding = new Thickness(14, 5, 14, 5)
-        };
-        var pathGrid = new Grid { ColumnSpacing = 14 };
-        pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        pathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        pathGrid.Children.Add(new FontIcon
-        {
-            Glyph = "\uE8B7",
-            FontSize = 22,
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        Grid.SetColumn(selectedDirectoryBox, 1);
-        pathGrid.Children.Add(selectedDirectoryBox);
-        pathPreview.Child = pathGrid;
-
-        var errorText = new TextBlock
-        {
-            Visibility = Visibility.Collapsed,
-            Foreground = new SolidColorBrush(Colors.IndianRed),
-            TextWrapping = TextWrapping.WrapWholeWords
-        };
-
-        Grid? overlay = null;
-        WorkspaceRegistration? createdWorkspace = null;
-        var dialogCompletion = new TaskCompletionSource<WorkspaceRegistration?>();
-
-        void CloseOverlay(WorkspaceRegistration? workspace = null)
-        {
-            if (overlay is not null)
-            {
-                _root.Children.Remove(overlay);
-            }
-
-            if (!dialogCompletion.Task.IsCompleted)
-            {
-                dialogCompletion.SetResult(workspace);
-            }
-        }
-
-        var closeButton = HeaderIconButton("\uE711", L("Action_Close"));
-        closeButton.Width = 34;
-        closeButton.Height = 34;
-        closeButton.Click += (_, _) => CloseOverlay();
-
-        var titleGrid = new Grid();
-        titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        titleGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var titleStack = new StackPanel { Spacing = 8 };
-        titleStack.Children.Add(new TextBlock
-        {
-            Text = L("Workspace_NewTitle"),
-            FontSize = 30,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-        });
-        titleStack.Children.Add(new TextBlock
-        {
-            Text = L("Workspace_DialogSubtitle"),
-            FontSize = 16,
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush")
-        });
-        titleGrid.Children.Add(titleStack);
-        Grid.SetColumn(closeButton, 1);
-        titleGrid.Children.Add(closeButton);
-
-        var modeGrid = new Grid { ColumnSpacing = 14 };
-        modeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        modeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var createModeCard = WorkspaceModeCard(createDirectoryMode);
-        var existingModeCard = WorkspaceModeCard(existingDirectoryMode);
-        modeCards.Add(createModeCard);
-        modeCards.Add(existingModeCard);
-        modeGrid.Children.Add(createModeCard);
-        Grid.SetColumn(existingModeCard, 1);
-        modeGrid.Children.Add(existingModeCard);
-
-        var chooseFolderRow = new Grid();
-        chooseFolderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        chooseFolderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(chooseFolder, 1);
-        chooseFolderRow.Children.Add(chooseFolder);
-
-        var formStack = new StackPanel { Spacing = 18 };
-        formStack.Children.Add(titleGrid);
-        formStack.Children.Add(new StackPanel
-        {
-            Spacing = 8,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = L("Workspace_Name"),
-                    FontSize = 16,
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                    Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-                },
-                nameBox
-            }
-        });
-        formStack.Children.Add(modeGrid);
-        formStack.Children.Add(new StackPanel
-        {
-            Spacing = 8,
-            Children =
-            {
-                pathLabel,
-                pathPreview
-            }
-        });
-        formStack.Children.Add(chooseFolderRow);
-        formStack.Children.Add(errorText);
-
-        var cancelButton = new Button
-        {
-            Content = L("Action_Cancel"),
-            Padding = new Thickness(26, 12, 26, 12),
-            CornerRadius = new CornerRadius(7),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            Background = ThemeBrush("ControlSurface"),
-            Foreground = ThemeBrush("TextFillColorPrimaryBrush")
-        };
-        cancelButton.Click += (_, _) => CloseOverlay();
-
-        var createButton = new Button
-        {
-            Content = L("Workspace_Create"),
-            Padding = new Thickness(30, 12, 30, 12),
-            CornerRadius = new CornerRadius(7),
-            BorderThickness = new Thickness(0),
-            Background = ThemeBrush("AccentFillColorDefaultBrush"),
-            Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush")
-        };
-
-        var footerGrid = new Grid
-        {
-            Margin = new Thickness(0, 24, 0, 0),
-            Padding = new Thickness(0, 18, 0, 0)
-        };
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        footerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var footerDivider = new Border
-        {
-            Height = 1,
-            Background = ThemeBrush("DividerStrokeColorDefaultBrush"),
-            VerticalAlignment = VerticalAlignment.Top
-        };
-        Grid.SetColumnSpan(footerDivider, 2);
-        footerGrid.Children.Add(footerDivider);
-        var footerHint = new TextBlock
-        {
-            Text = L("Workspace_ManifestHint"),
-            FontSize = 14,
-            Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 18, 12, 0),
-            MaxWidth = 220,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        Grid.SetRow(footerHint, 1);
-        footerGrid.Children.Add(footerHint);
-        cancelButton.Margin = new Thickness(0, 18, 12, 0);
-        Grid.SetRow(cancelButton, 1);
-        Grid.SetColumn(cancelButton, 1);
-        footerGrid.Children.Add(cancelButton);
-        createButton.Margin = new Thickness(0, 18, 0, 0);
-        Grid.SetRow(createButton, 1);
-        Grid.SetColumn(createButton, 2);
-        footerGrid.Children.Add(createButton);
-
-        var dialogContent = new Border
-        {
-            Width = 520,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            Padding = new Thickness(28, 26, 28, 24),
-            Background = ThemeBrush("DetailBackground"),
-            Child = new StackPanel
-            {
-                Spacing = 0,
-                Children =
-                {
-                    formStack,
-                    footerGrid
-                }
-            }
-        };
-
-        void RefreshWorkspaceDialog()
-        {
-            var useExistingDirectory = existingDirectoryMode.IsChecked == true;
-            chooseFolder.Opacity = useExistingDirectory ? 1 : 0.55;
-            chooseFolder.Foreground = useExistingDirectory
-                ? ThemeBrush("TextFillColorPrimaryBrush")
-                : ThemeBrush("TextFillColorSecondaryBrush");
-
-            if (useExistingDirectory)
-            {
-                pathLabel.Text = L("Workspace_SelectedFolderLabel");
-                SetDirectoryText(selectedDirectory ?? string.Empty);
-            }
-            else
-            {
-                pathLabel.Text = L("Workspace_DefaultRootLabel");
-                SetDirectoryText(_workspaceService.PreviewNewWorkspaceDisplayPath(nameBox.Text));
-            }
-
-            createButton.IsEnabled = !useExistingDirectory || !string.IsNullOrWhiteSpace(selectedDirectory);
-
-            foreach (var card in modeCards)
-            {
-                if (card.Child is RadioButton radio)
-                {
-                    card.BorderBrush = radio.IsChecked == true
-                        ? ThemeBrush("AccentStrokeColorDefaultBrush")
-                        : ThemeBrush("CardStrokeColorDefaultBrush");
-                    card.Background = radio.IsChecked == true
-                        ? ThemeBrush("SelectedNavigationBackground")
-                        : ThemeBrush("ControlSurface");
-                }
-            }
-        }
-
-        createDirectoryMode.Checked += (_, _) => RefreshWorkspaceDialog();
-        existingDirectoryMode.Checked += (_, _) => RefreshWorkspaceDialog();
-        nameBox.TextChanged += (_, _) => RefreshWorkspaceDialog();
-        selectedDirectoryBox.TextChanged += (_, _) =>
-        {
-            if (updatingDirectoryText)
-            {
-                return;
-            }
-
-            selectedDirectory = string.IsNullOrWhiteSpace(selectedDirectoryBox.Text)
-                ? null
-                : selectedDirectoryBox.Text.Trim().Trim('"');
-            if (createDirectoryMode.IsChecked == true)
-            {
-                existingDirectoryMode.IsChecked = true;
-            }
-
-            RefreshWorkspaceDialog();
-        };
-
-        createButton.Click += (_, _) =>
-        {
-            errorText.Visibility = Visibility.Collapsed;
-            var workspaceName = nameBox.Text.Trim();
-            var useExistingDirectory = existingDirectoryMode.IsChecked == true;
-
-            if (string.IsNullOrWhiteSpace(workspaceName))
-            {
-                errorText.Text = L("Workspace_NameRequired");
-                errorText.Visibility = Visibility.Visible;
-                return;
-            }
-
-            if (useExistingDirectory && string.IsNullOrWhiteSpace(selectedDirectory))
-            {
-                errorText.Text = L("Workspace_FolderRequired");
-                errorText.Visibility = Visibility.Visible;
-                return;
-            }
-
-            try
-            {
-                createdWorkspace = _workspaceService.CreateWorkspace(
-                    workspaceName,
-                    useExistingDirectory ? selectedDirectory : null);
-                _workspaceService.RegisterWorkspace(_userSettings, createdWorkspace);
-                _settingsStore.Save(_userSettings);
-                CloseOverlay(createdWorkspace);
-            }
-            catch (Exception exception)
-            {
-                errorText.Text = string.Format(L("Workspace_CreateFailed"), exception.Message);
-                errorText.Visibility = Visibility.Visible;
-            }
-        };
-
-        RefreshWorkspaceDialog();
-
-        overlay = new Grid
-        {
-            Background = new SolidColorBrush(Color.FromArgb(118, 0, 0, 0))
-        };
-        Grid.SetRowSpan(overlay, 2);
-        overlay.Children.Add(dialogContent);
-        overlay.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, args) =>
-        {
-            if (args.Key == global::Windows.System.VirtualKey.Escape)
-            {
-                CloseOverlay();
-                args.Handled = true;
-            }
-        }), true);
-
-        _root.Children.Add(overlay);
-        nameBox.Focus(FocusState.Programmatic);
-
-        createdWorkspace = await dialogCompletion.Task;
-        if (createdWorkspace is not null)
-        {
-            _settings = _workspaceService.LoadEffectiveSettings(_userSettings, ensureInitialized: false);
-            _loc.SetLanguage(_settings.Language);
-            var message = string.Format(L("Workspace_Created"), WorkspaceName(createdWorkspace));
-            BuildShell();
-            ShowInfo(message, InfoBarSeverity.Success);
-        }
-
-        static Border WorkspaceModeCard(RadioButton radioButton)
-        {
-            return new Border
-            {
-                MinHeight = 76,
-                CornerRadius = new CornerRadius(7),
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(18, 8, 18, 8),
-                Child = radioButton
-            };
-        }
-    }
-
-    private async Task<string?> PickWorkspaceFolderAsync()
-    {
-        var picker = new FolderPicker
-        {
-            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
-        };
-        picker.FileTypeFilter.Add("*");
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-        var folder = await picker.PickSingleFolderAsync();
-        return folder?.Path;
+        var file = await picker.PickSingleFileAsync();
+        return string.IsNullOrWhiteSpace(file?.Path) ? null : file.Path;
     }
 
     private async Task ShowQuickCaptureDialogAsync()
@@ -1896,6 +1813,279 @@ public sealed class MainWindow : Window
         }
     }
 
+    private async Task ShowProfileDialogAsync()
+    {
+        var selectedAvatarPath = _userSettings.AvatarPath;
+        var avatarOptionBorders = new List<Border>();
+
+        var nameBox = new TextBox
+        {
+            Header = L("Profile_Name"),
+            Text = string.IsNullOrWhiteSpace(_userSettings.UserDisplayName)
+                ? UserDefaults.DisplayName
+                : _userSettings.UserDisplayName,
+            PlaceholderText = L("Profile_NamePlaceholder"),
+            MinWidth = 320,
+            MaxLength = 48
+        };
+
+        var nameError = new TextBlock
+        {
+            Text = L("Profile_NameRequired"),
+            Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 196, 43, 28)),
+            Visibility = Visibility.Collapsed
+        };
+
+        var avatarHost = new Border
+        {
+            Width = 84,
+            Height = 84,
+            CornerRadius = new CornerRadius(42),
+            Child = AvatarView(84, selectedAvatarPath)
+        };
+        Border? avatarPickerPreview = null;
+
+        void SetSelectedAvatar(string avatarPath)
+        {
+            selectedAvatarPath = avatarPath;
+            avatarHost.Child = AvatarView(84, selectedAvatarPath);
+            if (avatarPickerPreview is not null)
+            {
+                avatarPickerPreview.Child = AvatarView(40, selectedAvatarPath);
+            }
+
+            RefreshAvatarOptionStates();
+        }
+
+        void RefreshAvatarOptionStates()
+        {
+            var selectedPath = UserDefaults.NormalizeAvatarPath(selectedAvatarPath);
+            foreach (var option in avatarOptionBorders)
+            {
+                var optionPath = option.Tag?.ToString() ?? string.Empty;
+                var isSelected = string.Equals(selectedPath, optionPath, StringComparison.OrdinalIgnoreCase);
+                option.BorderBrush = isSelected
+                    ? ThemeBrush("AccentStrokeColorDefaultBrush")
+                    : ThemeBrush("CardStrokeColorDefaultBrush");
+                option.BorderThickness = isSelected ? new Thickness(3) : new Thickness(1);
+            }
+        }
+
+        var uploadAvatarButton = new Button
+        {
+            Content = L("Profile_UploadAvatar"),
+            MinWidth = 120
+        };
+        uploadAvatarButton.Click += async (_, _) =>
+        {
+            var pickedPath = await PickAvatarImagePathAsync();
+            if (string.IsNullOrWhiteSpace(pickedPath))
+            {
+                return;
+            }
+
+            SetSelectedAvatar(pickedPath);
+        };
+
+        var randomAvatarButton = new Button
+        {
+            Content = L("Profile_RandomAvatar"),
+            MinWidth = 120
+        };
+        randomAvatarButton.Click += (_, _) =>
+        {
+            SetSelectedAvatar(UserDefaults.RandomAvatarPath());
+        };
+
+        var avatarActions = new StackPanel
+        {
+            Spacing = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = L("Profile_Avatar"),
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Foreground = ThemeBrush("TextFillColorPrimaryBrush")
+                },
+                uploadAvatarButton,
+                randomAvatarButton
+            }
+        };
+
+        var avatarRow = new Grid { ColumnSpacing = 16 };
+        avatarRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        avatarRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        avatarRow.Children.Add(avatarHost);
+        Grid.SetColumn(avatarActions, 1);
+        avatarRow.Children.Add(avatarActions);
+
+        avatarPickerPreview = new Border
+        {
+            Width = 40,
+            Height = 40,
+            CornerRadius = new CornerRadius(20),
+            Child = AvatarView(40, selectedAvatarPath)
+        };
+
+        var avatarPickerButtonContent = new Grid
+        {
+            ColumnSpacing = 10
+        };
+        avatarPickerButtonContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        avatarPickerButtonContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        avatarPickerButtonContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        avatarPickerButtonContent.Children.Add(avatarPickerPreview);
+        var avatarPickerText = new TextBlock
+        {
+            Text = L("Profile_BuiltInAvatars"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = ThemeBrush("TextFillColorPrimaryBrush")
+        };
+        Grid.SetColumn(avatarPickerText, 1);
+        avatarPickerButtonContent.Children.Add(avatarPickerText);
+        var avatarPickerChevron = new FontIcon
+        {
+            Glyph = "\uE70D",
+            FontSize = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = ThemeBrush("TextFillColorSecondaryBrush")
+        };
+        Grid.SetColumn(avatarPickerChevron, 2);
+        avatarPickerButtonContent.Children.Add(avatarPickerChevron);
+
+        var avatarPickerButton = new Button
+        {
+            MinWidth = 320,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(10, 8, 10, 8),
+            Content = avatarPickerButtonContent
+        };
+        AutomationProperties.SetName(avatarPickerButton, L("Profile_BuiltInAvatars"));
+        ToolTipService.SetToolTip(avatarPickerButton, L("Profile_BuiltInAvatars"));
+
+        var avatarGrid = new Grid
+        {
+            ColumnSpacing = 8,
+            RowSpacing = 8,
+            Padding = new Thickness(4),
+            MaxWidth = 420
+        };
+
+        const int avatarColumnCount = 6;
+        for (var column = 0; column < avatarColumnCount; column++)
+        {
+            avatarGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        }
+
+        var avatarRowCount = (UserDefaults.BuiltInAvatarPaths.Length + avatarColumnCount - 1) / avatarColumnCount;
+        for (var row = 0; row < avatarRowCount; row++)
+        {
+            avatarGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        var avatarPickerFlyout = new Flyout
+        {
+            Content = new ScrollViewer
+            {
+                Width = 420,
+                MaxHeight = 328,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = avatarGrid
+            }
+        };
+
+        for (var index = 0; index < UserDefaults.BuiltInAvatarPaths.Length; index++)
+        {
+            var avatarPath = UserDefaults.BuiltInAvatarPaths[index];
+            var optionBorder = new Border
+            {
+                Width = 56,
+                Height = 56,
+                CornerRadius = new CornerRadius(28),
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
+                BorderThickness = new Thickness(1),
+                Tag = avatarPath,
+                Child = AvatarView(56, avatarPath)
+            };
+            avatarOptionBorders.Add(optionBorder);
+
+            var optionButton = new Button
+            {
+                Width = 62,
+                Height = 62,
+                Padding = new Thickness(0),
+                Content = optionBorder
+            };
+            ToolTipService.SetToolTip(optionButton, L("Profile_BuiltInAvatars"));
+            AutomationProperties.SetName(optionButton, L("Profile_BuiltInAvatars"));
+            optionButton.Click += (_, _) =>
+            {
+                SetSelectedAvatar(avatarPath);
+                avatarPickerFlyout.Hide();
+            };
+            Grid.SetColumn(optionButton, index % avatarColumnCount);
+            Grid.SetRow(optionButton, index / avatarColumnCount);
+            avatarGrid.Children.Add(optionButton);
+        }
+
+        RefreshAvatarOptionStates();
+        avatarPickerButton.Click += (_, _) => avatarPickerFlyout.ShowAt(avatarPickerButton);
+
+        var stack = new StackPanel
+        {
+            Spacing = 16,
+            Children =
+            {
+                avatarRow,
+                avatarPickerButton,
+                nameBox,
+                nameError
+            }
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _root.XamlRoot,
+            Title = L("Profile_Title"),
+            Content = stack,
+            PrimaryButtonText = L("Action_Save"),
+            CloseButtonText = L("Action_Cancel"),
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        var shouldSave = false;
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (string.IsNullOrWhiteSpace(nameBox.Text))
+            {
+                nameError.Visibility = Visibility.Visible;
+                nameBox.Focus(FocusState.Programmatic);
+                args.Cancel = true;
+                return;
+            }
+
+            shouldSave = true;
+        };
+
+        await dialog.ShowAsync();
+
+        if (!shouldSave)
+        {
+            return;
+        }
+
+        _userSettings.UserDisplayName = nameBox.Text.Trim();
+        _userSettings.AvatarPath = SaveAvatarImage(selectedAvatarPath);
+        SaveUserSettingsAndRebuild();
+        ShowInfo(L("Profile_Saved"), InfoBarSeverity.Success);
+    }
+
     private async Task ShowSettingsDialogAsync()
     {
         var themeBox = new ComboBox { Header = L("Settings_Theme"), MinWidth = 260 };
@@ -1910,9 +2100,23 @@ public sealed class MainWindow : Window
         languageBox.Items.Add(new ComboBoxItem { Content = L("Settings_Language_English"), Tag = "en-US" });
         languageBox.SelectedIndex = _settings.Language switch { "zh-CN" => 1, "en-US" => 2, _ => 0 };
 
+        var closeBehaviorBox = new ComboBox { Header = L("Settings_CloseBehavior"), MinWidth = 260 };
+        closeBehaviorBox.Items.Add(new ComboBoxItem
+        {
+            Content = L("Settings_CloseBehavior_MinimizeToTray"),
+            Tag = CloseBehaviorIds.MinimizeToTray
+        });
+        closeBehaviorBox.Items.Add(new ComboBoxItem
+        {
+            Content = L("Settings_CloseBehavior_Exit"),
+            Tag = CloseBehaviorIds.Exit
+        });
+        closeBehaviorBox.SelectedIndex = _userSettings.CloseBehavior == CloseBehaviorIds.Exit ? 1 : 0;
+
         var stack = new StackPanel { Spacing = 18 };
         stack.Children.Add(themeBox);
         stack.Children.Add(languageBox);
+        stack.Children.Add(closeBehaviorBox);
         stack.Children.Add(new TextBlock { Text = L("Settings_Startup"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
         stack.Children.Add(new TextBlock { Text = L("Settings_Privacy"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
         stack.Children.Add(new TextBlock { Text = L("Settings_About"), Foreground = ThemeBrush("TextFillColorSecondaryBrush") });
@@ -1935,6 +2139,7 @@ public sealed class MainWindow : Window
 
         _userSettings.Theme = ((ComboBoxItem)themeBox.SelectedItem).Tag?.ToString() ?? "system";
         _userSettings.Language = ((ComboBoxItem)languageBox.SelectedItem).Tag?.ToString() ?? "system";
+        _userSettings.CloseBehavior = ((ComboBoxItem)closeBehaviorBox.SelectedItem).Tag?.ToString() ?? CloseBehaviorIds.MinimizeToTray;
         SaveUserSettingsAndRebuild();
     }
 
@@ -1991,44 +2196,6 @@ public sealed class MainWindow : Window
         };
         ToolTipService.SetToolTip(button, label);
         AutomationProperties.SetName(button, label);
-        return button;
-    }
-
-    private Button BuildWorkspaceButton()
-    {
-        var workspace = SelectedWorkspace();
-        var button = HeaderPillButton(
-            WorkspaceName(workspace),
-            "\uE821",
-            false,
-            "\uE70D",
-            L("Workspace_Select"));
-        button.MinWidth = 162;
-
-        var flyout = new MenuFlyout();
-        foreach (var option in _userSettings.Workspaces)
-        {
-            var item = new MenuFlyoutItem
-            {
-                Text = WorkspaceName(option),
-                Icon = option.Id == workspace.Id
-                    ? new FontIcon { Glyph = "\uE73E" }
-                    : new FontIcon { Glyph = "\uE8B7" }
-            };
-            item.Click += (_, _) => SetWorkspace(option.Id);
-            flyout.Items.Add(item);
-        }
-
-        flyout.Items.Add(new MenuFlyoutSeparator());
-        var createItem = new MenuFlyoutItem
-        {
-            Text = L("Workspace_New"),
-            Icon = new FontIcon { Glyph = "\uE710" }
-        };
-        createItem.Click += async (_, _) => await ShowCreateWorkspaceDialogAsync();
-        flyout.Items.Add(createItem);
-
-        button.Click += (_, _) => flyout.ShowAt(button);
         return button;
     }
 
@@ -2124,24 +2291,6 @@ public sealed class MainWindow : Window
         grid.Children.Add(valueBlock);
 
         return grid;
-    }
-
-    private WorkspaceRegistration SelectedWorkspace()
-    {
-        return _workspaceService.SelectedWorkspace(_userSettings, ensureInitialized: false);
-    }
-
-    private string WorkspaceName(WorkspaceRegistration workspace)
-    {
-        var name = _workspaceService.WorkspaceDisplayName(workspace);
-        if (workspace.Id == WorkspaceService.DefaultWorkspaceId &&
-            (string.IsNullOrWhiteSpace(name) ||
-             string.Equals(name, "Default Workspace", StringComparison.OrdinalIgnoreCase)))
-        {
-            return L("Workspace_Default");
-        }
-
-        return string.IsNullOrWhiteSpace(name) ? L("Workspace_Default") : name;
     }
 
     private string SortLabel() => _sortMode switch
@@ -2356,6 +2505,96 @@ public sealed class MainWindow : Window
         }.Uri;
     }
 
+    private string ResolvedAvatarPath(string? avatarPath = null)
+    {
+        var candidate = avatarPath is null ? _settings.AvatarPath : avatarPath;
+        if (!string.IsNullOrWhiteSpace(candidate))
+        {
+            try
+            {
+                var normalizedCandidate = UserDefaults.NormalizeAvatarPath(candidate);
+                if (UserDefaults.IsBuiltInAvatarPath(normalizedCandidate))
+                {
+                    var builtInPath = Path.Combine(
+                        AppContext.BaseDirectory,
+                        normalizedCandidate.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(builtInPath))
+                    {
+                        return builtInPath;
+                    }
+                }
+
+                var expandedPath = Environment.ExpandEnvironmentVariables(candidate);
+                var fullPath = Path.IsPathRooted(expandedPath)
+                    ? Path.GetFullPath(expandedPath)
+                    : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, expandedPath));
+                if (File.Exists(fullPath))
+                {
+                    return fullPath;
+                }
+            }
+            catch
+            {
+                // Fall through to the bundled default avatar.
+            }
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, DefaultAvatarAssetPath);
+    }
+
+    private static string SaveAvatarImage(string? sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var normalizedSourcePath = UserDefaults.NormalizeAvatarPath(sourcePath);
+            if (UserDefaults.IsBuiltInAvatarPath(normalizedSourcePath))
+            {
+                return normalizedSourcePath;
+            }
+
+            var sourceFullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(sourcePath));
+            if (!File.Exists(sourceFullPath))
+            {
+                return string.Empty;
+            }
+
+            var profileRoot = Path.GetFullPath(ProfileRootPath());
+            Directory.CreateDirectory(profileRoot);
+
+            if (sourceFullPath.StartsWith(profileRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return sourceFullPath;
+            }
+
+            var extension = Path.GetExtension(sourceFullPath);
+            if (!AvatarImageExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            {
+                extension = ".png";
+            }
+
+            var destination = Path.Combine(profileRoot, $"avatar{extension.ToLowerInvariant()}");
+            File.Copy(sourceFullPath, destination, overwrite: true);
+            return destination;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string ProfileRootPath()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Fowan",
+            "Profile");
+    }
+
     private static Style? ThemeStyle(string resourceKey)
     {
         return Application.Current.Resources.TryGetValue(resourceKey, out var resource)
@@ -2478,6 +2717,95 @@ public sealed class MainWindow : Window
         Category
     }
 
+    private delegate IntPtr WndProcDelegate(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NotifyIconData
+    {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public IntPtr hIcon;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szTip;
+
+        public uint dwState;
+        public uint dwStateMask;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string szInfo;
+
+        public uint uTimeoutOrVersion;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string szInfoTitle;
+
+        public uint dwInfoFlags;
+        public Guid guidItem;
+        public IntPtr hBalloonIcon;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    private IntPtr WindowHandle() => WinRT.Interop.WindowNative.GetWindowHandle(this);
+
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool Shell_NotifyIcon(uint dwMessage, ref NotifyIconData lpData);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CreatePopupMenu();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool AppendMenu(IntPtr hMenu, uint uFlags, UIntPtr uIDNewItem, string? lpNewItem);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyMenu(IntPtr hMenu);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Point lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern uint TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+    {
+        return IntPtr.Size == 8
+            ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong)
+            : SetWindowLongPtr32(hWnd, nIndex, dwNewLong);
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern IntPtr SetWindowLongPtr32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }

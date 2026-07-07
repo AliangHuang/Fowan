@@ -5,6 +5,14 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Windows", "apps\windows\Fowan.Windows.csproj", "{52EA21FC-311B-4752-BA76-4F1D8A97BA62}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Windows", "apps\windows-todo\Fowan.Todo.Windows.csproj", "{2C8C1F80-F7C5-4D6E-9D40-90AF195F7F03}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{E734C8D4-8651-4FAD-9F54-A474C3177CDB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Core", "apps\windows-todo-core\Fowan.Todo.Core.csproj", "{B846A653-8B42-407A-83F6-6657B1952427}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Sticky.Windows", "apps\windows-todo-sticky\Fowan.Todo.Sticky.Windows.csproj", "{FB088CD9-430A-4094-A3D2-EA309B07F180}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +26,21 @@ Global
 		{52EA21FC-311B-4752-BA76-4F1D8A97BA62}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{52EA21FC-311B-4752-BA76-4F1D8A97BA62}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{52EA21FC-311B-4752-BA76-4F1D8A97BA62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8C1F80-F7C5-4D6E-9D40-90AF195F7F03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8C1F80-F7C5-4D6E-9D40-90AF195F7F03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8C1F80-F7C5-4D6E-9D40-90AF195F7F03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8C1F80-F7C5-4D6E-9D40-90AF195F7F03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B846A653-8B42-407A-83F6-6657B1952427}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B846A653-8B42-407A-83F6-6657B1952427}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B846A653-8B42-407A-83F6-6657B1952427}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B846A653-8B42-407A-83F6-6657B1952427}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B846A653-8B42-407A-83F6-6657B1952427} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
+		{FB088CD9-430A-4094-A3D2-EA309B07F180} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
 	EndGlobalSection
 EndGlobal

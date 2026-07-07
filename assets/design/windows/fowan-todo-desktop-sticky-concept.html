@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fowan Windows 桌面便签模式示意图</title>
+  <style>
+    :root {
+      --bg-1: #edf7f8;
+      --bg-2: #f7fbfb;
+      --bg-3: #e9eef6;
+      --text: #17242a;
+      --muted: #728087;
+      --line: #dce6e8;
+      --surface: #ffffff;
+      --surface-soft: #f6fafb;
+      --accent: #128ca2;
+      --accent-dark: #0c6f82;
+      --accent-soft: #dff4f7;
+      --done: #98a4aa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1600px;
+      min-height: 900px;
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #eef6f8;
+    }
+
+    .canvas {
+      position: relative;
+      width: 1600px;
+      height: 900px;
+      overflow: hidden;
+      background:
+        linear-gradient(145deg, rgba(18, 140, 162, 0.16), transparent 32%),
+        linear-gradient(315deg, rgba(68, 117, 177, 0.12), transparent 38%),
+        linear-gradient(120deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+    }
+
+    .desktop-window {
+      position: absolute;
+      left: 132px;
+      top: 114px;
+      width: 920px;
+      height: 632px;
+      border: 1px solid rgba(126, 149, 158, 0.28);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+      box-shadow: 0 28px 80px rgba(51, 72, 82, 0.12);
+      backdrop-filter: blur(12px);
+    }
+
+    .desktop-window::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 48px;
+      border-bottom: 1px solid rgba(126, 149, 158, 0.2);
+      background: rgba(255, 255, 255, 0.42);
+      border-radius: 14px 14px 0 0;
+    }
+
+    .skeleton {
+      position: absolute;
+      left: 56px;
+      top: 96px;
+      display: grid;
+      gap: 28px;
+      width: 640px;
+    }
+
+    .skeleton span {
+      display: block;
+      height: 18px;
+      border-radius: 8px;
+      background: rgba(102, 132, 142, 0.15);
+    }
+
+    .skeleton span:nth-child(1) {
+      width: 42%;
+      height: 28px;
+      background: rgba(62, 109, 119, 0.18);
+    }
+
+    .skeleton span:nth-child(2) { width: 88%; }
+    .skeleton span:nth-child(3) { width: 74%; }
+    .skeleton span:nth-child(4) { width: 81%; }
+    .skeleton span:nth-child(5) { width: 56%; }
+
+    .sticky {
+      position: absolute;
+      right: 168px;
+      top: 92px;
+      width: 392px;
+      height: 548px;
+      border: 1px solid rgba(143, 164, 172, 0.46);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow:
+        0 32px 80px rgba(19, 42, 50, 0.24),
+        0 10px 28px rgba(19, 42, 50, 0.12);
+      overflow: visible;
+    }
+
+    .sticky::after {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: -17px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(24, 53, 61, 0.15);
+      filter: blur(16px);
+      z-index: -1;
+    }
+
+    .titlebar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f8fbfc);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .brand img {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      flex: 0 0 auto;
+    }
+
+    .window-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .icon-button {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      color: #52636a;
+      background: transparent;
+    }
+
+    .icon-button.active {
+      color: var(--accent-dark);
+      background: var(--accent-soft);
+    }
+
+    .icon-button svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .icon-button.close svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .tip {
+      position: absolute;
+      top: -38px;
+      right: -6px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+      padding: 0 10px;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(23, 36, 42, 0.92);
+      box-shadow: 0 10px 24px rgba(22, 38, 45, 0.16);
+    }
+
+    .tip::after {
+      content: "";
+      position: absolute;
+      right: 16px;
+      bottom: -5px;
+      width: 10px;
+      height: 10px;
+      background: rgba(23, 36, 42, 0.92);
+      transform: rotate(45deg);
+    }
+
+    .tip.expand-tip {
+      right: -34px;
+    }
+
+    .content {
+      padding: 22px 20px 18px;
+    }
+
+    .headline {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .count {
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .add-task {
+      height: 42px;
+      margin-bottom: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 13px;
+      color: var(--accent-dark);
+      background: var(--surface-soft);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .plus {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      background: var(--accent);
+      font-size: 17px;
+      line-height: 20px;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .task {
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 11px;
+      align-items: center;
+      padding: 11px 10px;
+      border: 1px solid #e7eef0;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #9eb0b7;
+      border-radius: 50%;
+    }
+
+    .task-text {
+      min-width: 0;
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .completed {
+      margin-top: 18px;
+      border-top: 1px solid var(--line);
+      padding-top: 15px;
+    }
+
+    .completed-header {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #5d6e75;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid #7f8f96;
+      border-bottom: 2px solid #7f8f96;
+      transform: rotate(45deg) translateY(-2px);
+    }
+
+    .done-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 7px;
+    }
+
+    .done-item {
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border-radius: 8px;
+      color: var(--done);
+      background: #f8fafb;
+      font-size: 13px;
+    }
+
+    .done-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      background: #8aaeb7;
+    }
+
+    .done-check svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .done-text {
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+      text-decoration-color: #a8b4b8;
+    }
+
+    .resize-hint {
+      position: absolute;
+      right: 13px;
+      bottom: 12px;
+      width: 11px;
+      height: 11px;
+      border-right: 2px solid #c2cdd1;
+      border-bottom: 2px solid #c2cdd1;
+    }
+
+    .mode-tag {
+      position: absolute;
+      left: 1186px;
+      top: 674px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 13px;
+      border: 1px solid rgba(18, 140, 162, 0.22);
+      border-radius: 8px;
+      color: #24525c;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 12px 34px rgba(28, 60, 68, 0.1);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .mode-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(18, 140, 162, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas" aria-label="Fowan Windows 桌面便签模式示意图">
+    <section class="desktop-window" aria-hidden="true">
+      <div class="skeleton">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </section>
+
+    <section class="sticky" aria-label="Fowan 桌面便签">
+      <header class="titlebar">
+        <div class="brand">
+          <img src="../../brand/png/app-icon/fowan-app-icon-256.png" alt="">
+          <span>Fowan</span>
+        </div>
+        <div class="window-actions" aria-label="窗口操作">
+          <button class="icon-button active" aria-label="置顶">
+            <span class="tip">置顶</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 4 20 9"></path>
+              <path d="M14 5 8 11"></path>
+              <path d="M9 10 5 14"></path>
+              <path d="M12 13 7 18"></path>
+              <path d="M6 13 11 18"></path>
+            </svg>
+          </button>
+          <button class="icon-button" aria-label="回到大界面">
+            <span class="tip expand-tip">回到大界面</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 3H5a2 2 0 0 0-2 2v4"></path>
+              <path d="M15 3h4a2 2 0 0 1 2 2v4"></path>
+              <path d="M21 15v4a2 2 0 0 1-2 2h-4"></path>
+              <path d="M9 21H5a2 2 0 0 1-2-2v-4"></path>
+              <path d="M8 8h8v8H8z"></path>
+            </svg>
+          </button>
+          <button class="icon-button close" aria-label="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6 18 18"></path>
+              <path d="M18 6 6 18"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="headline">
+          <h1>今日任务</h1>
+          <span class="count">3 项</span>
+        </div>
+
+        <div class="add-task">
+          <span class="plus">+</span>
+          <span>添加任务</span>
+        </div>
+
+        <div class="task-list">
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">整理产品评审要点</span>
+          </div>
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">确认明日会议材料</span>
+          </div>
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">更新待办清单</span>
+          </div>
+        </div>
+
+        <section class="completed" aria-label="已完成任务">
+          <div class="completed-header">
+            <span>已完成 2</span>
+            <span class="chevron" aria-hidden="true"></span>
+          </div>
+          <div class="done-list">
+            <div class="done-item">
+              <span class="done-check">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+              <span class="done-text">同步设计修改</span>
+            </div>
+            <div class="done-item">
+              <span class="done-check">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+              <span class="done-text">补充需求记录</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <span class="resize-hint" aria-hidden="true"></span>
+    </section>
+
+    <div class="mode-tag" aria-hidden="true">
+      <span class="mode-dot"></span>
+      <span>缩小便签模式</span>
+    </div>
+  </main>
+</body>
+</html>

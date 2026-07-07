@@ -22,6 +22,7 @@ public sealed class SettingsStore
 
     public ClientSettings Load()
     {
+        ClientSettings settings;
         try
         {
             if (!File.Exists(_settingsPath))
@@ -30,17 +31,81 @@ public sealed class SettingsStore
             }
 
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<ClientSettings>(json, JsonOptions) ?? new ClientSettings();
+            settings = JsonSerializer.Deserialize<ClientSettings>(json, JsonOptions) ?? new ClientSettings();
         }
         catch
         {
-            return new ClientSettings();
+            settings = new ClientSettings();
         }
+
+        return settings;
     }
 
     public void Save(ClientSettings settings)
     {
+        Normalize(settings);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(_settingsPath, json);
+    }
+
+    public static bool Normalize(ClientSettings settings)
+    {
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(settings.Theme))
+        {
+            settings.Theme = "system";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.Language))
+        {
+            settings.Language = "system";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.CloseBehavior) ||
+            settings.CloseBehavior is not (CloseBehaviorIds.MinimizeToTray or CloseBehaviorIds.Exit))
+        {
+            settings.CloseBehavior = CloseBehaviorIds.MinimizeToTray;
+            changed = true;
+        }
+
+        var userDisplayName = settings.UserDisplayName?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userDisplayName))
+        {
+            userDisplayName = UserDefaults.DisplayName;
+        }
+
+        if (!string.Equals(settings.UserDisplayName, userDisplayName, StringComparison.Ordinal))
+        {
+            settings.UserDisplayName = userDisplayName;
+            changed = true;
+        }
+
+        var normalizedAvatarPath = UserDefaults.NormalizeAvatarPath(settings.AvatarPath);
+        if (!string.Equals(settings.AvatarPath, normalizedAvatarPath, StringComparison.Ordinal))
+        {
+            settings.AvatarPath = normalizedAvatarPath;
+            changed = true;
+        }
+
+        if (!settings.IsProfileInitialized)
+        {
+            if (string.IsNullOrWhiteSpace(settings.AvatarPath))
+            {
+                settings.AvatarPath = UserDefaults.RandomAvatarPath();
+            }
+
+            settings.IsProfileInitialized = true;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.AvatarPath))
+        {
+            settings.AvatarPath = UserDefaults.RandomAvatarPath();
+            changed = true;
+        }
+
+        return changed;
     }
 }

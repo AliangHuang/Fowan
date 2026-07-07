@@ -6,7 +6,10 @@ Fowan Orchestrates Workflows with AI, Natively.
 
 ```text
 apps/
-  windows/        # WinUI 3 Windows desktop client
+  windows/             # WinUI 3 toolbox shell and launcher
+  windows-todo/        # Independent WinUI 3 todo window app
+  windows-todo-core/   # Shared todo models, storage, and services
+  windows-todo-sticky/ # Independent sticky todo shell
 assets/
   brand/          # Brand source assets and generated platform icons
   design/windows/ # Windows UI reference images
@@ -15,6 +18,17 @@ docs/             # Architecture and product design documents
 scripts/          # Local build and run helpers
 out/              # Local build outputs, ignored by git
 ```
+
+## Development Conventions
+
+`apps/windows` is the Fowan toolbox shell. It may show Todo as an available tool
+and launch it, but it must not host Todo business UI or Todo task-management
+logic.
+
+Todo is an independent Windows tool with its own process, windows, data files,
+and build entrypoint. Shared Todo behavior belongs in `apps/windows-todo-core`.
+The sticky shell remains a separate executable so it can start directly when the
+last saved Todo mode is sticky.
 
 ## Windows Client
 
@@ -41,4 +55,53 @@ The executable is published to:
 
 ```text
 out/windows/debug/Fowan.Windows.exe
+```
+
+## Windows Todo Tool
+
+Build the independent Todo tool and sticky shell:
+
+```powershell
+.\scripts\build-windows-todo.ps1 -Configuration Debug
+```
+
+Run the Todo tool:
+
+```powershell
+.\scripts\run-windows-todo.ps1 -Configuration Debug
+```
+
+Todo build outputs use a single runnable artifact directory. The toolbox also
+launches Todo from this directory; do not use `apps/windows-todo*/bin` as a
+runnable Todo artifact path.
+
+The executables are written to:
+
+```text
+out/windows-todo/debug/Fowan.Todo.Windows.exe
+out/windows-todo/debug/Fowan.Todo.Sticky.Windows.exe
+```
+
+## Windows Installer
+
+The Windows installer design is tracked in
+`docs/windows_installer_spec.md`. It defines the install directory layout,
+update flow, privacy agreement, shortcuts, and uninstall data handling.
+
+Build the offline x64 installer staging output from the repository root:
+
+```powershell
+.\scripts\package-windows.ps1 -Version 0.1.0 -SkipInstaller
+```
+
+Build the final setup executable on a machine with Inno Setup 6 installed:
+
+```powershell
+.\scripts\package-windows.ps1 -Version 0.1.0
+```
+
+The setup executable is written to:
+
+```text
+out/installer/windows/win-x64/FowanSetup-0.1.0-win-x64.exe
 ```

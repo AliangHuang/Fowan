@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fowan 待办桌面便签模式纯 UI 参考图</title>
+  <style>
+    :root {
+      --canvas: #f7fafb;
+      --surface: #ffffff;
+      --surface-soft: #f5f9fa;
+      --line: #dce7ea;
+      --line-strong: #cbd9de;
+      --text: #18262c;
+      --muted: #6f7f86;
+      --done: #96a4aa;
+      --accent: #128ca2;
+      --accent-dark: #0c6f82;
+      --accent-soft: #def4f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 560px;
+      min-height: 700px;
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: var(--canvas);
+    }
+
+    .canvas {
+      width: 560px;
+      height: 700px;
+      display: grid;
+      place-items: center;
+      background: var(--canvas);
+    }
+
+    .sticky {
+      width: 408px;
+      min-height: 568px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow:
+        0 28px 72px rgba(31, 55, 62, 0.18),
+        0 8px 24px rgba(31, 55, 62, 0.1);
+      overflow: hidden;
+    }
+
+    .titlebar {
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 10px 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f8fbfc);
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .brand img {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      flex: 0 0 auto;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex: 0 0 auto;
+    }
+
+    .button {
+      height: 32px;
+      border: 0;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0 8px;
+      color: #51646c;
+      background: transparent;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .button.icon-only {
+      width: 32px;
+      padding: 0;
+    }
+
+    .button.active {
+      color: var(--accent-dark);
+      background: var(--accent-soft);
+    }
+
+    .button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      flex: 0 0 auto;
+    }
+
+    .content {
+      padding: 22px 20px 18px;
+    }
+
+    .headline {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    .count {
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .add-task {
+      height: 42px;
+      margin-bottom: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 13px;
+      color: var(--accent-dark);
+      background: var(--surface-soft);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .plus {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      background: var(--accent);
+      font-size: 17px;
+      line-height: 20px;
+      font-weight: 600;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .task {
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 11px;
+      align-items: center;
+      padding: 11px 10px;
+      border: 1px solid #e6eef0;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #9dafb7;
+      border-radius: 50%;
+    }
+
+    .task-text {
+      min-width: 0;
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 520;
+      letter-spacing: 0;
+    }
+
+    .completed {
+      margin-top: 18px;
+      border-top: 1px solid var(--line);
+      padding-top: 15px;
+    }
+
+    .completed-header {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #5d6e75;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid #7f8f96;
+      border-bottom: 2px solid #7f8f96;
+      transform: rotate(45deg) translateY(-2px);
+    }
+
+    .done-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 7px;
+    }
+
+    .done-item {
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border-radius: 8px;
+      color: var(--done);
+      background: #f8fafb;
+      font-size: 13px;
+    }
+
+    .done-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      background: #8aaeb7;
+    }
+
+    .done-check svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .done-text {
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+      text-decoration-color: #a8b4b8;
+    }
+
+    .resize-handle {
+      width: 12px;
+      height: 12px;
+      margin: 12px 12px 0 auto;
+      border-right: 2px solid #c2cdd1;
+      border-bottom: 2px solid #c2cdd1;
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas" aria-label="Fowan 待办桌面便签模式纯 UI 参考图">
+    <section class="sticky" aria-label="Fowan 桌面便签">
+      <header class="titlebar">
+        <div class="brand">
+          <img src="../../brand/png/app-icon/fowan-app-icon-256.png" alt="">
+          <span>Fowan</span>
+        </div>
+        <div class="actions" aria-label="窗口操作">
+          <button class="button active" aria-label="置顶">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 4 20 9"></path>
+              <path d="M14 5 8 11"></path>
+              <path d="M9 10 5 14"></path>
+              <path d="M12 13 7 18"></path>
+              <path d="M6 13 11 18"></path>
+            </svg>
+            <span>置顶</span>
+          </button>
+          <button class="button" aria-label="回到大界面">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+              <path d="M16 3h3a2 2 0 0 1 2 2v3"></path>
+              <path d="M21 16v3a2 2 0 0 1-2 2h-3"></path>
+              <path d="M8 21H5a2 2 0 0 1-2-2v-3"></path>
+              <path d="M8 8h8v8H8z"></path>
+            </svg>
+            <span>回到大界面</span>
+          </button>
+          <button class="button icon-only" aria-label="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6 18 18"></path>
+              <path d="M18 6 6 18"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="headline">
+          <h1>今日任务</h1>
+          <span class="count">3 项</span>
+        </div>
+
+        <div class="add-task">
+          <span class="plus">+</span>
+          <span>添加任务</span>
+        </div>
+
+        <div class="task-list">
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">整理产品评审要点</span>
+          </div>
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">确认明日会议材料</span>
+          </div>
+          <div class="task">
+            <span class="check"></span>
+            <span class="task-text">更新待办清单</span>
+          </div>
+        </div>
+
+        <section class="completed" aria-label="已完成任务">
+          <div class="completed-header">
+            <span>已完成 2</span>
+            <span class="chevron" aria-hidden="true"></span>
+          </div>
+          <div class="done-list">
+            <div class="done-item">
+              <span class="done-check">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+              <span class="done-text">同步设计修改</span>
+            </div>
+            <div class="done-item">
+              <span class="done-check">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6"></path>
+                </svg>
+              </span>
+              <span class="done-text">补充需求记录</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="resize-handle" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

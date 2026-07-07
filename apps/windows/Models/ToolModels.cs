@@ -22,4 +22,6 @@ public sealed record ToolCard(
     ToolStatus Status,
     IReadOnlyList<string> RequiredCapabilities,
     ToolAction PrimaryAction,
-    IReadOnlyList<ToolAction>? SecondaryActions = null);
+    IReadOnlyList<ToolAction>? SecondaryActions = null,
+    string? Version = null,
+    string? UpdatedAt = null);
