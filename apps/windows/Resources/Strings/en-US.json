@@ -40,6 +40,8 @@
   "Tool_QuickCapture_Description": "Capture text, clipboard notes, and small ideas without choosing a final destination.",
   "Tool_Todo": "Todo",
   "Tool_Todo_Description": "Open the standalone Todo tool for tasks and sticky mode.",
+  "Tool_Diary": "Diary",
+  "Tool_Diary_Description": "Open the standalone Diary tool for daily writing and timeline review.",
   "Tool_Notes": "Notes",
   "Tool_Notes_Description": "Write and organize lightweight notes.",
   "Tool_Knowledge": "Knowledge",

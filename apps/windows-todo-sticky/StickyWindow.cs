@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -27,6 +28,8 @@ public sealed class StickyWindow : Window
     private const int TaskDragLongPressMilliseconds = 350;
     private const double TaskDragMoveCancelDistance = 6;
     private const double TaskDropEdgeRatio = 0.28;
+    private const string MainActivationEventName = @"Local\Fowan.Todo.Windows.Activate";
+    private const string MainShutdownEventName = @"Local\Fowan.Todo.Windows.Shutdown";
 
     private readonly TodoStore _store = new();
     private readonly string? _mainExePath;
@@ -55,6 +58,7 @@ public sealed class StickyWindow : Window
     private StickyAddTaskWindow? _addTaskWindow;
     private StickyConfirmWindow? _confirmWindow;
     private bool _isReturningToMain;
+    private bool _isClosingFromCoordinatorShutdown;
     private bool _isApplyingScale;
     private bool _isSynchronizingChildWindowPositions;
     private bool _isEnforcingDisplayConstraints;
@@ -151,12 +155,22 @@ public sealed class StickyWindow : Window
         Closing += (_, _) =>
         {
             SaveGeometry();
-            if (!_isReturningToMain)
+            var shouldShutdownMain = false;
+            if (_isClosingFromCoordinatorShutdown)
+            {
+                _settings.IsStickyModeEnabled = false;
+            }
+            else if (!_isReturningToMain)
             {
                 _settings.IsStickyModeEnabled = true;
+                shouldShutdownMain = true;
             }
 
             _store.SaveSettings(_settings);
+            if (shouldShutdownMain)
+            {
+                SignalMainShutdown();
+            }
         };
     }
 
@@ -1290,13 +1304,17 @@ public sealed class StickyWindow : Window
 
         var oldParentId = draggedTask.ParentTaskId;
         var newParentId = ParentIdForDropTarget(targetTask, target.Placement);
-        var listId = ResolveDropListId(targetTask, newParentId);
+        var parentChanged = !ParentIdsEqual(oldParentId, newParentId);
 
         draggedTask.ParentTaskId = string.IsNullOrWhiteSpace(newParentId) ? null : newParentId;
-        MoveSubtreeToList(draggedTask.Id, listId);
+        if (parentChanged)
+        {
+            MoveSubtreeToList(draggedTask.Id, ResolveDropListId(targetTask, newParentId));
+        }
+
         if (target.Placement == StickyDropPlacement.TopLevelEnd)
         {
-            if (!ParentIdsEqual(oldParentId, newParentId))
+            if (parentChanged)
             {
                 ReassignSiblingSortOrders(oldParentId, draggedTask.IsCompleted);
             }
@@ -2278,18 +2296,96 @@ public sealed class StickyWindow : Window
         SaveGeometry();
         _store.SaveSettings(_settings);
 
-        var mainExe = ResolveMainExePath();
-        if (File.Exists(mainExe))
+        if (!SignalMainActivation())
         {
-            Process.Start(new ProcessStartInfo
+            var mainExe = ResolveMainExePath();
+            if (File.Exists(mainExe))
             {
-                FileName = mainExe,
-                WorkingDirectory = Path.GetDirectoryName(mainExe) ?? AppContext.BaseDirectory,
-                UseShellExecute = false
-            });
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = mainExe,
+                    WorkingDirectory = Path.GetDirectoryName(mainExe) ?? AppContext.BaseDirectory,
+                    UseShellExecute = false
+                });
+            }
         }
 
+        CloseStickyChildWindows();
+        Hide();
+        _isReturningToMain = false;
+    }
+
+    internal void RestoreFromExternalActivation()
+    {
+        ReloadSettingsAndRefresh();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        Activate();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            SetForegroundWindow(hwnd);
+        }
+    }
+
+    internal void CloseFromCoordinatorShutdown()
+    {
+        _isClosingFromCoordinatorShutdown = true;
         Close();
+    }
+
+    private void ReloadSettingsAndRefresh()
+    {
+        _data = _store.LoadData();
+        _settings = _store.LoadSettings();
+        if (!TodoQuery.IsKnownView(_data, _settings.CurrentViewId) || _settings.CurrentViewId == TodoViewIds.Completed)
+        {
+            _settings.CurrentViewId = TodoViewIds.Today;
+        }
+
+        Topmost = _settings.IsStickyTopmost;
+        CloseStickyChildWindows();
+        BuildUi();
+        ApplyStoredSettings();
+        RefreshAll();
+        UpdatePopupDismissOverlay();
+    }
+
+    private static bool SignalMainActivation()
+    {
+        return SignalEvent(MainActivationEventName);
+    }
+
+    private static bool SignalMainShutdown()
+    {
+        return SignalEvent(MainShutdownEventName, attempts: 4);
+    }
+
+    private static bool SignalEvent(string eventName, int attempts = 20)
+    {
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            try
+            {
+                using var activationEvent = EventWaitHandle.OpenExisting(eventName);
+                activationEvent.Set();
+                return true;
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                Thread.Sleep(50);
+            }
+        }
+
+        return false;
     }
 
     private string ResolveMainExePath()
@@ -3323,6 +3419,9 @@ public sealed class StickyWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);

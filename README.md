@@ -30,6 +30,10 @@ and build entrypoint. Shared Todo behavior belongs in `apps/windows-todo-core`.
 The sticky shell remains a separate executable so it can start directly when the
 last saved Todo mode is sticky.
 
+Build validation must finish with 0 warnings and 0 errors. Any compiler, restore,
+XAML, package audit, analyzer, or script warning must be fixed even when it is
+outside the current code-change scope.
+
 ## Windows Client
 
 Build from the repository root:
@@ -58,6 +62,12 @@ out/windows/debug/Fowan.Windows.exe
 ```
 
 ## Windows Todo Tool
+
+Default local validation flow for Todo development:
+
+1. Stop any running `Fowan.Todo.Windows`, `Fowan.Todo.Sticky.Windows`, or related Fowan processes so build outputs are not locked.
+2. Build the Todo output with `.\scripts\build-windows-todo.ps1 -Configuration Debug`.
+3. Launch the freshly built artifact with `.\scripts\run-windows-todo.ps1 -Configuration Debug`.
 
 Build the independent Todo tool and sticky shell:
 
@@ -91,23 +101,23 @@ update flow, privacy agreement, shortcuts, and uninstall data handling.
 Build the offline x64 installer staging output from the repository root:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.1 -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.1.2 -SkipInstaller
 ```
 
 Build the final setup executable on a machine with Inno Setup 6 installed:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.1
+.\scripts\package-windows.ps1 -Version 0.1.2
 ```
 
 The setup executable and GitHub Release update manifest are written to:
 
 ```text
-out/installer/windows/win-x64/FowanSetup-0.1.1-win-x64.exe
+out/installer/windows/win-x64/FowanSetup-0.1.2-win-x64.exe
 out/installer/windows/win-x64/fowan-update.json
 ```
 
 For auto-update checks, upload both files to a public GitHub Release tagged
-`v0.1.1`. The toolbox reads
+`v0.1.2`. The toolbox reads
 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`
 on startup when automatic update checks are enabled.

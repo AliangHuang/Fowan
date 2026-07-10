@@ -99,6 +99,7 @@ public static class TodoQuery
 
             return viewId switch
             {
+                TodoViewIds.Today when completed => CompletedDate(task) == currentDate,
                 TodoViewIds.Today => task.StartDate.Date <= currentDate &&
                     (!task.DueDate.HasValue || task.DueDate.Value.Date <= currentDate),
                 TodoViewIds.Planned => task.StartDate.Date > currentDate ||
@@ -269,5 +270,10 @@ public static class TodoQuery
     private static double SortOrderKey(TodoTask task)
     {
         return task.SortOrder <= 0 ? double.MaxValue : task.SortOrder;
+    }
+
+    private static DateTime CompletedDate(TodoTask task)
+    {
+        return (task.CompletedAt ?? task.UpdatedAt).ToLocalTime().Date;
     }
 }

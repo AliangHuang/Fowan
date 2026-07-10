@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 3,
+  "notebooks": [
+    { "id": "work", "name": "工作记录", "accentColor": "#2F80FF" },
+    { "id": "life", "name": "生活碎片", "accentColor": "#35B779" },
+    { "id": "inspiration", "name": "灵感", "accentColor": "#9D6DF2" }
+  ],
+  "tagCatalog": [
+    { "id": "tag-work", "name": "工作记录", "colorId": "blue" },
+    { "id": "tag-progress", "name": "项目进展", "colorId": "orange" },
+    { "id": "tag-idea", "name": "灵感", "colorId": "purple" },
+    { "id": "tag-thinking", "name": "思考", "colorId": "cyan" },
+    { "id": "tag-review", "name": "复盘", "colorId": "green" },
+    { "id": "tag-life", "name": "生活碎片", "colorId": "rose" },
+    { "id": "tag-daily", "name": "日常", "colorId": "sky" },
+    { "id": "tag-reading", "name": "阅读", "colorId": "yellow" },
+    { "id": "tag-weekend", "name": "周末", "colorId": "lime" },
+    { "id": "tag-product", "name": "产品", "colorId": "pink" }
+  ],
+  "entries": [
+    {
+      "id": "entry-project",
+      "title": "项目日报",
+      "body": "今晚与团队一起复盘了迭代进度，风险点基本可控，接下来重点是性能优化和发布前验证。",
+      "notebookId": "work",
+      "mood": "专注",
+      "weather": "多云 27℃",
+      "location": "上海 · 静安区",
+      "tags": [ "工作记录", "项目进展" ],
+      "createdAt": "2026-07-07T18:40:00+08:00",
+      "updatedAt": "2026-07-07T19:10:00+08:00"
+    },
+    {
+      "id": "entry-afternoon",
+      "title": "下午想法",
+      "body": "午睡醒来后整理了一些灵感，关于流程自动化的几个方向值得深入思考。",
+      "notebookId": "inspiration",
+      "mood": "平静",
+      "weather": "多云 28℃",
+      "location": "上海 · 静安区",
+      "tags": [ "灵感", "思考" ],
+      "isFavorite": true,
+      "createdAt": "2026-07-07T14:05:00+08:00",
+      "updatedAt": "2026-07-07T14:24:00+08:00"
+    },
+    {
+      "id": "entry-lunch",
+      "title": "午餐记录",
+      "body": "尝试了新菜谱，柠檬蒸鸡胸肉的口感很清爽，适合忙碌工作日。",
+      "notebookId": "life",
+      "mood": "愉快",
+      "weather": "多云 28℃",
+      "location": "上海 · 静安区",
+      "tags": [ "生活碎片", "日常" ],
+      "createdAt": "2026-07-07T11:20:00+08:00",
+      "updatedAt": "2026-07-07T11:40:00+08:00"
+    },
+    {
+      "id": "entry-morning",
+      "title": "上午复盘",
+      "body": "今天上午完成了需求评审，与产品和设计同步了方案细节，澄清了几个关键问题。",
+      "notebookId": "work",
+      "mood": "愉快",
+      "weather": "多云 28℃",
+      "location": "上海 · 静安区",
+      "tags": [ "工作记录", "复盘" ],
+      "createdAt": "2026-07-07T09:15:00+08:00",
+      "updatedAt": "2026-07-07T09:35:00+08:00"
+    },
+    {
+      "id": "entry-reading",
+      "title": "阅读笔记：原子习惯",
+      "body": "习惯的复利效应很惊人，微小改变带来长期累积，关键在于持续的系统和环境设计。",
+      "notebookId": "inspiration",
+      "mood": "平静",
+      "weather": "晴 27℃",
+      "location": "上海 · 静安区",
+      "tags": [ "灵感", "阅读" ],
+      "isFavorite": true,
+      "createdAt": "2026-07-06T21:30:00+08:00",
+      "updatedAt": "2026-07-06T21:45:00+08:00"
+    },
+    {
+      "id": "entry-walk",
+      "title": "周末散步",
+      "body": "在滨江公园走了八公里，天气很好，江风很舒服，看到很多跑步和骑行的人。",
+      "notebookId": "life",
+      "mood": "放松",
+      "weather": "晴 26℃",
+      "location": "上海 · 徐汇滨江",
+      "tags": [ "生活碎片", "周末" ],
+      "createdAt": "2026-07-05T16:45:00+08:00",
+      "updatedAt": "2026-07-05T17:10:00+08:00"
+    },
+    {
+      "id": "entry-release",
+      "title": "发布前检查",
+      "body": "完成了用户权限模块开发，修复了若干边界问题，准备进入测试阶段。",
+      "notebookId": "work",
+      "mood": "专注",
+      "weather": "阵雨 25℃",
+      "location": "上海 · 静安区",
+      "tags": [ "工作记录", "日报" ],
+      "createdAt": "2026-07-03T18:20:00+08:00",
+      "updatedAt": "2026-07-03T18:50:00+08:00"
+    },
+    {
+      "id": "entry-june",
+      "title": "六月收尾",
+      "body": "整理了这个月的照片和记录，给下个月留出更从容的节奏。",
+      "notebookId": "life",
+      "mood": "满足",
+      "weather": "小雨 24℃",
+      "location": "上海 · 长宁区",
+      "tags": [ "生活碎片", "月度" ],
+      "createdAt": "2026-06-29T10:30:00+08:00",
+      "updatedAt": "2026-06-29T11:00:00+08:00"
+    },
+    {
+      "id": "entry-may",
+      "title": "产品灵感记录",
+      "body": "想到一个关于个人知识管理的轻量工具，希望用时间线把碎片化记录重新连接起来。",
+      "notebookId": "inspiration",
+      "mood": "兴奋",
+      "weather": "晴 23℃",
+      "location": "上海 · 黄浦区",
+      "tags": [ "灵感", "产品" ],
+      "createdAt": "2026-05-28T15:00:00+08:00",
+      "updatedAt": "2026-05-28T15:30:00+08:00"
+    }
+  ]
+}

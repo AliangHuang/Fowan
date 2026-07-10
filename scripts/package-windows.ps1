@@ -21,6 +21,7 @@ $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
 $windowsProject = Join-Path $repoRoot "apps/windows/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows-todo/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows-todo-sticky/Fowan.Todo.Sticky.Windows.csproj"
+$diaryProject = Join-Path $repoRoot "apps/windows-diary/Fowan.Diary.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
@@ -116,6 +117,11 @@ function Write-ReleaseNotes {
             Id = "todo"
             Title = "Todo"
             Path = Join-Path $changelogRoot "tools/todo/CHANGELOG.md"
+        },
+        @{
+            Id = "diary"
+            Title = "Diary"
+            Path = Join-Path $changelogRoot "tools/diary/CHANGELOG.md"
         }
     )
 
@@ -247,15 +253,19 @@ New-Item -ItemType Directory -Force -Path $appStage | Out-Null
 
 $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
+$diaryStage = Join-Path $appStage "Tools/Diary"
+New-Item -ItemType Directory -Force -Path $diaryStage | Out-Null
 
 Publish-FowanProject -Project $windowsProject -Output $appStage
 Publish-FowanProject -Project $todoProject -Output $todoStage
 Publish-FowanProject -Project $stickyProject -Output $todoStage
+Publish-FowanProject -Project $diaryProject -Output $diaryStage
 
 $requiredExecutables = @(
     (Join-Path $appStage "Fowan.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Windows.exe"),
-    (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe")
+    (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
+    (Join-Path $diaryStage "Fowan.Diary.Windows.exe")
 )
 
 foreach ($exe in $requiredExecutables) {

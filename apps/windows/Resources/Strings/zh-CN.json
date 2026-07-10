@@ -40,6 +40,8 @@
   "Tool_QuickCapture_Description": "快速记录文本、剪贴板内容和零散想法，暂不选择最终归属。",
   "Tool_Todo": "待办",
   "Tool_Todo_Description": "打开独立待办工具，管理任务和便签模式。",
+  "Tool_Diary": "日记",
+  "Tool_Diary_Description": "打开独立日记工具，记录每日想法并查看时间线。",
   "Tool_Notes": "笔记",
   "Tool_Notes_Description": "记录和整理轻量笔记。",
   "Tool_Knowledge": "知识",

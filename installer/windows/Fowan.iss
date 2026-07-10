@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #endif
 
 #ifndef SourceDir
@@ -42,8 +42,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartIfNeededByRun=no
 
@@ -62,7 +62,6 @@ Name: "{commondesktop}\Fowan"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{ap
 
 [UninstallDelete]
 Type: files; Name: "{commondesktop}\Fowan.lnk"
-Type: files; Name: "{userdesktop}\Fowan.lnk"
 Type: dirifempty; Name: "{commonprograms}\Fowan"
 
 [Code]

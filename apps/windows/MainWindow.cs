@@ -24,6 +24,8 @@ public sealed class MainWindow : Window
     private const int ToolCardDoubleClickMilliseconds = 500;
     private const string TodoToolId = "todo";
     private const string TodoExecutableName = "Fowan.Todo.Windows.exe";
+    private const string DiaryToolId = "diary";
+    private const string DiaryExecutableName = "Fowan.Diary.Windows.exe";
     private const int ShowWindowHide = 0;
     private const int ShowWindowRestore = 9;
     private const int GwlWndProc = -4;
@@ -1416,6 +1418,9 @@ public sealed class MainWindow : Window
             case TodoToolId:
                 openedExternalTool = await LaunchTodoToolAsync();
                 break;
+            case DiaryToolId:
+                openedExternalTool = await LaunchDiaryToolAsync();
+                break;
             case "quick-capture":
                 await ShowQuickCaptureDialogAsync();
                 break;
@@ -1461,6 +1466,32 @@ public sealed class MainWindow : Window
         catch (Exception exception)
         {
             ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Todo"), exception.Message), InfoBarSeverity.Error);
+            return Task.FromResult(false);
+        }
+    }
+
+    private Task<bool> LaunchDiaryToolAsync()
+    {
+        var executablePath = ResolveDiaryExecutablePath();
+        if (executablePath is null)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchMissing"), L("Tool_Diary")), InfoBarSeverity.Error);
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true
+            });
+            return Task.FromResult(true);
+        }
+        catch (Exception exception)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Diary"), exception.Message), InfoBarSeverity.Error);
             return Task.FromResult(false);
         }
     }
@@ -1630,6 +1661,30 @@ public sealed class MainWindow : Window
             foreach (var configuration in BuildConfigurationCandidates(baseDirectory))
             {
                 candidates.Add(Path.Combine(repoRoot, "out", "windows-todo", configuration.ToLowerInvariant(), TodoExecutableName));
+            }
+        }
+
+        return candidates
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(File.Exists);
+    }
+
+    private static string? ResolveDiaryExecutablePath()
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        var candidates = new List<string>
+        {
+            Path.Combine(baseDirectory, DiaryExecutableName),
+            Path.Combine(baseDirectory, "Tools", "Diary", DiaryExecutableName)
+        };
+
+        var repoRoot = FindRepoRoot(baseDirectory);
+        if (repoRoot is not null)
+        {
+            foreach (var configuration in BuildConfigurationCandidates(baseDirectory))
+            {
+                candidates.Add(Path.Combine(repoRoot, "out", "windows-diary", configuration.ToLowerInvariant(), DiaryExecutableName));
             }
         }
 
@@ -2689,6 +2744,7 @@ public sealed class MainWindow : Window
         var color = tool.Id switch
         {
             "todo" => ColorHelper.FromArgb(255, 127, 92, 255),
+            "diary" => ColorHelper.FromArgb(255, 47, 128, 255),
             "notes" => ColorHelper.FromArgb(255, 255, 174, 36),
             "knowledge" => ColorHelper.FromArgb(255, 45, 194, 154),
             "files" => ColorHelper.FromArgb(255, 47, 140, 255),

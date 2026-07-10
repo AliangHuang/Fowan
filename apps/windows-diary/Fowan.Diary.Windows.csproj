@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>Fowan.Diary.Windows</RootNamespace>
+    <AssemblyName>Fowan.Diary.Windows</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
+    <FowanDiaryOutputConfiguration Condition="'$(Configuration)' == 'Release'">release</FowanDiaryOutputConfiguration>
+    <FowanDiaryOutputConfiguration Condition="'$(Configuration)' != 'Release'">debug</FowanDiaryOutputConfiguration>
+    <OutputPath>..\..\out\windows-diary\$(FowanDiaryOutputConfiguration)\</OutputPath>
+    <PublishDir>$(OutputPath)</PublishDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\windows-diary-core\Fowan.Diary.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\brand\windows\fowan-app-icon-256.png" Link="Assets\fowan-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

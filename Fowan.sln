@@ -13,6 +13,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Core", "apps\win
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Sticky.Windows", "apps\windows-todo-sticky\Fowan.Todo.Sticky.Windows.csproj", "{FB088CD9-430A-4094-A3D2-EA309B07F180}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Core", "apps\windows-diary-core\Fowan.Diary.Core.csproj", "{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Windows", "apps\windows-diary\Fowan.Diary.Windows.csproj", "{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Core.Tests", "tests\Fowan.Diary.Core.Tests\Fowan.Diary.Core.Tests.csproj", "{E3431B74-A27F-4A90-A1A4-4A95E16971C8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,9 +44,23 @@ Global
 		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FB088CD9-430A-4094-A3D2-EA309B07F180}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B846A653-8B42-407A-83F6-6657B1952427} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
 		{FB088CD9-430A-4094-A3D2-EA309B07F180} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
+		{D6B0A3F4-E195-4E3C-BF28-B478EF73B566} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
+		{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}
 	EndGlobalSection
 EndGlobal

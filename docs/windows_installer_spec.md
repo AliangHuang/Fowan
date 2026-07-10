@@ -146,13 +146,13 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.1
+.\scripts\package-windows.ps1 -Version 0.1.2
 ```
 
 输出安装包：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.1-win-x64.exe
+out\installer\windows\win-x64\FowanSetup-0.1.2-win-x64.exe
 out\installer\windows\win-x64\fowan-update.json
 ```
 

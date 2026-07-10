@@ -1,11 +1,12 @@
 using Microsoft.UI.Xaml;
-namespace Fowan.Todo.Windows;
+
+namespace Fowan.Diary.Windows;
 
 public partial class App : Application
 {
-    private const string SingleInstanceMutexName = @"Local\Fowan.Todo.Windows.SingleInstance";
-    private const string ActivationEventName = @"Local\Fowan.Todo.Windows.Activate";
-    private const string ShutdownEventName = @"Local\Fowan.Todo.Windows.Shutdown";
+    private const string SingleInstanceMutexName = @"Local\Fowan.Diary.Windows.SingleInstance";
+    private const string ActivationEventName = @"Local\Fowan.Diary.Windows.Activate";
+    private const string ShutdownEventName = @"Local\Fowan.Diary.Windows.Shutdown";
 
     private Window? _window;
     private Mutex? _singleInstanceMutex;
@@ -28,7 +29,7 @@ public partial class App : Application
             return;
         }
 
-        var window = new TodoWindow();
+        var window = new DiaryWindow();
         _window = window;
         StartActivationListener(window);
         window.ActivateInitialMode();
@@ -87,7 +88,7 @@ public partial class App : Application
         }
     }
 
-    private void StartActivationListener(TodoWindow window)
+    private void StartActivationListener(DiaryWindow window)
     {
         EnsureSingleInstanceEvents();
         _activationListenerCts = new CancellationTokenSource();

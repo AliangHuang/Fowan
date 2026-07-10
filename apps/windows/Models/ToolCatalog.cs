@@ -2,7 +2,7 @@ namespace Fowan.Windows.Models;
 
 public static class ToolCatalog
 {
-    private const string CurrentReleaseDate = "2026-07-07";
+    private const string CurrentReleaseDate = "2026-07-10";
 
     public static IReadOnlyList<ToolCategory> Categories { get; } =
     [
@@ -19,6 +19,7 @@ public static class ToolCatalog
         Available("toolbox-home", "Tool_ToolboxHome", "Tool_ToolboxHome_Description", "\uE80F", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
         Disabled("quick-capture", "Tool_QuickCapture", "Tool_QuickCapture_Description", "\uE722", "capture", ProductVersion, CurrentReleaseDate),
         Available("todo", "Tool_Todo", "Tool_Todo_Description", "\uE8FD", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
+        Available("diary", "Tool_Diary", "Tool_Diary_Description", "\uE8A5", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
         Planned("notes", "Tool_Notes", "Tool_Notes_Description", "\uE70B", "organize"),
         Planned("knowledge", "Tool_Knowledge", "Tool_Knowledge_Description", "\uE8D2", "knowledge"),
         Planned("files", "Tool_Files", "Tool_Files_Description", "\uE8B7", "knowledge"),
@@ -36,7 +37,7 @@ public static class ToolCatalog
         {
             var version = typeof(ToolCatalog).Assembly.GetName().Version;
             return version is null
-                ? "0.1.1"
+                ? "0.1.2"
                 : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
         }
     }

@@ -5,10 +5,12 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
+using Windows.Foundation;
 using Windows.Graphics;
 using Windows.System;
 using Windows.UI;
@@ -21,10 +23,16 @@ public sealed class TodoWindow : Window
 {
     private const double SidebarWidth = 248;
     private const double DetailWidth = 382;
+    private const int TaskDragLongPressMilliseconds = 350;
+    private const double TaskDragMoveCancelDistance = 6;
+    private const double TaskDropEdgeRatio = 0.28;
+    private const int ShowWindowHide = 0;
+    private const int ShowWindowShow = 5;
+    private const int ShowWindowRestore = 9;
 
     private readonly TodoStore _store = new();
-    private readonly TodoData _data;
-    private readonly TodoSettings _settings;
+    private TodoData _data;
+    private TodoSettings _settings;
 
     private Grid _root = new();
     private StackPanel _navigationPanel = new();
@@ -34,11 +42,22 @@ public sealed class TodoWindow : Window
     private TextBox _addTaskBox = new();
     private TextBlock _taskTitle = new();
     private TextBlock _taskSummary = new();
+    private readonly List<Button> _taskRows = [];
 
     private string _currentViewId;
     private string? _selectedTaskId;
     private System.Diagnostics.Process? _stickyProcess;
     private readonly global::Windows.UI.ViewManagement.UISettings _uiSettings = new();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _taskDragTimer;
+    private TodoTask? _dragCandidateTask;
+    private Button? _dragCandidateRow;
+    private FrameworkElement? _dropPreview;
+    private Panel? _dropPreviewHost;
+    private TodoDropTarget? _currentDropTarget;
+    private Point _taskDragStartPoint;
+    private Point _taskDragCurrentPoint;
+    private bool _isTaskDragging;
+    private string? _suppressTaskClickId;
 
     public TodoWindow()
     {
@@ -75,11 +94,13 @@ public sealed class TodoWindow : Window
         }
 
         Activate();
+        QueueStickyPrewarm();
     }
 
     private void ConfigureWindow()
     {
         Title = "Fowan Todo";
+        Closed += (_, _) => StickyLauncher.TryShutdown();
 
         try
         {
@@ -328,6 +349,7 @@ public sealed class TodoWindow : Window
             Background = TransparentBrush(),
             PlaceholderText = "添加任务",
             FontSize = 15,
+            Foreground = TextBrush(),
             Padding = new Thickness(0, 5, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -576,6 +598,8 @@ public sealed class TodoWindow : Window
 
     private void RefreshTaskContent()
     {
+        CancelTaskDrag();
+        _taskRows.Clear();
         _taskContent.Children.Clear();
         _taskTitle.Text = ViewTitle(_currentViewId);
 
@@ -694,8 +718,11 @@ public sealed class TodoWindow : Window
             MinHeight = 54,
             BorderThickness = new Thickness(0),
             Background = TransparentBrush(),
+            Tag = task.Id,
             Margin = new Thickness(Math.Clamp(depth, 0, TodoQuery.MaxTaskTreeDepth - 1) * 22, 0, 0, 0)
         };
+        _taskRows.Add(button);
+        AttachTaskDragHandlers(button, task);
         AutomationProperties.SetName(button, task.Title);
 
         var shell = new Border
@@ -788,6 +815,12 @@ public sealed class TodoWindow : Window
         button.Content = shell;
         button.Click += (_, _) =>
         {
+            if (string.Equals(_suppressTaskClickId, task.Id, StringComparison.Ordinal))
+            {
+                _suppressTaskClickId = null;
+                return;
+            }
+
             _selectedTaskId = task.Id;
             SaveSettings();
             RefreshTaskContent();
@@ -795,6 +828,952 @@ public sealed class TodoWindow : Window
         };
 
         return button;
+    }
+
+    private void AttachTaskDragHandlers(Button row, TodoTask task)
+    {
+        row.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => StartTaskDragCandidate(row, task, args)), true);
+        row.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, args) => UpdateTaskDrag(args)), true);
+        row.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, args) => FinishTaskDrag(args)), true);
+        row.PointerCaptureLost += (_, _) =>
+        {
+            if (ReferenceEquals(_dragCandidateRow, row))
+            {
+                if (_isTaskDragging)
+                {
+                    CompleteTaskDrag(applyDrop: true);
+                    return;
+                }
+
+                CancelTaskDrag();
+            }
+        };
+    }
+
+    private void StartTaskDragCandidate(Button row, TodoTask task, PointerRoutedEventArgs args)
+    {
+        var pointerPoint = args.GetCurrentPoint(_root);
+        if (!pointerPoint.Properties.IsLeftButtonPressed ||
+            IsTaskDragIgnoredSource(args.OriginalSource as DependencyObject, row))
+        {
+            return;
+        }
+
+        CancelTaskDrag();
+        _dragCandidateTask = task;
+        _dragCandidateRow = row;
+        _taskDragStartPoint = pointerPoint.Position;
+        _taskDragCurrentPoint = _taskDragStartPoint;
+        _taskDragTimer = DispatcherQueue.CreateTimer();
+        _taskDragTimer.Interval = TimeSpan.FromMilliseconds(TaskDragLongPressMilliseconds);
+        _taskDragTimer.Tick += (_, _) => BeginTaskDrag();
+        _taskDragTimer.Start();
+        row.CapturePointer(args.Pointer);
+    }
+
+    private void UpdateTaskDrag(PointerRoutedEventArgs args)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return;
+        }
+
+        var point = args.GetCurrentPoint(_root).Position;
+        _taskDragCurrentPoint = point;
+        if (!_isTaskDragging)
+        {
+            if (Distance(_taskDragStartPoint, point) > TaskDragMoveCancelDistance)
+            {
+                CancelTaskDrag();
+            }
+
+            return;
+        }
+
+        var nextTarget = DropTargetFromPoint(point);
+        if (nextTarget is null && _currentDropTarget is not null && IsPointInsideDropPreview(point))
+        {
+            nextTarget = _currentDropTarget;
+        }
+
+        if (!DropTargetsEqual(_currentDropTarget, nextTarget))
+        {
+            _currentDropTarget = nextTarget;
+            ApplyDropTargetVisual(_currentDropTarget);
+        }
+
+        args.Handled = true;
+    }
+
+    private void FinishTaskDrag(PointerRoutedEventArgs args)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return;
+        }
+
+        var handled = _isTaskDragging;
+        CompleteTaskDrag(applyDrop: true);
+        args.Handled = handled;
+    }
+
+    private void CompleteTaskDrag(bool applyDrop)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return;
+        }
+
+        var draggedTask = _dragCandidateTask;
+        var wasTaskDragging = _isTaskDragging;
+        var dropTarget = _currentDropTarget;
+        if (wasTaskDragging)
+        {
+            SuppressTaskClickFromDrag(draggedTask.Id);
+        }
+
+        CancelTaskDrag();
+        if (applyDrop && wasTaskDragging && dropTarget is TodoDropTarget target)
+        {
+            ApplyTaskDrop(draggedTask, target);
+        }
+    }
+
+    private void BeginTaskDrag()
+    {
+        _taskDragTimer?.Stop();
+        if (_dragCandidateTask is null || _dragCandidateRow is null)
+        {
+            CancelTaskDrag();
+            return;
+        }
+
+        _isTaskDragging = true;
+        _dragCandidateRow.Opacity = 0.58;
+        _currentDropTarget = DropTargetFromPoint(_taskDragCurrentPoint);
+        ApplyDropTargetVisual(_currentDropTarget);
+    }
+
+    private void CancelTaskDrag()
+    {
+        _taskDragTimer?.Stop();
+        _taskDragTimer = null;
+        RemoveDropPreview();
+
+        foreach (var row in _taskRows)
+        {
+            ResetTaskRowChrome(row);
+        }
+
+        var capturedRow = _dragCandidateRow;
+        _dragCandidateTask = null;
+        _dragCandidateRow = null;
+        _currentDropTarget = null;
+        _isTaskDragging = false;
+        capturedRow?.ReleasePointerCaptures();
+    }
+
+    private void SuppressTaskClickFromDrag(string taskId)
+    {
+        _suppressTaskClickId = taskId;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (string.Equals(_suppressTaskClickId, taskId, StringComparison.Ordinal))
+            {
+                _suppressTaskClickId = null;
+            }
+        });
+    }
+
+    private TodoDropTarget? DropTargetFromPoint(Point point)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return null;
+        }
+
+        foreach (var row in _taskRows)
+        {
+            if (ReferenceEquals(row, _dragCandidateRow) ||
+                row.Tag is not string taskId ||
+                !TryGetTaskRowBounds(row, out var bounds) ||
+                point.Y < bounds.Top ||
+                point.Y > bounds.Bottom)
+            {
+                continue;
+            }
+
+            var targetTask = FindTask(taskId);
+            if (targetTask is null || targetTask.IsCompleted != _dragCandidateTask.IsCompleted)
+            {
+                continue;
+            }
+
+            var ratio = bounds.Height <= 0 ? 0.5 : (point.Y - bounds.Top) / bounds.Height;
+            var placement = ratio < TaskDropEdgeRatio
+                ? TodoDropPlacement.Before
+                : ratio > 1 - TaskDropEdgeRatio
+                    ? TodoDropPlacement.After
+                    : TodoDropPlacement.Child;
+            var target = placement == TodoDropPlacement.After
+                ? DropTargetAfterVisibleRow(row, targetTask) ?? new TodoDropTarget(taskId, placement)
+                : new TodoDropTarget(taskId, placement);
+            return IsValidTaskDrop(_dragCandidateTask, target) ? target : null;
+        }
+
+        return DropTargetBetweenRows(point);
+    }
+
+    private TodoDropTarget? DropTargetBetweenRows(Point point)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return null;
+        }
+
+        var rowHits = new List<(Button Row, Panel Host, TodoTask Task, Rect Bounds)>();
+        foreach (var row in _taskRows)
+        {
+            if (row.Tag is not string taskId ||
+                row.Parent is not Panel host ||
+                !TryGetTaskRowBounds(row, out var bounds))
+            {
+                continue;
+            }
+
+            var task = FindTask(taskId);
+            if (task is not null)
+            {
+                rowHits.Add((row, host, task, bounds));
+            }
+        }
+
+        foreach (var group in rowHits.GroupBy(hit => hit.Host))
+        {
+            var orderedRows = group
+                .OrderBy(hit => hit.Bounds.Top)
+                .ToList();
+            for (var index = 1; index < orderedRows.Count; index++)
+            {
+                var upper = orderedRows[index - 1];
+                var lower = orderedRows[index];
+                var gapTop = Math.Min(upper.Bounds.Bottom, lower.Bounds.Top);
+                var gapBottom = Math.Max(upper.Bounds.Bottom, lower.Bounds.Top);
+                if (gapBottom - gapTop < 2 ||
+                    point.Y < gapTop ||
+                    point.Y > gapBottom)
+                {
+                    continue;
+                }
+
+                if (ReferenceEquals(lower.Row, _dragCandidateRow))
+                {
+                    if (lower.Task.IsCompleted != _dragCandidateTask.IsCompleted)
+                    {
+                        continue;
+                    }
+
+                    var beforeDragged = new TodoDropTarget(lower.Task.Id, TodoDropPlacement.Before);
+                    return IsValidTaskDrop(_dragCandidateTask, beforeDragged) ? beforeDragged : null;
+                }
+
+                if (lower.Task.IsCompleted != _dragCandidateTask.IsCompleted)
+                {
+                    continue;
+                }
+
+                var target = new TodoDropTarget(lower.Task.Id, TodoDropPlacement.Before);
+                return IsValidTaskDrop(_dragCandidateTask, target) ? target : null;
+            }
+
+            var bottomTarget = DropTargetAtHostBottom(point, orderedRows);
+            if (bottomTarget is not null)
+            {
+                return bottomTarget;
+            }
+        }
+
+        return null;
+    }
+
+    private TodoDropTarget? DropTargetAtHostBottom(
+        Point point,
+        IReadOnlyList<(Button Row, Panel Host, TodoTask Task, Rect Bounds)> orderedRows)
+    {
+        if (_dragCandidateTask is null || orderedRows.Count == 0)
+        {
+            return null;
+        }
+
+        var last = orderedRows[^1];
+        if (last.Task.IsCompleted != _dragCandidateTask.IsCompleted ||
+            !TryGetBottomDropBoundary(last.Host, last.Row, last.Bounds, out var bottomBoundary) ||
+            bottomBoundary - last.Bounds.Bottom < 2 ||
+            point.Y < last.Bounds.Bottom ||
+            point.Y > bottomBoundary)
+        {
+            return null;
+        }
+
+        var target = new TodoDropTarget(last.Task.Id, TodoDropPlacement.TopLevelEnd);
+        return IsValidTaskDrop(_dragCandidateTask, target) ? target : null;
+    }
+
+    private bool TryGetBottomDropBoundary(Panel host, UIElement lastRow, Rect lastBounds, out double bottomBoundary)
+    {
+        bottomBoundary = lastBounds.Bottom;
+        var lastIndex = host.Children.IndexOf(lastRow);
+        if (TryGetNextVisibleSiblingTop(host, lastIndex, lastBounds.Bottom, out bottomBoundary))
+        {
+            return true;
+        }
+
+        if (host.Parent is Panel parent)
+        {
+            var hostIndex = parent.Children.IndexOf(host);
+            if (TryGetNextVisibleSiblingTop(parent, hostIndex, lastBounds.Bottom, out bottomBoundary))
+            {
+                return true;
+            }
+        }
+
+        bottomBoundary = lastBounds.Bottom + Math.Max(16, lastBounds.Height * TaskDropEdgeRatio);
+        return true;
+    }
+
+    private bool TryGetNextVisibleSiblingTop(Panel host, int startIndex, double afterY, out double top)
+    {
+        top = afterY;
+        if (startIndex < 0)
+        {
+            return false;
+        }
+
+        for (var index = startIndex + 1; index < host.Children.Count; index++)
+        {
+            if (ReferenceEquals(host.Children[index], _dropPreview) ||
+                host.Children[index] is not FrameworkElement next ||
+                next.Visibility != Visibility.Visible)
+            {
+                continue;
+            }
+
+            if (TryGetElementBounds(next, out var nextBounds) && nextBounds.Top > afterY)
+            {
+                top = nextBounds.Top;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private TodoDropTarget? DropTargetAfterVisibleRow(Button upperRow, TodoTask upperTask)
+    {
+        if (upperRow.Parent is not Panel host ||
+            _dragCandidateTask is null)
+        {
+            return null;
+        }
+
+        var upperIndex = host.Children.IndexOf(upperRow);
+        if (upperIndex < 0)
+        {
+            return null;
+        }
+
+        var upperDepth = TodoQuery.TaskIndentDepth(_data, upperTask);
+        for (var index = upperIndex + 1; index < host.Children.Count; index++)
+        {
+            if (ReferenceEquals(host.Children[index], _dropPreview))
+            {
+                continue;
+            }
+
+            if (host.Children[index] is not Button lowerRow ||
+                lowerRow.Tag is not string lowerTaskId)
+            {
+                continue;
+            }
+
+            var lowerTask = FindTask(lowerTaskId);
+            if (lowerTask is null)
+            {
+                continue;
+            }
+
+            if (lowerTask.IsCompleted != _dragCandidateTask.IsCompleted)
+            {
+                return null;
+            }
+
+            var lowerDepth = TodoQuery.TaskIndentDepth(_data, lowerTask);
+            return lowerDepth > upperDepth
+                ? new TodoDropTarget(lowerTask.Id, TodoDropPlacement.Before)
+                : null;
+        }
+
+        return null;
+    }
+
+    private void ApplyDropTargetVisual(TodoDropTarget? target)
+    {
+        RemoveDropPreview();
+        if (target is null)
+        {
+            return;
+        }
+
+        var row = RowForTask(target.TaskId);
+        if (row is null)
+        {
+            return;
+        }
+
+        InsertDropPreview(target, row);
+    }
+
+    private void InsertDropPreview(TodoDropTarget target, Button targetRow)
+    {
+        if (targetRow.Parent is not Panel host ||
+            targetRow.Tag is not string targetTaskId)
+        {
+            return;
+        }
+
+        var targetTask = FindTask(targetTaskId);
+        if (targetTask is null)
+        {
+            return;
+        }
+
+        var targetDepth = TodoQuery.TaskIndentDepth(_data, targetTask);
+        var previewDepth = target.Placement == TodoDropPlacement.TopLevelEnd
+            ? 0
+            : target.Placement == TodoDropPlacement.Child
+                ? Math.Clamp(targetDepth + 1, 0, TodoQuery.MaxTaskTreeDepth - 1)
+                : targetDepth;
+        var insertIndex = InsertIndexForDrop(host, targetRow, target, targetDepth);
+        var preview = CreateDropPreview(target, targetTask, previewDepth);
+
+        _dropPreview = preview;
+        _dropPreviewHost = host;
+        host.Children.Insert(insertIndex, preview);
+    }
+
+    private int InsertIndexForDrop(Panel host, Button targetRow, TodoDropTarget target, int targetDepth)
+    {
+        var index = host.Children.IndexOf(targetRow);
+        if (index < 0)
+        {
+            return host.Children.Count;
+        }
+
+        if (target.Placement is TodoDropPlacement.TopLevelEnd or TodoDropPlacement.Child)
+        {
+            return Math.Min(index + 1, host.Children.Count);
+        }
+
+        if (target.Placement == TodoDropPlacement.Before)
+        {
+            return index;
+        }
+
+        return IndexAfterVisibleSubtree(host, index, targetDepth);
+    }
+
+    private int IndexAfterVisibleSubtree(Panel host, int startIndex, int targetDepth)
+    {
+        var insertIndex = startIndex + 1;
+        for (var index = startIndex + 1; index < host.Children.Count; index++)
+        {
+            if (host.Children[index] is not Button row ||
+                row.Tag is not string taskId)
+            {
+                break;
+            }
+
+            var task = FindTask(taskId);
+            if (task is null || TodoQuery.TaskIndentDepth(_data, task) <= targetDepth)
+            {
+                break;
+            }
+
+            if (IsDraggedTaskOrDescendant(task))
+            {
+                continue;
+            }
+
+            insertIndex = index + 1;
+        }
+
+        return insertIndex;
+    }
+
+    private bool IsDraggedTaskOrDescendant(TodoTask task)
+    {
+        if (_dragCandidateTask is null)
+        {
+            return false;
+        }
+
+        var current = task;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        while (seen.Add(current.Id))
+        {
+            if (string.Equals(current.Id, _dragCandidateTask.Id, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(current.ParentTaskId))
+            {
+                return false;
+            }
+
+            var parent = FindTask(current.ParentTaskId);
+            if (parent is null)
+            {
+                return false;
+            }
+
+            current = parent;
+        }
+
+        return false;
+    }
+
+    private FrameworkElement CreateDropPreview(TodoDropTarget target, TodoTask targetTask, int previewDepth)
+    {
+        var completed = _dragCandidateTask?.IsCompleted == true;
+        var preview = new Grid
+        {
+            Height = completed ? 34 : 44,
+            Margin = new Thickness(previewDepth * 22, 0, 0, completed ? 8 : 10),
+            IsHitTestVisible = false
+        };
+
+        preview.Children.Add(new Microsoft.UI.Xaml.Shapes.Rectangle
+        {
+            RadiusX = 8,
+            RadiusY = 8,
+            Stroke = AccentBrush(),
+            StrokeThickness = 1.6,
+            StrokeDashArray = new DoubleCollection { 5, 3 },
+            Fill = Brush(0xEEF9FA)
+        });
+        preview.Children.Add(new TextBlock
+        {
+            Text = DropPreviewText(target, targetTask),
+            Margin = new Thickness(12, 0, 12, 0),
+            FontSize = 12,
+            FontWeight = MuxFontWeights.SemiBold,
+            Foreground = AccentDarkBrush(),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        return preview;
+    }
+
+    private string DropPreviewText(TodoDropTarget target, TodoTask targetTask)
+    {
+        if (target.Placement == TodoDropPlacement.Child)
+        {
+            return $"松手后作为“{targetTask.Title}”的子任务";
+        }
+
+        if (target.Placement == TodoDropPlacement.TopLevelEnd)
+        {
+            return "松手后放到顶层任务末尾";
+        }
+
+        var parent = string.IsNullOrWhiteSpace(targetTask.ParentTaskId)
+            ? null
+            : FindTask(targetTask.ParentTaskId);
+        var parentName = parent?.Title ?? "顶层任务";
+        return target.Placement == TodoDropPlacement.Before
+            ? $"松手后放在“{parentName}”下，位于目标之前"
+            : $"松手后放在“{parentName}”下，位于目标之后";
+    }
+
+    private bool IsPointInsideDropPreview(Point point)
+    {
+        return _dropPreview is not null &&
+            _dropPreview.Visibility == Visibility.Visible &&
+            TryGetElementBounds(_dropPreview, out var bounds) &&
+            bounds.Contains(point);
+    }
+
+    private void RemoveDropPreview()
+    {
+        if (_dropPreviewHost is not null && _dropPreview is not null)
+        {
+            _dropPreviewHost.Children.Remove(_dropPreview);
+        }
+
+        _dropPreview = null;
+        _dropPreviewHost = null;
+    }
+
+    private static bool DropTargetsEqual(TodoDropTarget? first, TodoDropTarget? second)
+    {
+        if (first is null || second is null)
+        {
+            return first is null && second is null;
+        }
+
+        return first.Placement == second.Placement &&
+            string.Equals(first.TaskId, second.TaskId, StringComparison.Ordinal);
+    }
+
+    private static void ResetTaskRowChrome(Button row)
+    {
+        row.Opacity = 1;
+    }
+
+    private void ApplyTaskDrop(TodoTask draggedTask, TodoDropTarget target)
+    {
+        if (!IsValidTaskDrop(draggedTask, target))
+        {
+            return;
+        }
+
+        var targetTask = FindTask(target.TaskId);
+        if (targetTask is null)
+        {
+            return;
+        }
+
+        var oldParentId = draggedTask.ParentTaskId;
+        var newParentId = ParentIdForDropTarget(targetTask, target.Placement);
+        var parentChanged = !ParentIdsEqual(oldParentId, newParentId);
+
+        draggedTask.ParentTaskId = string.IsNullOrWhiteSpace(newParentId) ? null : newParentId;
+        if (parentChanged)
+        {
+            MoveSubtreeToList(draggedTask.Id, ResolveDropListId(targetTask, newParentId));
+        }
+
+        if (target.Placement == TodoDropPlacement.TopLevelEnd)
+        {
+            if (parentChanged)
+            {
+                ReassignSiblingSortOrders(oldParentId, draggedTask.IsCompleted);
+            }
+
+            ReorderTaskAsLastChild(draggedTask, newParentId);
+        }
+        else if (target.Placement == TodoDropPlacement.Child)
+        {
+            _settings.CollapsedTaskIds.RemoveAll(id => string.Equals(id, targetTask.Id, StringComparison.Ordinal));
+            ReorderTaskAsFirstChild(draggedTask, newParentId);
+        }
+        else
+        {
+            ReorderTaskAroundTarget(draggedTask, targetTask, target.Placement, oldParentId, newParentId);
+        }
+
+        Touch(draggedTask);
+        _selectedTaskId = draggedTask.Id;
+        SaveDataAndRefresh();
+    }
+
+    private bool IsValidTaskDrop(TodoTask draggedTask, TodoDropTarget target)
+    {
+        var targetTask = FindTask(target.TaskId);
+        if (targetTask is null ||
+            draggedTask.IsCompleted != targetTask.IsCompleted)
+        {
+            return false;
+        }
+
+        if (target.Placement != TodoDropPlacement.TopLevelEnd &&
+            string.Equals(draggedTask.Id, targetTask.Id, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var descendantIds = TodoQuery.DescendantIds(_data, draggedTask.Id).ToHashSet(StringComparer.Ordinal);
+        if (target.Placement != TodoDropPlacement.TopLevelEnd &&
+            descendantIds.Contains(targetTask.Id))
+        {
+            return false;
+        }
+
+        var newParentId = ParentIdForDropTarget(targetTask, target.Placement);
+        if (string.Equals(newParentId, draggedTask.Id, StringComparison.Ordinal) ||
+            (newParentId is not null && descendantIds.Contains(newParentId)))
+        {
+            return false;
+        }
+
+        if (IsOriginalDropPosition(draggedTask, targetTask, target.Placement, newParentId))
+        {
+            return false;
+        }
+
+        return CanMoveTaskToParent(draggedTask, newParentId);
+    }
+
+    private static string? ParentIdForDropTarget(TodoTask targetTask, TodoDropPlacement placement)
+    {
+        return placement switch
+        {
+            TodoDropPlacement.Child => targetTask.Id,
+            TodoDropPlacement.TopLevelEnd => null,
+            _ => targetTask.ParentTaskId
+        };
+    }
+
+    private bool IsOriginalDropPosition(
+        TodoTask draggedTask,
+        TodoTask targetTask,
+        TodoDropPlacement placement,
+        string? newParentId)
+    {
+        if (placement == TodoDropPlacement.TopLevelEnd)
+        {
+            if (!ParentIdsEqual(draggedTask.ParentTaskId, null))
+            {
+                return false;
+            }
+
+            var rootSiblings = OrderedSiblings(null, draggedTask.IsCompleted);
+            return rootSiblings.Count > 0 &&
+                string.Equals(rootSiblings[^1].Id, draggedTask.Id, StringComparison.Ordinal);
+        }
+
+        if (placement == TodoDropPlacement.Child)
+        {
+            if (!ParentIdsEqual(draggedTask.ParentTaskId, targetTask.Id))
+            {
+                return false;
+            }
+
+            var childSiblings = OrderedSiblings(targetTask.Id, draggedTask.IsCompleted);
+            return childSiblings.Count > 0 &&
+                string.Equals(childSiblings[0].Id, draggedTask.Id, StringComparison.Ordinal);
+        }
+
+        if (!ParentIdsEqual(draggedTask.ParentTaskId, newParentId))
+        {
+            return false;
+        }
+
+        var siblings = OrderedSiblings(newParentId, draggedTask.IsCompleted);
+        var draggedIndex = siblings.FindIndex(task => string.Equals(task.Id, draggedTask.Id, StringComparison.Ordinal));
+        var targetIndex = siblings.FindIndex(task => string.Equals(task.Id, targetTask.Id, StringComparison.Ordinal));
+        if (draggedIndex < 0 || targetIndex < 0)
+        {
+            return false;
+        }
+
+        return placement == TodoDropPlacement.Before
+            ? draggedIndex + 1 == targetIndex
+            : draggedIndex - 1 == targetIndex;
+    }
+
+    private bool CanMoveTaskToParent(TodoTask draggedTask, string? newParentId)
+    {
+        var newRootDepth = 1;
+        if (!string.IsNullOrWhiteSpace(newParentId))
+        {
+            var parent = FindTask(newParentId);
+            if (parent is null)
+            {
+                return false;
+            }
+
+            newRootDepth = TodoQuery.TaskDepth(_data, parent) + 1;
+            var childCount = _data.Tasks.Count(task =>
+                !string.Equals(task.Id, draggedTask.Id, StringComparison.Ordinal) &&
+                string.Equals(task.ParentTaskId, newParentId, StringComparison.Ordinal));
+            if (childCount >= TodoQuery.MaxChildTasksPerTask)
+            {
+                return false;
+            }
+        }
+
+        return newRootDepth + MaxDescendantOffset(draggedTask.Id) <= TodoQuery.MaxTaskTreeDepth;
+    }
+
+    private int MaxDescendantOffset(string taskId)
+    {
+        var childrenByParent = _data.Tasks
+            .Where(task => !string.IsNullOrWhiteSpace(task.ParentTaskId))
+            .GroupBy(task => task.ParentTaskId!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        return MaxDescendantOffset(taskId, childrenByParent, new HashSet<string>(StringComparer.Ordinal));
+    }
+
+    private static int MaxDescendantOffset(
+        string taskId,
+        IReadOnlyDictionary<string, List<TodoTask>> childrenByParent,
+        HashSet<string> seen)
+    {
+        if (!seen.Add(taskId) || !childrenByParent.TryGetValue(taskId, out var children))
+        {
+            return 0;
+        }
+
+        var max = 0;
+        foreach (var child in children)
+        {
+            max = Math.Max(max, 1 + MaxDescendantOffset(child.Id, childrenByParent, seen));
+        }
+
+        return max;
+    }
+
+    private void ReorderTaskAroundTarget(
+        TodoTask draggedTask,
+        TodoTask targetTask,
+        TodoDropPlacement placement,
+        string? oldParentId,
+        string? newParentId)
+    {
+        if (!ParentIdsEqual(oldParentId, newParentId))
+        {
+            ReassignSiblingSortOrders(oldParentId, draggedTask.IsCompleted);
+        }
+
+        var siblings = OrderedSiblings(newParentId, draggedTask.IsCompleted)
+            .Where(task => !string.Equals(task.Id, draggedTask.Id, StringComparison.Ordinal))
+            .ToList();
+        var targetIndex = siblings.FindIndex(task => string.Equals(task.Id, targetTask.Id, StringComparison.Ordinal));
+        if (targetIndex < 0)
+        {
+            siblings.Add(draggedTask);
+        }
+        else
+        {
+            siblings.Insert(placement == TodoDropPlacement.After ? targetIndex + 1 : targetIndex, draggedTask);
+        }
+
+        ReassignSiblingSortOrders(siblings);
+    }
+
+    private void ReorderTaskAsLastChild(TodoTask draggedTask, string? newParentId)
+    {
+        var siblings = OrderedSiblings(newParentId, draggedTask.IsCompleted)
+            .Where(task => !string.Equals(task.Id, draggedTask.Id, StringComparison.Ordinal))
+            .Append(draggedTask)
+            .ToList();
+        ReassignSiblingSortOrders(siblings);
+    }
+
+    private void ReorderTaskAsFirstChild(TodoTask draggedTask, string? newParentId)
+    {
+        var siblings = OrderedSiblings(newParentId, draggedTask.IsCompleted)
+            .Where(task => !string.Equals(task.Id, draggedTask.Id, StringComparison.Ordinal))
+            .Prepend(draggedTask)
+            .ToList();
+        ReassignSiblingSortOrders(siblings);
+    }
+
+    private void ReassignSiblingSortOrders(string? parentTaskId, bool completed)
+    {
+        ReassignSiblingSortOrders(OrderedSiblings(parentTaskId, completed));
+    }
+
+    private static void ReassignSiblingSortOrders(IReadOnlyList<TodoTask> siblings)
+    {
+        var order = 1000.0;
+        foreach (var task in siblings)
+        {
+            task.SortOrder = order;
+            order += 1000.0;
+        }
+    }
+
+    private List<TodoTask> OrderedSiblings(string? parentTaskId, bool completed)
+    {
+        return _data.Tasks
+            .Where(task => task.IsCompleted == completed && ParentIdsEqual(task.ParentTaskId, parentTaskId))
+            .OrderBy(task => task.SortOrder <= 0 ? double.MaxValue : task.SortOrder)
+            .ThenBy(task => task.CreatedAt)
+            .ToList();
+    }
+
+    private void MoveSubtreeToList(string taskId, string listId)
+    {
+        var moveIds = TodoQuery.DescendantIds(_data, taskId)
+            .Append(taskId)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var task in _data.Tasks.Where(task => moveIds.Contains(task.Id)))
+        {
+            task.ListId = listId;
+            Touch(task);
+        }
+    }
+
+    private string ResolveDropListId(TodoTask targetTask, string? newParentId)
+    {
+        if (!string.IsNullOrWhiteSpace(newParentId))
+        {
+            return FindTask(newParentId)?.ListId ?? targetTask.ListId;
+        }
+
+        return targetTask.ListId;
+    }
+
+    private TodoTask? FindTask(string taskId)
+    {
+        return _data.Tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal));
+    }
+
+    private Button? RowForTask(string taskId)
+    {
+        return _taskRows.FirstOrDefault(row => row.Tag is string rowTaskId &&
+            string.Equals(rowTaskId, taskId, StringComparison.Ordinal));
+    }
+
+    private bool TryGetTaskRowBounds(Button row, out Rect bounds)
+    {
+        return TryGetElementBounds(row, out bounds);
+    }
+
+    private bool TryGetElementBounds(FrameworkElement element, out Rect bounds)
+    {
+        try
+        {
+            var topLeft = element.TransformToVisual(_root).TransformPoint(new Point(0, 0));
+            bounds = new Rect(topLeft, new Size(element.ActualWidth, element.ActualHeight));
+            return true;
+        }
+        catch (Exception)
+        {
+            bounds = Rect.Empty;
+            return false;
+        }
+    }
+
+    private static bool IsTaskDragIgnoredSource(DependencyObject? source, DependencyObject stopAt)
+    {
+        while (source is not null && !ReferenceEquals(source, stopAt))
+        {
+            if (source is ButtonBase or TextBox or Slider or Thumb)
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    private static bool ParentIdsEqual(string? left, string? right)
+    {
+        return string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    private static double Distance(Point first, Point second)
+    {
+        var dx = first.X - second.X;
+        var dy = first.Y - second.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     private void RefreshDetail()
@@ -2185,23 +3164,18 @@ public sealed class TodoWindow : Window
 
     private void OpenStickyMode(bool closeMainWindow = true)
     {
-        if (_stickyProcess is not null && !_stickyProcess.HasExited)
-        {
-            return;
-        }
-
         var stickyViewId = _currentViewId == TodoViewIds.Completed ? TodoViewIds.Today : _currentViewId;
         _settings.CurrentViewId = stickyViewId;
         _settings.IsStickyModeEnabled = true;
         _store.SaveSettings(_settings);
 
-        if (StickyLauncher.TryLaunch(out var process))
+        if (StickyLauncher.TryShow(out var process))
         {
             _stickyProcess = process;
 
             if (closeMainWindow)
             {
-                Close();
+                HideNativeWindow();
             }
             else
             {
@@ -2215,6 +3189,37 @@ public sealed class TodoWindow : Window
         _stickyProcess = null;
         ShowNativeWindow();
         Activate();
+    }
+
+    private void QueueStickyPrewarm()
+    {
+        DispatcherQueue.TryEnqueue(PrewarmStickyIfNeeded);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1000);
+            DispatcherQueue.TryEnqueue(PrewarmStickyIfNeeded);
+        });
+    }
+
+    private void PrewarmStickyIfNeeded()
+    {
+        if (_settings.IsStickyModeEnabled)
+        {
+            return;
+        }
+
+        if (StickyLauncher.TryPrewarm(out var process))
+        {
+            _stickyProcess = process;
+        }
+    }
+
+    private void ReloadDataAndSettings()
+    {
+        _data = _store.LoadData();
+        _settings = _store.LoadSettings();
+        _currentViewId = IsKnownView(_settings.CurrentViewId) ? _settings.CurrentViewId : TodoViewIds.Today;
+        _selectedTaskId = _settings.SelectedTaskId;
     }
 
     private IEnumerable<TodoTask> ActiveTasksForView(string viewId)
@@ -2848,12 +3853,20 @@ public sealed class TodoWindow : Window
 
     private void ApplyFlatTextBoxStyle(TextBox textBox)
     {
+        var foreground = TextBrush();
         textBox.Resources["TextControlBackground"] = TransparentBrush();
         textBox.Resources["TextControlBackgroundPointerOver"] = TransparentBrush();
         textBox.Resources["TextControlBackgroundFocused"] = TransparentBrush();
         textBox.Resources["TextControlBorderBrush"] = TransparentBrush();
         textBox.Resources["TextControlBorderBrushPointerOver"] = TransparentBrush();
         textBox.Resources["TextControlBorderBrushFocused"] = TransparentBrush();
+        textBox.Resources["TextControlForeground"] = foreground;
+        textBox.Resources["TextControlForegroundPointerOver"] = foreground;
+        textBox.Resources["TextControlForegroundFocused"] = foreground;
+        textBox.Resources["TextControlPlaceholderForeground"] = foreground;
+        textBox.Resources["TextControlPlaceholderForegroundPointerOver"] = foreground;
+        textBox.Resources["TextControlPlaceholderForegroundFocused"] = foreground;
+        textBox.Foreground = foreground;
     }
 
     private ElementTheme ResolveElementTheme()
@@ -3012,20 +4025,55 @@ public sealed class TodoWindow : Window
         }.Uri;
     }
 
+    internal void RestoreFromExternalActivation()
+    {
+        ReloadDataAndSettings();
+        var wasStickyModeEnabled = _settings.IsStickyModeEnabled;
+        _settings.IsStickyModeEnabled = false;
+        _store.SaveSettings(_settings);
+        ApplyCaptionButtonColorsToCurrentWindow();
+        BuildShell();
+        RefreshAll();
+
+        var hwnd = WindowHandle();
+        ShowWindow(hwnd, ShowWindowRestore);
+        Activate();
+        SetForegroundWindow(hwnd);
+        if (wasStickyModeEnabled)
+        {
+            StickyLauncher.TryShutdown();
+        }
+
+        QueueStickyPrewarm();
+    }
+
     private IntPtr WindowHandle() => WinRT.Interop.WindowNative.GetWindowHandle(this);
 
     private void HideNativeWindow()
     {
-        ShowWindow(WindowHandle(), 0);
+        ShowWindow(WindowHandle(), ShowWindowHide);
     }
 
     private void ShowNativeWindow()
     {
-        ShowWindow(WindowHandle(), 5);
+        ShowWindow(WindowHandle(), ShowWindowShow);
+    }
+
+    private sealed record TodoDropTarget(string TaskId, TodoDropPlacement Placement);
+
+    private enum TodoDropPlacement
+    {
+        Before,
+        After,
+        Child,
+        TopLevelEnd
     }
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
