@@ -82,15 +82,28 @@ function Get-ChangelogSection {
         throw "Changelog file was not found: $Path"
     }
 
-    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $lines = Get-Content -LiteralPath $Path -Encoding UTF8
     $escapedVersion = [regex]::Escape($Version)
-    $pattern = "(?ms)^##\s+\[?$escapedVersion\]?(?:\s+-\s+.*)?\r?\n.*?(?=^##\s+|\z)"
-    $match = [regex]::Match($content, $pattern)
-    if (-not $match.Success) {
+    $headerPattern = "^##\s+\[?$escapedVersion\]?(?:\s+-\s+.*)?$"
+    $start = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match $headerPattern) {
+            $start = $index
+            break
+        }
+    }
+    if ($start -lt 0) {
         throw "Changelog file does not contain a section for version $Version`: $Path"
     }
 
-    return $match.Value.Trim()
+    $end = $lines.Count
+    for ($index = $start + 1; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match "^##\s+") {
+            $end = $index
+            break
+        }
+    }
+    return ($lines[$start..($end - 1)] -join [Environment]::NewLine).Trim()
 }
 
 function Write-ReleaseNotes {
