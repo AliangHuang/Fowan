@@ -13,3 +13,7 @@ out/
 # Windows and logs
 Thumbs.db
 *.log
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

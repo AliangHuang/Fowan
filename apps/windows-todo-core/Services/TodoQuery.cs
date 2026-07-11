@@ -7,52 +7,98 @@ public static class TodoQuery
     public const int MaxTaskTreeDepth = 3;
     public const int MaxChildTasksPerTask = 100;
 
-    public static IEnumerable<TodoTask> ActiveTasksForView(TodoData data, string viewId, DateTime? today = null)
+    public static IEnumerable<TodoTask> ActiveTasksForView(
+        TodoData data,
+        string viewId,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        string? listIdFilter = null)
     {
-        return ActiveTaskNodesForView(data, viewId, today).Select(node => node.Task);
+        return ActiveTaskNodesForView(data, viewId, today, dateFilter, listIdFilter: listIdFilter).Select(node => node.Task);
     }
 
-    public static IEnumerable<TodoTask> CompletedTasksForView(TodoData data, string viewId, DateTime? today = null)
+    public static IEnumerable<TodoTask> CompletedTasksForView(
+        TodoData data,
+        string viewId,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        string? listIdFilter = null)
     {
-        return CompletedTaskNodesForView(data, viewId, today).Select(node => node.Task);
+        return CompletedTaskNodesForView(data, viewId, today, dateFilter, listIdFilter: listIdFilter).Select(node => node.Task);
     }
 
-    public static IEnumerable<TodoTaskNode> ActiveTaskNodesForView(TodoData data, string viewId, DateTime? today = null)
+    public static IEnumerable<TodoTaskNode> ActiveTaskNodesForView(
+        TodoData data,
+        string viewId,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
-        return TaskNodesForView(data, viewId, completed: false, today);
+        return TaskNodesForView(data, viewId, completed: false, collapsedTaskIds: null, today, dateFilter, maximumDepth, listIdFilter);
     }
 
     public static IEnumerable<TodoTaskNode> ActiveTaskNodesForView(
         TodoData data,
         string viewId,
         ISet<string>? collapsedTaskIds,
-        DateTime? today = null)
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
-        return TaskNodesForView(data, viewId, completed: false, collapsedTaskIds: collapsedTaskIds, today: today);
+        return TaskNodesForView(data, viewId, completed: false, collapsedTaskIds, today, dateFilter, maximumDepth, listIdFilter);
     }
 
-    public static IEnumerable<TodoTaskNode> CompletedTaskNodesForView(TodoData data, string viewId, DateTime? today = null)
+    public static IEnumerable<TodoTaskNode> CompletedTaskNodesForView(
+        TodoData data,
+        string viewId,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
-        return TaskNodesForView(data, viewId == TodoViewIds.Completed ? TodoViewIds.All : viewId, completed: true, today);
+        return TaskNodesForView(
+            data,
+            viewId == TodoViewIds.Completed ? TodoViewIds.All : viewId,
+            completed: true,
+            collapsedTaskIds: null,
+            today,
+            dateFilter,
+            maximumDepth,
+            listIdFilter);
     }
 
     public static IEnumerable<TodoTaskNode> CompletedTaskNodesForView(
         TodoData data,
         string viewId,
         ISet<string>? collapsedTaskIds,
-        DateTime? today = null)
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
         return TaskNodesForView(
             data,
             viewId == TodoViewIds.Completed ? TodoViewIds.All : viewId,
             completed: true,
-            collapsedTaskIds: collapsedTaskIds,
-            today: today);
+            collapsedTaskIds,
+            today,
+            dateFilter,
+            maximumDepth,
+            listIdFilter);
     }
 
-    public static IEnumerable<TodoTaskNode> TaskNodesForView(TodoData data, string viewId, bool completed, DateTime? today = null)
+    public static IEnumerable<TodoTaskNode> TaskNodesForView(
+        TodoData data,
+        string viewId,
+        bool completed,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
-        return TaskNodesForView(data, viewId, completed, collapsedTaskIds: null, today);
+        return TaskNodesForView(data, viewId, completed, collapsedTaskIds: null, today, dateFilter, maximumDepth, listIdFilter);
     }
 
     public static IEnumerable<TodoTaskNode> TaskNodesForView(
@@ -60,34 +106,71 @@ public static class TodoQuery
         string viewId,
         bool completed,
         ISet<string>? collapsedTaskIds,
-        DateTime? today = null)
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null)
     {
-        var visible = FilterTasks(data, viewId, completed, today).ToList();
+        var visible = FilterTasks(data, viewId, completed, today, dateFilter, listIdFilter).ToList();
+        return BuildTaskNodes(data, visible, collapsedTaskIds, completed, maximumDepth);
+    }
+
+    public static IEnumerable<TodoTask> RecycleBinTasks(TodoData data)
+    {
+        return data.Tasks.Where(task => task.DeletedAt is not null);
+    }
+
+    public static IEnumerable<TodoTaskNode> RecycleBinTaskNodes(
+        TodoData data,
+        ISet<string>? collapsedTaskIds = null,
+        int? maximumDepth = null)
+    {
+        var visible = RecycleBinTasks(data).ToList();
         var visibleIds = visible.Select(task => task.Id).ToHashSet(StringComparer.Ordinal);
         var childrenByParent = visible
             .Where(task => !string.IsNullOrWhiteSpace(task.ParentTaskId) && visibleIds.Contains(task.ParentTaskId))
             .GroupBy(task => task.ParentTaskId!, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => OrderSiblings(group, completed).ToList(), StringComparer.Ordinal);
-
+            .ToDictionary(group => group.Key, group => group.OrderBy(task => task.SortOrder).ToList(), StringComparer.Ordinal);
         var roots = visible
             .Where(task => string.IsNullOrWhiteSpace(task.ParentTaskId) || !visibleIds.Contains(task.ParentTaskId))
-            .ToList();
+            .OrderByDescending(task => task.DeletedAt)
+            .ThenBy(task => task.SortOrder);
 
-        foreach (var root in OrderSiblings(roots, completed))
+        foreach (var root in roots)
         {
             foreach (var node in FlattenTaskNode(data, root, childrenByParent, collapsedTaskIds))
             {
-                yield return node;
+                if (!maximumDepth.HasValue || node.Depth < maximumDepth.Value)
+                {
+                    yield return node;
+                }
             }
         }
     }
 
-    public static IEnumerable<TodoTask> FilterTasks(TodoData data, string viewId, bool completed, DateTime? today = null)
+    public static IEnumerable<TodoTask> FilterTasks(
+        TodoData data,
+        string viewId,
+        bool completed,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        string? listIdFilter = null)
     {
         var currentDate = (today ?? DateTime.Today).Date;
         return data.Tasks.Where(task =>
         {
-            if (task.IsCompleted != completed)
+            if (task.DeletedAt is not null || task.IsCompleted != completed)
+            {
+                return false;
+            }
+
+            if (!MatchesDateFilter(task, completed, currentDate, dateFilter))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(listIdFilter) &&
+                !string.Equals(task.ListId, listIdFilter, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -106,14 +189,14 @@ public static class TodoQuery
                     (task.DueDate.HasValue && task.DueDate.Value.Date > currentDate),
                 TodoViewIds.Important => task.IsImportant,
                 TodoViewIds.All or TodoViewIds.Completed => true,
-                _ => true
+                _ => false
             };
         });
     }
 
     public static bool IsKnownView(TodoData data, string viewId)
     {
-        if (viewId is TodoViewIds.Today or TodoViewIds.Planned or TodoViewIds.Important or TodoViewIds.All or TodoViewIds.Completed)
+        if (viewId is TodoViewIds.Today or TodoViewIds.Planned or TodoViewIds.Important or TodoViewIds.All or TodoViewIds.Completed or TodoViewIds.RecycleBin)
         {
             return true;
         }
@@ -136,6 +219,7 @@ public static class TodoQuery
             TodoViewIds.Important => "重要任务",
             TodoViewIds.All => "全部任务",
             TodoViewIds.Completed => "已完成",
+            TodoViewIds.RecycleBin => "回收站",
             _ => "今日任务"
         };
     }
@@ -171,12 +255,13 @@ public static class TodoQuery
 
     public static int DirectChildCount(TodoData data, string taskId)
     {
-        return data.Tasks.Count(task => string.Equals(task.ParentTaskId, taskId, StringComparison.Ordinal));
+        return data.Tasks.Count(task => task.DeletedAt is null && string.Equals(task.ParentTaskId, taskId, StringComparison.Ordinal));
     }
 
     public static bool CanAddChild(TodoData data, TodoTask parent)
     {
-        return TaskDepth(data, parent) < MaxTaskTreeDepth &&
+        return parent.DeletedAt is null &&
+            TaskDepth(data, parent) < MaxTaskTreeDepth &&
             DirectChildCount(data, parent.Id) < MaxChildTasksPerTask;
     }
 
@@ -223,6 +308,34 @@ public static class TodoQuery
         }
     }
 
+    private static IEnumerable<TodoTaskNode> BuildTaskNodes(
+        TodoData data,
+        IReadOnlyCollection<TodoTask> visible,
+        ISet<string>? collapsedTaskIds,
+        bool completed,
+        int? maximumDepth)
+    {
+        var visibleIds = visible.Select(task => task.Id).ToHashSet(StringComparer.Ordinal);
+        var childrenByParent = visible
+            .Where(task => !string.IsNullOrWhiteSpace(task.ParentTaskId) && visibleIds.Contains(task.ParentTaskId))
+            .GroupBy(task => task.ParentTaskId!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => OrderSiblings(group, completed).ToList(), StringComparer.Ordinal);
+        var roots = visible
+            .Where(task => string.IsNullOrWhiteSpace(task.ParentTaskId) || !visibleIds.Contains(task.ParentTaskId))
+            .ToList();
+
+        foreach (var root in OrderSiblings(roots, completed))
+        {
+            foreach (var node in FlattenTaskNode(data, root, childrenByParent, collapsedTaskIds))
+            {
+                if (!maximumDepth.HasValue || node.Depth < maximumDepth.Value)
+                {
+                    yield return node;
+                }
+            }
+        }
+    }
+
     private static IEnumerable<TodoTaskNode> FlattenTaskNode(
         TodoData data,
         TodoTask task,
@@ -235,12 +348,7 @@ public static class TodoQuery
             Depth = TaskIndentDepth(data, task)
         };
 
-        if (collapsedTaskIds?.Contains(task.Id) == true)
-        {
-            yield break;
-        }
-
-        if (!childrenByParent.TryGetValue(task.Id, out var children))
+        if (collapsedTaskIds?.Contains(task.Id) == true || !childrenByParent.TryGetValue(task.Id, out var children))
         {
             yield break;
         }
@@ -275,5 +383,28 @@ public static class TodoQuery
     private static DateTime CompletedDate(TodoTask task)
     {
         return (task.CompletedAt ?? task.UpdatedAt).ToLocalTime().Date;
+    }
+
+    private static bool MatchesDateFilter(
+        TodoTask task,
+        bool completed,
+        DateTime currentDate,
+        TodoDateRangeFilter? dateFilter)
+    {
+        if (dateFilter is not { IsValid: true })
+        {
+            return true;
+        }
+
+        var rangeStart = dateFilter.StartDate.Date;
+        var rangeEnd = dateFilter.EndDate.Date;
+        if (dateFilter.Mode == TodoDateFilterMode.StartDate)
+        {
+            return task.StartDate.Date >= rangeStart && task.StartDate.Date <= rangeEnd;
+        }
+
+        var executionEnd = task.DueDate?.Date ?? (completed ? CompletedDate(task) : currentDate);
+        executionEnd = executionEnd < task.StartDate.Date ? task.StartDate.Date : executionEnd;
+        return task.StartDate.Date <= rangeEnd && executionEnd >= rangeStart;
     }
 }

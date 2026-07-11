@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -18,6 +18,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Windows", "apps\windows-diary\Fowan.Diary.Windows.csproj", "{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Core.Tests", "tests\Fowan.Diary.Core.Tests\Fowan.Diary.Core.Tests.csproj", "{E3431B74-A27F-4A90-A1A4-4A95E16971C8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Core.Tests", "tests\Fowan.Todo.Core.Tests\Fowan.Todo.Core.Tests.csproj", "{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -56,6 +58,10 @@ Global
 		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E3431B74-A27F-4A90-A1A4-4A95E16971C8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B846A653-8B42-407A-83F6-6657B1952427} = {E734C8D4-8651-4FAD-9F54-A474C3177CDB}

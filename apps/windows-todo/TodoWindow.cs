@@ -1,6 +1,7 @@
 using Fowan.Todo.Core.Models;
 using Fowan.Todo.Core.Services;
 using Microsoft.UI;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -22,10 +23,17 @@ namespace Fowan.Todo.Windows;
 public sealed class TodoWindow : Window
 {
     private const double SidebarWidth = 248;
-    private const double DetailWidth = 382;
+    private const double CompletedTimestampEditorWidth = 236;
+    // The detail host has a 1 DIP left border. 433 DIP leaves exactly 236 DIP
+    // for the timestamp editor after its 28/88 DIP columns, spacing and padding.
+    private const double DetailWidth = 433;
     private const int TaskDragLongPressMilliseconds = 350;
     private const double TaskDragMoveCancelDistance = 6;
     private const double TaskDropEdgeRatio = 0.28;
+    private const double TaskAutoScrollActivationDistance = 96;
+    private const double TaskAutoScrollMinimumSpeed = 120;
+    private const double TaskAutoScrollMaximumSpeed = 720;
+    private const double TaskAutoScrollSectionOverlap = 50;
     private const int ShowWindowHide = 0;
     private const int ShowWindowShow = 5;
     private const int ShowWindowRestore = 9;
@@ -38,10 +46,16 @@ public sealed class TodoWindow : Window
     private StackPanel _navigationPanel = new();
     private StackPanel _listPanel = new();
     private StackPanel _taskContent = new();
+    private ScrollViewer _taskScroll = new();
+    private FrameworkElement? _activeTaskSection;
+    private FrameworkElement? _completedTaskSection;
     private Border _detailHost = new();
+    private FrameworkElement _brandArea = new Grid();
     private TextBox _addTaskBox = new();
     private TextBlock _taskTitle = new();
     private TextBlock _taskSummary = new();
+    private Button _filterButton = new();
+    private readonly List<FrameworkElement> _titleBarInteractiveElements = [];
     private readonly List<Button> _taskRows = [];
 
     private string _currentViewId;
@@ -49,6 +63,8 @@ public sealed class TodoWindow : Window
     private System.Diagnostics.Process? _stickyProcess;
     private readonly global::Windows.UI.ViewManagement.UISettings _uiSettings = new();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _taskDragTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _taskAutoScrollTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _recycleBinMaintenanceTimer;
     private TodoTask? _dragCandidateTask;
     private Button? _dragCandidateRow;
     private FrameworkElement? _dropPreview;
@@ -58,11 +74,15 @@ public sealed class TodoWindow : Window
     private Point _taskDragCurrentPoint;
     private bool _isTaskDragging;
     private string? _suppressTaskClickId;
+    private TodoDateRangeFilter? _dateRangeFilter;
+    private string? _listIdFilter;
+    private int _maximumVisibleTaskDepth = TodoQuery.MaxTaskTreeDepth;
 
     public TodoWindow()
     {
         _data = _store.LoadData();
         _settings = _store.LoadSettings();
+        PurgeExpiredRecycleBin();
         _currentViewId = IsKnownView(_settings.CurrentViewId) ? _settings.CurrentViewId : TodoViewIds.Today;
         _selectedTaskId = _settings.SelectedTaskId;
         _uiSettings.ColorValuesChanged += (_, _) =>
@@ -83,6 +103,7 @@ public sealed class TodoWindow : Window
         ConfigureWindow();
         BuildShell();
         RefreshAll();
+        StartRecycleBinMaintenanceTimer();
     }
 
     internal void ActivateInitialMode()
@@ -137,6 +158,7 @@ public sealed class TodoWindow : Window
 
     private void BuildShell()
     {
+        _titleBarInteractiveElements.Clear();
         _root = new Grid
         {
             RequestedTheme = ResolveElementTheme(),
@@ -161,6 +183,89 @@ public sealed class TodoWindow : Window
         Grid.SetColumn(_detailHost, 2);
         _root.Children.Add(_detailHost);
         Content = _root;
+        ConfigureVirtualTitleBarRegions();
+    }
+
+    private void ConfigureVirtualTitleBarRegions()
+    {
+        _root.Loaded += (_, _) => UpdateVirtualTitleBarRegions();
+        _root.SizeChanged += (_, _) => UpdateVirtualTitleBarRegions();
+        UpdateVirtualTitleBarRegions();
+    }
+
+    private void UpdateVirtualTitleBarRegions()
+    {
+        if (_root.ActualWidth <= 0 || _root.XamlRoot is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var hwnd = WindowHandle();
+            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = AppWindow.GetFromWindowId(windowId);
+            var scale = Math.Clamp(GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
+            var clientWidth = Math.Max(0, (int)Math.Ceiling(_root.ActualWidth * scale));
+            var clientHeight = Math.Max(0, (int)Math.Ceiling(_root.ActualHeight * scale));
+            var systemTitleBarHeight = Math.Max(0, appWindow.TitleBar.Height);
+            var virtualTitleBarHeight = Math.Max(
+                systemTitleBarHeight,
+                (int)Math.Ceiling(_brandArea.ActualHeight * scale));
+            var captionWidth = Math.Max(0, clientWidth - appWindow.TitleBar.RightInset);
+            var inputSource = InputNonClientPointerSource.GetForWindowId(windowId);
+
+            var captionRects = new List<RectInt32>();
+            if (captionWidth > 0 && systemTitleBarHeight > 0)
+            {
+                captionRects.Add(new RectInt32(0, 0, captionWidth, systemTitleBarHeight));
+            }
+
+            if (virtualTitleBarHeight > systemTitleBarHeight)
+            {
+                captionRects.Add(new RectInt32(
+                    0,
+                    systemTitleBarHeight,
+                    clientWidth,
+                    virtualTitleBarHeight - systemTitleBarHeight));
+            }
+
+            inputSource.SetRegionRects(NonClientRegionKind.Caption, captionRects.ToArray());
+
+            var passThroughRects = new List<RectInt32>();
+            foreach (var element in _titleBarInteractiveElements.Where(element => element.IsHitTestVisible))
+            {
+                if (!TryGetElementBounds(element, out var bounds) ||
+                    bounds.Bottom <= 0 ||
+                    bounds.Top >= virtualTitleBarHeight / scale)
+                {
+                    continue;
+                }
+
+                var left = Math.Max(0, (int)Math.Floor(bounds.Left * scale));
+                var top = Math.Max(0, (int)Math.Floor(bounds.Top * scale));
+                var right = Math.Min(clientWidth, (int)Math.Ceiling(bounds.Right * scale));
+                // A control which overlaps the caption boundary must remain a full
+                // client-input rectangle. Clipping it at the boundary causes its
+                // hover state to alternate with the native title bar.
+                var bottom = Math.Min(clientHeight, (int)Math.Ceiling(bounds.Bottom * scale));
+                if (right > left && bottom > top)
+                {
+                    passThroughRects.Add(new RectInt32(left, top, right - left, bottom - top));
+                }
+            }
+
+            inputSource.SetRegionRects(NonClientRegionKind.Passthrough, passThroughRects.ToArray());
+        }
+        catch
+        {
+            // A native title-bar API failure must not prevent the Todo window from rendering.
+        }
+    }
+
+    private void RegisterTitleBarInteractiveElement(FrameworkElement element)
+    {
+        _titleBarInteractiveElements.Add(element);
     }
 
     private UIElement BuildSidebar()
@@ -184,6 +289,7 @@ public sealed class TodoWindow : Window
             Padding = new Thickness(20, 26, 18, 24),
             VerticalAlignment = VerticalAlignment.Center
         };
+        _brandArea = brand;
         var brandIcon = new Border
         {
             Width = 40,
@@ -198,7 +304,6 @@ public sealed class TodoWindow : Window
             }
         };
         brand.Children.Add(brandIcon);
-        SetTitleBar(brandIcon);
         brand.Children.Add(new TextBlock
         {
             Text = "Fowan",
@@ -314,15 +419,21 @@ public sealed class TodoWindow : Window
         titleStack.Children.Add(_taskSummary);
         header.Children.Add(titleStack);
 
-        var filterButton = PillButton("筛选", "\uE71C");
-        filterButton.MinWidth = 92;
-        Grid.SetColumn(filterButton, 1);
-        header.Children.Add(filterButton);
+        _filterButton = PillButton("筛选", "\uE71C");
+        _filterButton.ClearValue(Control.BackgroundProperty);
+        _filterButton.ClearValue(Control.BorderBrushProperty);
+        _filterButton.MinWidth = 92;
+        _filterButton.Click += async (_, _) => await ShowFilterDialogAsync();
+        Grid.SetColumn(_filterButton, 1);
+        header.Children.Add(_filterButton);
+        RegisterTitleBarInteractiveElement(_filterButton);
+        RefreshFilterButtonState();
 
         var stickyMode = IconOnlyButton("\uE8A7", "切换便签模式");
         stickyMode.Click += (_, _) => OpenStickyMode();
         Grid.SetColumn(stickyMode, 2);
         header.Children.Add(stickyMode);
+        RegisterTitleBarInteractiveElement(stickyMode);
         grid.Children.Add(header);
 
         var addShell = new Border
@@ -374,14 +485,14 @@ public sealed class TodoWindow : Window
         Grid.SetRow(addShell, 1);
         grid.Children.Add(addShell);
 
-        var scroll = new ScrollViewer
+        _taskScroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
         _taskContent = new StackPanel { Spacing = 8 };
-        scroll.Content = _taskContent;
-        Grid.SetRow(scroll, 2);
-        grid.Children.Add(scroll);
+        _taskScroll.Content = _taskContent;
+        Grid.SetRow(_taskScroll, 2);
+        grid.Children.Add(_taskScroll);
 
         border.Child = grid;
         return border;
@@ -395,6 +506,7 @@ public sealed class TodoWindow : Window
         }
 
         RefreshNavigation();
+        RefreshFilterButtonState();
         RefreshTaskContent();
         RefreshDetail();
     }
@@ -407,6 +519,10 @@ public sealed class TodoWindow : Window
         _navigationPanel.Children.Add(NavigationButton(TodoViewIds.Important, "重要任务", "\uE735", ActiveTasksForView(TodoViewIds.Important).Count()));
         _navigationPanel.Children.Add(NavigationButton(TodoViewIds.All, "全部任务", "\uE8FD", ActiveTasksForView(TodoViewIds.All).Count()));
         _navigationPanel.Children.Add(NavigationButton(TodoViewIds.Completed, "已完成", "\uE73E", CompletedTasksForView(TodoViewIds.Completed).Count()));
+        if (_settings.IsRecycleBinEnabled)
+        {
+            _navigationPanel.Children.Add(NavigationButton(TodoViewIds.RecycleBin, "回收站", "\uE74D", TodoQuery.RecycleBinTasks(_data).Count()));
+        }
 
         _listPanel.Children.Clear();
         foreach (var list in OrderedLists())
@@ -492,10 +608,7 @@ public sealed class TodoWindow : Window
         button.Content = shell;
         button.Click += (_, _) =>
         {
-            _currentViewId = viewId;
-            _selectedTaskId = FirstTaskForSelection(viewId)?.Id;
-            SaveSettings();
-            RefreshAll();
+            NavigateToView(viewId);
         };
         return button;
     }
@@ -565,10 +678,7 @@ public sealed class TodoWindow : Window
 
         grid.Tapped += (_, _) =>
         {
-            _currentViewId = viewId;
-            _selectedTaskId = FirstTaskForSelection(viewId)?.Id;
-            SaveSettings();
-            RefreshAll();
+            NavigateToView(viewId);
         };
 
         shell.Child = grid;
@@ -580,6 +690,10 @@ public sealed class TodoWindow : Window
     private MenuFlyout BuildListMenu(TodoList list)
     {
         var menu = new MenuFlyout();
+
+        var changeColor = new MenuFlyoutItem { Text = "更改配色" };
+        changeColor.Click += async (_, _) => await ShowListColorDialogAsync(list);
+        menu.Items.Add(changeColor);
 
         var rename = new MenuFlyoutItem { Text = "重命名" };
         rename.Click += async (_, _) => await ShowRenameListDialogAsync(list);
@@ -601,7 +715,30 @@ public sealed class TodoWindow : Window
         CancelTaskDrag();
         _taskRows.Clear();
         _taskContent.Children.Clear();
+        _activeTaskSection = null;
+        _completedTaskSection = null;
         _taskTitle.Text = ViewTitle(_currentViewId);
+
+        if (_currentViewId == TodoViewIds.RecycleBin)
+        {
+            var deletedTasks = TodoQuery.RecycleBinTaskNodes(
+                _data,
+                CollapsedTaskIds(),
+                _maximumVisibleTaskDepth).ToList();
+            _taskSummary.Text = $"{deletedTasks.Count} 项";
+            if (deletedTasks.Count == 0)
+            {
+                _taskContent.Children.Add(EmptyState("回收站为空"));
+                return;
+            }
+
+            foreach (var node in deletedTasks)
+            {
+                _taskContent.Children.Add(TaskRow(node.Task, node.Task.IsCompleted, node.Depth, recycleBin: true));
+            }
+
+            return;
+        }
 
         var activeTasks = ActiveTaskNodesForView(_currentViewId).ToList();
         var completedTasks = CompletedTaskNodesForView(_currentViewId).ToList();
@@ -624,19 +761,23 @@ public sealed class TodoWindow : Window
         }
 
         _taskSummary.Text = $"{activeTasks.Count} 项";
+        var activeSection = new StackPanel { Spacing = 8 };
+        _activeTaskSection = activeSection;
         if (activeTasks.Count == 0)
         {
-            _taskContent.Children.Add(EmptyState("当前没有待办任务"));
+            activeSection.Children.Add(EmptyState("当前没有待办任务"));
         }
         else
         {
             foreach (var node in activeTasks)
             {
-                _taskContent.Children.Add(TaskRow(node.Task, completed: false, depth: node.Depth));
+                activeSection.Children.Add(TaskRow(node.Task, completed: false, depth: node.Depth));
             }
         }
 
-        _taskContent.Children.Add(CompletedSection(completedTasks));
+        _taskContent.Children.Add(activeSection);
+        _completedTaskSection = (FrameworkElement)CompletedSection(completedTasks);
+        _taskContent.Children.Add(_completedTaskSection);
     }
 
     private UIElement CompletedSection(IReadOnlyList<TodoTaskNode> completedTasks)
@@ -708,7 +849,7 @@ public sealed class TodoWindow : Window
         return section;
     }
 
-    private UIElement TaskRow(TodoTask task, bool completed, int depth = 0)
+    private UIElement TaskRow(TodoTask task, bool completed, int depth = 0, bool recycleBin = false)
     {
         var selected = string.Equals(_selectedTaskId, task.Id, StringComparison.Ordinal);
         var button = new Button
@@ -718,11 +859,17 @@ public sealed class TodoWindow : Window
             MinHeight = 54,
             BorderThickness = new Thickness(0),
             Background = TransparentBrush(),
+            CornerRadius = new CornerRadius(8),
             Tag = task.Id,
             Margin = new Thickness(Math.Clamp(depth, 0, TodoQuery.MaxTaskTreeDepth - 1) * 22, 0, 0, 0)
         };
+        ConfigureTaskRowButtonChrome(button);
         _taskRows.Add(button);
-        AttachTaskDragHandlers(button, task);
+        if (!recycleBin)
+        {
+            AttachTaskDragHandlers(button, task);
+            button.ContextFlyout = BuildTaskContextMenu(task);
+        }
         AutomationProperties.SetName(button, task.Title);
 
         var shell = new Border
@@ -733,6 +880,31 @@ public sealed class TodoWindow : Window
             Background = selected ? (completed ? Brush(0xEEF8F1) : Brush(0xEEF9FA)) : Brush(completed ? 0xFBFCFCu : 0xFFFFFFu),
             Padding = new Thickness(14, 8, 10, 8)
         };
+        var isPointerOver = false;
+        void RefreshTaskCardVisual()
+        {
+            var isSelected = string.Equals(_selectedTaskId, task.Id, StringComparison.Ordinal);
+            shell.BorderBrush = isSelected
+                ? (completed ? Brush(0xBFDCCB) : AccentBrush())
+                : isPointerOver
+                    ? TaskHoverBorderBrush(completed)
+                    : Brush(0xE1EAED);
+            shell.Background = isSelected
+                ? (completed ? Brush(0xEEF8F1) : Brush(0xEEF9FA))
+                : isPointerOver
+                    ? TaskHoverBackgroundBrush(completed)
+                    : Brush(completed ? 0xFBFCFCu : 0xFFFFFFu);
+        }
+        button.AddHandler(UIElement.PointerEnteredEvent, new PointerEventHandler((_, _) =>
+        {
+            isPointerOver = true;
+            RefreshTaskCardVisual();
+        }), true);
+        button.AddHandler(UIElement.PointerExitedEvent, new PointerEventHandler((_, _) =>
+        {
+            isPointerOver = false;
+            RefreshTaskCardVisual();
+        }), true);
 
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
@@ -747,7 +919,12 @@ public sealed class TodoWindow : Window
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center
         };
-        if (TodoQuery.DirectChildCount(_data, task.Id) > 0)
+        if (recycleBin)
+        {
+            leadingActions.Children.Add(new Border { Width = 24, Height = 24 });
+            leadingActions.Children.Add(new Border { Width = 24, Height = 24 });
+        }
+        else if (TodoQuery.DirectChildCount(_data, task.Id) > 0)
         {
             leadingActions.Children.Add(TreeToggleButton(task));
         }
@@ -787,7 +964,23 @@ public sealed class TodoWindow : Window
         Grid.SetColumn(time, 3);
         grid.Children.Add(time);
 
-        if (completed)
+        if (recycleBin)
+        {
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4
+            };
+            var restore = RowIconButton("\uE777", "恢复任务树", SecondaryTextBrush());
+            restore.Click += (_, _) => RestoreTaskTree(task);
+            actions.Children.Add(restore);
+            var deletePermanently = RowIconButton("\uE74D", "永久删除任务树", Brush(0xB42318));
+            deletePermanently.Click += async (_, _) => await PermanentlyDeleteTaskTreeAsync(task);
+            actions.Children.Add(deletePermanently);
+            Grid.SetColumn(actions, 4);
+            grid.Children.Add(actions);
+        }
+        else if (completed)
         {
             var actions = new StackPanel
             {
@@ -798,7 +991,7 @@ public sealed class TodoWindow : Window
             restore.Click += (_, _) => SetTaskCompleted(task, false);
             actions.Children.Add(restore);
             var delete = RowIconButton("\uE74D", "删除任务", SecondaryTextBrush());
-            delete.Click += (_, _) => DeleteTask(task);
+            delete.Click += async (_, _) => await DeleteTaskAsync(task);
             actions.Children.Add(delete);
             Grid.SetColumn(actions, 4);
             grid.Children.Add(actions);
@@ -828,6 +1021,42 @@ public sealed class TodoWindow : Window
         };
 
         return button;
+    }
+
+    private MenuFlyout BuildTaskContextMenu(TodoTask task)
+    {
+        var menu = new MenuFlyout();
+        var createChild = new MenuFlyoutItem
+        {
+            Text = "创建子任务",
+            IsEnabled = TodoQuery.CanAddChild(_data, task)
+        };
+        if (!createChild.IsEnabled)
+        {
+            ToolTipService.SetToolTip(createChild, TodoQuery.AddChildBlockedReason(_data, task));
+        }
+
+        createChild.Click += async (_, _) => await ShowAddSubtaskDialogAsync(task);
+        menu.Items.Add(createChild);
+
+        var delete = new MenuFlyoutItem { Text = "删除任务" };
+        delete.Click += async (_, _) => await DeleteTaskAsync(task);
+        menu.Items.Add(delete);
+        return menu;
+    }
+
+    private void ConfigureTaskRowButtonChrome(Button button)
+    {
+        button.Resources["ButtonBackground"] = TransparentBrush();
+        button.Resources["ButtonBackgroundPointerOver"] = TransparentBrush();
+        button.Resources["ButtonBackgroundPressed"] = TransparentBrush();
+        button.Resources["ButtonBorderBrush"] = TransparentBrush();
+        button.Resources["ButtonBorderBrushPointerOver"] = TransparentBrush();
+        button.Resources["ButtonBorderBrushPressed"] = TransparentBrush();
+        button.Resources["ButtonBorderThickness"] = new Thickness(0);
+        button.Resources["ButtonBorderThicknessPointerOver"] = new Thickness(0);
+        button.Resources["ButtonBorderThicknessPressed"] = new Thickness(0);
+        button.Resources["ButtonCornerRadius"] = new CornerRadius(8);
     }
 
     private void AttachTaskDragHandlers(Button row, TodoTask task)
@@ -952,12 +1181,14 @@ public sealed class TodoWindow : Window
         _dragCandidateRow.Opacity = 0.58;
         _currentDropTarget = DropTargetFromPoint(_taskDragCurrentPoint);
         ApplyDropTargetVisual(_currentDropTarget);
+        StartTaskAutoScroll();
     }
 
     private void CancelTaskDrag()
     {
         _taskDragTimer?.Stop();
         _taskDragTimer = null;
+        StopTaskAutoScroll();
         RemoveDropPreview();
 
         foreach (var row in _taskRows)
@@ -971,6 +1202,95 @@ public sealed class TodoWindow : Window
         _currentDropTarget = null;
         _isTaskDragging = false;
         capturedRow?.ReleasePointerCaptures();
+    }
+
+    private void StartTaskAutoScroll()
+    {
+        _taskAutoScrollTimer ??= DispatcherQueue.CreateTimer();
+        _taskAutoScrollTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _taskAutoScrollTimer.Tick -= OnTaskAutoScrollTick;
+        _taskAutoScrollTimer.Tick += OnTaskAutoScrollTick;
+        _taskAutoScrollTimer.Start();
+    }
+
+    private void StopTaskAutoScroll()
+    {
+        _taskAutoScrollTimer?.Stop();
+    }
+
+    private void OnTaskAutoScrollTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        if (!_isTaskDragging || _taskScroll.ActualHeight <= 0)
+        {
+            StopTaskAutoScroll();
+            return;
+        }
+
+        var origin = _taskScroll.TransformToVisual(_root).TransformPoint(new Point(0, 0));
+        var top = origin.Y;
+        var bottom = top + _taskScroll.ActualHeight;
+        var distance = _taskDragCurrentPoint.Y < top
+            ? _taskDragCurrentPoint.Y - top
+            : _taskDragCurrentPoint.Y > bottom
+                ? _taskDragCurrentPoint.Y - bottom
+                : 0;
+        if (Math.Abs(distance) < double.Epsilon)
+        {
+            return;
+        }
+
+        var ratio = Math.Clamp(Math.Abs(distance) / TaskAutoScrollActivationDistance, 0, 1);
+        var speed = TaskAutoScrollMinimumSpeed + (TaskAutoScrollMaximumSpeed - TaskAutoScrollMinimumSpeed) * ratio;
+        var scrollRange = TaskAutoScrollRange();
+        var nextOffset = Math.Clamp(
+            _taskScroll.VerticalOffset + Math.Sign(distance) * speed * 0.016,
+            scrollRange.Minimum,
+            scrollRange.Maximum);
+        if (Math.Abs(nextOffset - _taskScroll.VerticalOffset) < 0.01)
+        {
+            return;
+        }
+
+        _taskScroll.ChangeView(null, nextOffset, null, disableAnimation: true);
+        var nextTarget = DropTargetFromPoint(_taskDragCurrentPoint);
+        if (nextTarget is null && _currentDropTarget is not null && IsPointInsideDropPreview(_taskDragCurrentPoint))
+        {
+            nextTarget = _currentDropTarget;
+        }
+
+        if (!DropTargetsEqual(_currentDropTarget, nextTarget))
+        {
+            _currentDropTarget = nextTarget;
+            ApplyDropTargetVisual(_currentDropTarget);
+        }
+    }
+
+    private (double Minimum, double Maximum) TaskAutoScrollRange()
+    {
+        var maximum = Math.Max(0, _taskScroll.ScrollableHeight);
+        if (_dragCandidateTask is null ||
+            _activeTaskSection is null ||
+            _completedTaskSection is null ||
+            !TryGetElementBounds(_completedTaskSection, out var completedBounds))
+        {
+            return (0, maximum);
+        }
+
+        var scrollOrigin = _taskScroll.TransformToVisual(_root).TransformPoint(new Point(0, 0));
+        var completedTop = Math.Clamp(
+            completedBounds.Top - scrollOrigin.Y + _taskScroll.VerticalOffset,
+            0,
+            maximum);
+        if (_dragCandidateTask.IsCompleted)
+        {
+            return (Math.Clamp(completedTop - TaskAutoScrollSectionOverlap, 0, maximum), maximum);
+        }
+
+        var activeMaximum = Math.Clamp(
+            completedTop - _taskScroll.ActualHeight + TaskAutoScrollSectionOverlap,
+            0,
+            maximum);
+        return (0, activeMaximum);
     }
 
     private void SuppressTaskClickFromDrag(string taskId)
@@ -1778,6 +2098,12 @@ public sealed class TodoWindow : Window
 
     private void RefreshDetail()
     {
+        if (_currentViewId == TodoViewIds.RecycleBin)
+        {
+            _detailHost.Child = EmptyDetail();
+            return;
+        }
+
         var task = SelectedTask();
         _detailHost.Child = task is null ? EmptyDetail() : DetailContent(task);
     }
@@ -1900,6 +2226,77 @@ public sealed class TodoWindow : Window
             });
         }
         panel.Children.Add(status);
+
+        if (task.IsCompleted)
+        {
+            var originalCompletedAt = task.CompletedAt ?? DateTimeOffset.Now;
+            var completedLocal = originalCompletedAt.ToLocalTime();
+            var completedDatePicker = new CalendarDatePicker
+            {
+                Date = new DateTimeOffset(completedLocal.Date),
+                PlaceholderText = "选择完成日期",
+                Width = CompletedTimestampEditorWidth,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            var completedTimePicker = new TimePicker
+            {
+                Time = completedLocal.TimeOfDay,
+                ClockIdentifier = "24HourClock",
+                Width = CompletedTimestampEditorWidth,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            var completionActions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Spacing = 8,
+                Visibility = Visibility.Collapsed
+            };
+            var discardCompletionChange = PillButton("撤销修改", "\uE711");
+            discardCompletionChange.MinWidth = 112;
+            var applyCompletionChange = PrimaryButton("应用修改", "\uE73E");
+            applyCompletionChange.MinWidth = 112;
+            completionActions.Children.Add(discardCompletionChange);
+            completionActions.Children.Add(applyCompletionChange);
+            var isSynchronizingCompletionDraft = false;
+            void DiscardCompletionDraft()
+            {
+                isSynchronizingCompletionDraft = true;
+                completedDatePicker.Date = new DateTimeOffset(originalCompletedAt.ToLocalTime().Date);
+                completedTimePicker.Time = originalCompletedAt.ToLocalTime().TimeOfDay;
+                isSynchronizingCompletionDraft = false;
+                completionActions.Visibility = Visibility.Collapsed;
+            }
+            void MarkCompletionDraftChanged()
+            {
+                if (!isSynchronizingCompletionDraft)
+                {
+                    completionActions.Visibility = Visibility.Visible;
+                }
+            }
+            void ApplyCompletionDraft()
+            {
+                if (!task.IsCompleted || completedDatePicker.Date is not { } completedDate)
+                {
+                    return;
+                }
+
+                var localCompletedAt = completedDate.DateTime.Date.Add(completedTimePicker.Time);
+                task.CompletedAt = new DateTimeOffset(
+                    localCompletedAt,
+                    TimeZoneInfo.Local.GetUtcOffset(localCompletedAt));
+                Touch(task);
+                SaveDataAndRefresh();
+            }
+
+            completedDatePicker.DateChanged += (_, _) => MarkCompletionDraftChanged();
+            completedTimePicker.TimeChanged += (_, _) => MarkCompletionDraftChanged();
+            discardCompletionChange.Click += (_, _) => DiscardCompletionDraft();
+            applyCompletionChange.Click += (_, _) => ApplyCompletionDraft();
+            panel.Children.Add(DetailField("\uE787", "完成日期", completedDatePicker, CompletedTimestampEditorWidth));
+            panel.Children.Add(DetailField("\uE916", "完成时间", completedTimePicker, CompletedTimestampEditorWidth));
+            panel.Children.Add(completionActions);
+        }
 
         panel.Children.Add(new Border
         {
@@ -2041,7 +2438,7 @@ public sealed class TodoWindow : Window
         }
 
         var delete = DangerButton("删除任务", "\uE74D");
-        delete.Click += (_, _) => DeleteTask(task);
+        delete.Click += async (_, _) => await DeleteTaskAsync(task);
         actions.Children.Add(delete);
         Grid.SetRow(actions, 1);
         root.Children.Add(actions);
@@ -2067,7 +2464,14 @@ public sealed class TodoWindow : Window
         _addTaskBox.Text = string.Empty;
     }
 
-    private void AddTask(string title, string listId, bool isImportant, DateTime startDate, DateTime? dueDate, string? parentTaskId = null)
+    private void AddTask(
+        string title,
+        string listId,
+        bool isImportant,
+        DateTime startDate,
+        DateTime? dueDate,
+        string? parentTaskId = null,
+        string? notes = null)
     {
         var now = DateTimeOffset.Now;
         parentTaskId = NormalizeParentTaskId(parentTaskId);
@@ -2080,10 +2484,12 @@ public sealed class TodoWindow : Window
             IsImportant = isImportant,
             StartDate = startDate.Date,
             DueDate = dueDate?.Date,
+            Notes = notes?.Trim() ?? string.Empty,
             CreatedAt = now,
             UpdatedAt = now
         };
         _data.Tasks.Add(task);
+        InsertNewTaskAsFirstChild(task);
         _selectedTaskId = task.Id;
         if (_currentViewId == TodoViewIds.Completed)
         {
@@ -2091,6 +2497,28 @@ public sealed class TodoWindow : Window
         }
 
         SaveDataAndRefresh();
+    }
+
+    private void InsertNewTaskAsFirstChild(TodoTask task)
+    {
+        if (string.IsNullOrWhiteSpace(task.ParentTaskId))
+        {
+            return;
+        }
+
+        var siblingIndex = 2;
+        foreach (var sibling in _data.Tasks
+                     .Where(candidate => candidate.Id != task.Id &&
+                         string.Equals(candidate.ParentTaskId, task.ParentTaskId, StringComparison.Ordinal))
+                     .OrderBy(candidate => candidate.SortOrder <= 0 ? double.MaxValue : candidate.SortOrder)
+                     .ThenBy(candidate => candidate.CreatedAt))
+        {
+            sibling.SortOrder = siblingIndex * 1000;
+            siblingIndex++;
+        }
+
+        task.SortOrder = 1000;
+        _settings.CollapsedTaskIds.RemoveAll(id => string.Equals(id, task.ParentTaskId, StringComparison.Ordinal));
     }
 
     private string? NormalizeParentTaskId(string? parentTaskId)
@@ -2113,6 +2541,15 @@ public sealed class TodoWindow : Window
             PlaceholderText = "任务名称",
             MinWidth = 340,
             FontSize = 15
+        };
+        var notesBox = new TextBox
+        {
+            PlaceholderText = "备注（可选）",
+            MinWidth = 340,
+            MinHeight = 96,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 14
         };
 
         var listBox = BuildListComboBox(DefaultListIdForNewTask());
@@ -2141,6 +2578,8 @@ public sealed class TodoWindow : Window
         };
         layout.Children.Add(FieldLabel("任务名称"));
         layout.Children.Add(titleBox);
+        layout.Children.Add(FieldLabel("备注"));
+        layout.Children.Add(notesBox);
         layout.Children.Add(FieldLabel("所属清单"));
         layout.Children.Add(listBox);
         layout.Children.Add(FieldLabel("开始时间"));
@@ -2183,7 +2622,8 @@ public sealed class TodoWindow : Window
             listId,
             importantBox.IsChecked == true,
             startPicker.Date?.DateTime.Date ?? DateTime.Today,
-            duePicker.Date?.DateTime.Date);
+            duePicker.Date?.DateTime.Date,
+            notes: notesBox.Text);
     }
 
     private async Task ShowAddSubtaskDialogAsync(TodoTask parent)
@@ -2198,6 +2638,15 @@ public sealed class TodoWindow : Window
             PlaceholderText = "子任务名称",
             MinWidth = 340,
             FontSize = 15
+        };
+        var notesBox = new TextBox
+        {
+            PlaceholderText = "备注（可选）",
+            MinWidth = 340,
+            MinHeight = 96,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 14
         };
 
         var layout = new StackPanel
@@ -2215,6 +2664,8 @@ public sealed class TodoWindow : Window
         });
         layout.Children.Add(FieldLabel("子任务名称"));
         layout.Children.Add(titleBox);
+        layout.Children.Add(FieldLabel("备注"));
+        layout.Children.Add(notesBox);
 
         var dialog = new ContentDialog
         {
@@ -2248,7 +2699,8 @@ public sealed class TodoWindow : Window
             parent.IsImportant,
             parent.StartDate == default ? DateTime.Today : parent.StartDate.Date,
             parent.DueDate,
-            parent.Id);
+            parent.Id,
+            notesBox.Text);
     }
 
     private async Task ShowAddListDialogAsync()
@@ -2382,6 +2834,216 @@ public sealed class TodoWindow : Window
         SaveDataAndRefresh();
     }
 
+    private async Task ShowFilterDialogAsync()
+    {
+        var listFilterBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        var allLists = new ComboBoxItem { Tag = string.Empty, Content = "全部清单" };
+        listFilterBox.Items.Add(allLists);
+        listFilterBox.SelectedItem = allLists;
+        foreach (var list in OrderedLists())
+        {
+            var item = new ComboBoxItem { Tag = list.Id, Content = list.Name };
+            listFilterBox.Items.Add(item);
+            if (string.Equals(_listIdFilter, list.Id, StringComparison.Ordinal))
+            {
+                listFilterBox.SelectedItem = item;
+            }
+        }
+
+        var hierarchyBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var choice in new[] { (1, "仅一级"), (2, "一级和二级"), (TodoQuery.MaxTaskTreeDepth, "全部层级") })
+        {
+            var item = new ComboBoxItem { Tag = choice.Item1, Content = choice.Item2 };
+            hierarchyBox.Items.Add(item);
+            if (choice.Item1 == _maximumVisibleTaskDepth)
+            {
+                hierarchyBox.SelectedItem = item;
+            }
+        }
+
+        var dateModeBox = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var choice in new[]
+                 {
+                     ("none", "不按日期筛选"),
+                     ("start", "开始日期"),
+                     ("period", "执行周期")
+                 })
+        {
+            var item = new ComboBoxItem { Tag = choice.Item1, Content = choice.Item2 };
+            dateModeBox.Items.Add(item);
+            var selected = _dateRangeFilter switch
+            {
+                null => choice.Item1 == "none",
+                { Mode: TodoDateFilterMode.StartDate } => choice.Item1 == "start",
+                _ => choice.Item1 == "period"
+            };
+            if (selected)
+            {
+                dateModeBox.SelectedItem = item;
+            }
+        }
+
+        var startPicker = new CalendarDatePicker
+        {
+            Date = _dateRangeFilter is null ? null : new DateTimeOffset(_dateRangeFilter.StartDate.Date),
+            PlaceholderText = "开始日期",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var endPicker = new CalendarDatePicker
+        {
+            Date = _dateRangeFilter is null ? null : new DateTimeOffset(_dateRangeFilter.EndDate.Date),
+            PlaceholderText = "结束日期",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var dateRangeFields = new StackPanel { Spacing = 12 };
+        dateRangeFields.Children.Add(startPicker);
+        dateRangeFields.Children.Add(endPicker);
+        void UpdateDateRangeVisibility()
+        {
+            var hasDateMode = dateModeBox.SelectedItem is ComboBoxItem { Tag: string mode } && mode != "none";
+            dateRangeFields.Visibility = hasDateMode ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void SetRange(DateTime start, DateTime end)
+        {
+            startPicker.Date = new DateTimeOffset(start.Date);
+            endPicker.Date = new DateTimeOffset(end.Date);
+            if (dateModeBox.SelectedItem is ComboBoxItem { Tag: string mode } && mode == "none")
+            {
+                dateModeBox.SelectedItem = dateModeBox.Items
+                    .OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => string.Equals(item.Tag as string, "period", StringComparison.Ordinal));
+            }
+
+            UpdateDateRangeVisibility();
+        }
+        dateModeBox.SelectionChanged += (_, _) => UpdateDateRangeVisibility();
+
+        var quickActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var week = PillButton("本周", "\uE787");
+        week.Click += (_, _) =>
+        {
+            var today = DateTime.Today;
+            var offset = ((int)today.DayOfWeek + 6) % 7;
+            SetRange(today.AddDays(-offset), today.AddDays(6 - offset));
+        };
+        quickActions.Children.Add(week);
+        var month = PillButton("本月", "\uE81C");
+        month.Click += (_, _) =>
+        {
+            var today = DateTime.Today;
+            var first = new DateTime(today.Year, today.Month, 1);
+            SetRange(first, first.AddMonths(1).AddDays(-1));
+        };
+        quickActions.Children.Add(month);
+
+        var layout = new StackPanel { Spacing = 12, MinWidth = 360 };
+        layout.Children.Add(FieldLabel("任务清单"));
+        layout.Children.Add(listFilterBox);
+        layout.Children.Add(FieldLabel("任务层级"));
+        layout.Children.Add(hierarchyBox);
+        layout.Children.Add(FieldLabel("日期范围"));
+        layout.Children.Add(dateModeBox);
+        layout.Children.Add(quickActions);
+        layout.Children.Add(dateRangeFields);
+        UpdateDateRangeVisibility();
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _root.XamlRoot,
+            RequestedTheme = ResolveElementTheme(),
+            Title = "筛选",
+            Content = layout,
+            PrimaryButtonText = "应用",
+            SecondaryButtonText = "清除筛选",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (dateModeBox.SelectedItem is ComboBoxItem { Tag: string mode } && mode != "none" &&
+                (startPicker.Date is null || endPicker.Date is null || startPicker.Date.Value.Date > endPicker.Date.Value.Date))
+            {
+                args.Cancel = true;
+            }
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None)
+        {
+            return;
+        }
+
+        if (result == ContentDialogResult.Secondary)
+        {
+            _dateRangeFilter = null;
+            _listIdFilter = null;
+            _maximumVisibleTaskDepth = TodoQuery.MaxTaskTreeDepth;
+            RefreshAll();
+            return;
+        }
+
+        _maximumVisibleTaskDepth = hierarchyBox.SelectedItem is ComboBoxItem { Tag: int depth }
+            ? Math.Clamp(depth, 1, TodoQuery.MaxTaskTreeDepth)
+            : TodoQuery.MaxTaskTreeDepth;
+        _dateRangeFilter = dateModeBox.SelectedItem is ComboBoxItem { Tag: string dateMode } &&
+            dateMode != "none" && startPicker.Date is { } start && endPicker.Date is { } end
+            ? new TodoDateRangeFilter
+            {
+                Mode = dateMode == "period" ? TodoDateFilterMode.ExecutionPeriod : TodoDateFilterMode.StartDate,
+                StartDate = start.DateTime.Date,
+                EndDate = end.DateTime.Date
+            }
+            : null;
+        _listIdFilter = listFilterBox.SelectedItem is ComboBoxItem { Tag: string listId } &&
+            !string.IsNullOrWhiteSpace(listId)
+            ? listId
+            : null;
+        if (_dateRangeFilter is not null || _listIdFilter is not null)
+        {
+            _currentViewId = TodoViewIds.All;
+        }
+
+        _selectedTaskId = FirstTaskForSelection(_currentViewId)?.Id;
+        SaveSettings();
+        RefreshAll();
+    }
+
+    private bool IsFilterActive()
+    {
+        return _dateRangeFilter is { IsValid: true } ||
+            !string.IsNullOrWhiteSpace(_listIdFilter) ||
+            _maximumVisibleTaskDepth < TodoQuery.MaxTaskTreeDepth;
+    }
+
+    private void RefreshFilterButtonState()
+    {
+        var isActive = IsFilterActive();
+        if (_filterButton.Content is StackPanel stack)
+        {
+            var label = stack.Children.OfType<TextBlock>().FirstOrDefault();
+            if (label is not null)
+            {
+                label.Text = isActive ? "筛选中" : "筛选";
+                label.Foreground = isActive ? FilterActiveTextBrush() : TextBrush();
+            }
+        }
+
+        var border = isActive ? FilterActiveBorderBrush() : Brush(0xDCE7EA);
+        var background = isActive ? FilterActiveBackgroundBrush() : Brush(0xFFFFFF);
+        var hoverBorder = FilterHoverBorderBrush(isActive);
+        var hoverBackground = FilterHoverBackgroundBrush(isActive);
+        var pressedBorder = FilterPressedBorderBrush(isActive);
+        var pressedBackground = FilterPressedBackgroundBrush(isActive);
+        _filterButton.Resources["ButtonBackground"] = background;
+        _filterButton.Resources["ButtonBackgroundPointerOver"] = hoverBackground;
+        _filterButton.Resources["ButtonBackgroundPressed"] = pressedBackground;
+        _filterButton.Resources["ButtonBorderBrush"] = border;
+        _filterButton.Resources["ButtonBorderBrushPointerOver"] = hoverBorder;
+        _filterButton.Resources["ButtonBorderBrushPressed"] = pressedBorder;
+        ToolTipService.SetToolTip(_filterButton, isActive ? "已应用筛选，点击可调整或清空" : "筛选任务");
+        UpdateVirtualTitleBarRegions();
+    }
+
     private async Task ShowSettingsDialogAsync()
     {
         var themeBox = new ComboBox
@@ -2392,6 +3054,83 @@ public sealed class TodoWindow : Window
         AddThemeItem(themeBox, "跟随系统", TodoThemeIds.System);
         AddThemeItem(themeBox, "浅色主题", TodoThemeIds.Light);
         AddThemeItem(themeBox, "深色主题", TodoThemeIds.Dark);
+
+        var recycleBinEnabledBox = new CheckBox
+        {
+            Content = "启用回收站",
+            IsChecked = _settings.IsRecycleBinEnabled
+        };
+        var retentionBox = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 300
+        };
+        foreach (var preset in new[]
+                 {
+                     (TodoRecycleBinRetentionPresets.SevenDays, "7 天"),
+                     (TodoRecycleBinRetentionPresets.ThirtyDays, "30 天"),
+                     (TodoRecycleBinRetentionPresets.NinetyDays, "90 天"),
+                     (TodoRecycleBinRetentionPresets.Custom, "自定义")
+                 })
+        {
+            var item = new ComboBoxItem { Tag = preset.Item1, Content = preset.Item2 };
+            retentionBox.Items.Add(item);
+            if (string.Equals(preset.Item1, _settings.RecycleBinRetentionPreset, StringComparison.Ordinal))
+            {
+                retentionBox.SelectedItem = item;
+            }
+        }
+
+        var customRetentionDaysBox = new TextBox
+        {
+            Text = _settings.RecycleBinCustomRetentionDays.ToString(),
+            PlaceholderText = "请输入 1–365 天",
+            InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Number) } }
+        };
+        var customRetentionHint = new TextBlock
+        {
+            Text = "仅支持 1–365 的整数天数。",
+            FontSize = 12,
+            Foreground = SecondaryTextBrush(),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var customRetentionError = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = Brush(0xB42318),
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed
+        };
+        bool ValidateCustomRetentionDays(bool showError)
+        {
+            var isCustom = retentionBox.SelectedItem is ComboBoxItem { Tag: string preset } &&
+                string.Equals(preset, TodoRecycleBinRetentionPresets.Custom, StringComparison.Ordinal);
+            var isValid = !isCustom ||
+                (int.TryParse(customRetentionDaysBox.Text, out var days) && days is >= 1 and <= 365);
+            customRetentionError.Text = isValid ? string.Empty : "请输入 1–365 之间的整数天数。";
+            customRetentionError.Visibility = showError && !isValid && recycleBinEnabledBox.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            return isValid;
+        }
+        void UpdateRecycleBinControls()
+        {
+            var custom = retentionBox.SelectedItem is ComboBoxItem { Tag: string preset } &&
+                string.Equals(preset, TodoRecycleBinRetentionPresets.Custom, StringComparison.Ordinal);
+            retentionBox.IsEnabled = recycleBinEnabledBox.IsChecked == true;
+            customRetentionDaysBox.Visibility = custom && recycleBinEnabledBox.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            customRetentionHint.Visibility = custom && recycleBinEnabledBox.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            ValidateCustomRetentionDays(showError: true);
+        }
+        retentionBox.SelectionChanged += (_, _) => UpdateRecycleBinControls();
+        recycleBinEnabledBox.Checked += (_, _) => UpdateRecycleBinControls();
+        recycleBinEnabledBox.Unchecked += (_, _) => UpdateRecycleBinControls();
+        customRetentionDaysBox.TextChanged += (_, _) => ValidateCustomRetentionDays(showError: true);
+        UpdateRecycleBinControls();
 
         var layout = new StackPanel
         {
@@ -2406,6 +3145,25 @@ public sealed class TodoWindow : Window
             Foreground = TextBrush()
         });
         layout.Children.Add(themeBox);
+        layout.Children.Add(new TextBlock
+        {
+            Text = "回收站",
+            FontSize = 14,
+            FontWeight = MuxFontWeights.SemiBold,
+            Foreground = TextBrush(),
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+        layout.Children.Add(recycleBinEnabledBox);
+        layout.Children.Add(new TextBlock
+        {
+            Text = "自动清理周期",
+            FontSize = 13,
+            Foreground = SecondaryTextBrush()
+        });
+        layout.Children.Add(retentionBox);
+        layout.Children.Add(customRetentionDaysBox);
+        layout.Children.Add(customRetentionHint);
+        layout.Children.Add(customRetentionError);
         layout.Children.Add(new TextBlock
         {
             Text = "便签模式可在这里打开，打开后主界面会暂时隐藏。",
@@ -2424,6 +3182,22 @@ public sealed class TodoWindow : Window
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
         };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (retentionBox.SelectedItem is not ComboBoxItem { Tag: string preset })
+            {
+                args.Cancel = true;
+                return;
+            }
+
+            if (recycleBinEnabledBox.IsChecked == true &&
+                string.Equals(preset, TodoRecycleBinRetentionPresets.Custom, StringComparison.Ordinal) &&
+                !ValidateCustomRetentionDays(showError: true))
+            {
+                args.Cancel = true;
+                customRetentionDaysBox.Focus(FocusState.Programmatic);
+            }
+        };
 
         var result = await dialog.ShowAsync();
         if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary))
@@ -2435,6 +3209,27 @@ public sealed class TodoWindow : Window
         {
             SetTheme(theme);
         }
+
+        _settings.IsRecycleBinEnabled = recycleBinEnabledBox.IsChecked == true;
+        if (retentionBox.SelectedItem is ComboBoxItem { Tag: string retentionPreset })
+        {
+            _settings.RecycleBinRetentionPreset = retentionPreset;
+        }
+
+        if (int.TryParse(customRetentionDaysBox.Text, out var customDays))
+        {
+            _settings.RecycleBinCustomRetentionDays = customDays;
+        }
+
+        PurgeExpiredRecycleBin();
+        if (_currentViewId == TodoViewIds.RecycleBin && !_settings.IsRecycleBinEnabled)
+        {
+            _currentViewId = TodoViewIds.Today;
+            _selectedTaskId = FirstTaskForSelection(_currentViewId)?.Id;
+        }
+        SaveSettings();
+        BuildShell();
+        RefreshAll();
 
         if (result == ContentDialogResult.Secondary)
         {
@@ -2452,7 +3247,7 @@ public sealed class TodoWindow : Window
             Width = contentWidth,
             MaxWidth = contentWidth,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         layout.Children.Add(HelpHero());
@@ -2461,11 +3256,13 @@ public sealed class TodoWindow : Window
             "整理、编辑和查看完整任务",
             "适合集中管理任务、清单、日期、备注和子任务。",
             [
-                new HelpCardInfo("\uE8A5", "切换视图", "在左侧切换今日、计划、重要、全部、已完成和自定义清单。"),
+                new HelpCardInfo("\uE8A5", "切换视图", "在左侧切换今日、计划、重要、全部、已完成、回收站和自定义清单。"),
                 new HelpCardInfo("\uE710", "新增任务", "在顶部输入任务后按回车；输入为空时点击添加按钮会打开新建任务弹窗。"),
-                new HelpCardInfo("\uE70F", "编辑详情", "点击任务后，在右侧编辑标题、清单、开始时间、截止日期、备注和重要标记。"),
+                new HelpCardInfo("\uE70F", "编辑详情", "点击任务后，在右侧编辑标题、清单、开始时间、截止日期、备注和重要标记；完成时间修改需点击应用，切换任务会自动撤销未应用内容。"),
+                new HelpCardInfo("\uE712", "任务菜单", "右键任务可创建带备注的子任务或删除任务；删除含后代任务时会先确认。"),
+                new HelpCardInfo("\uE7C2", "移动窗口", "可拖动顶部品牌和空白区域移动主窗口；筛选、侧栏菜单和任务操作仍可正常点击。"),
                 new HelpCardInfo("\uE8FD", "管理清单", "左侧清单区可以新增清单，也可以对已有清单改名或删除。"),
-                new HelpCardInfo("\uE8C8", "子任务", "选中任务后可添加子任务；父任务可展开或收起，最多支持三层。"),
+                new HelpCardInfo("\uE8C8", "子任务", "选中任务后可添加子任务并填写备注；父任务可展开或收起，最多支持三层。"),
                 new HelpCardInfo("\uE73E", "完成与恢复", "点击任务前的圆形按钮完成任务；已完成任务会弱化显示，可恢复或删除。")
             ],
             useTwoColumns));
@@ -2478,8 +3275,21 @@ public sealed class TodoWindow : Window
                 new HelpCardInfo("\uE840", "置顶显示", "点击置顶按钮，让便签保持在其他窗口上方。"),
                 new HelpCardInfo("\uE890", "透明度与缩放", "在便签设置中调整透明度和 50%-200% 缩放，也可一键恢复 100%。"),
                 new HelpCardInfo("\uE8AB", "调整窗口", "拖动边缘改变大小，拖动顶部 Fowan 区域移动窗口位置。"),
-                new HelpCardInfo("\uE7C2", "拖动排序", "长按任务后拖动；虚线框会预览松手后的具体位置和父子归属。"),
-                new HelpCardInfo("\uE73E", "快速处理", "可直接新增、完成、恢复任务，并展开或折叠已完成分组。")
+                new HelpCardInfo("\uE7C2", "拖动排序", "长按任务后拖动；列表边缘会自动滚动，虚线框会预览松手后的具体位置和父子归属。"),
+                new HelpCardInfo("\uE73E", "快速处理", "便签固定显示今日任务；双击任务可编辑标题和备注，也可通过右键菜单删除或创建带备注的子任务。")
+            ],
+            useTwoColumns));
+        layout.Children.Add(HelpModeSection(
+            "回收站与筛选",
+            "批量整理、找回和缩小任务范围",
+            "删除会按任务树处理；筛选只影响主窗口列表，日期筛选会切到全部任务。",
+            [
+                new HelpCardInfo("\uE74D", "回收站", "启用回收站时，删除任务会先移入回收站；可恢复整棵任务树，也可永久删除。"),
+                new HelpCardInfo("\uE74E", "自动清理", "设置中可关闭回收站，或选择 7 天、30 天、90 天和自定义清理周期，默认 30 天。"),
+                new HelpCardInfo("\uE71C", "层级筛选", "筛选可只显示一层、一至两层或全部层级；不会补入不符合条件的祖先任务。"),
+                new HelpCardInfo("\uE787", "组合筛选", "可按任务清单、开始日期或执行周期组合筛选，并提供本周、本月快捷项；应用后自动切到全部任务并显示筛选中。"),
+                new HelpCardInfo("\uE8CB", "今日规则", "今日任务页只显示今日未完成项和当天完成项；切换导航视图会清除日期筛选。"),
+                new HelpCardInfo("\uE7C2", "边缘滚动", "拖拽任务靠近列表上下边缘时会自动上下滚动，离边缘越远速度越快并有上限；未完成和已完成任务不会自动跨越分组边界。")
             ],
             useTwoColumns));
         layout.Children.Add(HelpTipBand());
@@ -2488,9 +3298,9 @@ public sealed class TodoWindow : Window
         {
             Content = layout,
             Width = contentWidth,
-            MaxHeight = HelpDialogMaxHeight(),
+            MinHeight = 0,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Stretch,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Padding = new Thickness(0, 0, 8, 0)
@@ -2521,34 +3331,52 @@ public sealed class TodoWindow : Window
         var closeButton = new Button
         {
             Content = "知道了",
-            MinWidth = 92,
+            Width = 92,
             Height = 36,
-            Padding = new Thickness(18, 0, 18, 0),
+            Padding = new Thickness(0),
             CornerRadius = new CornerRadius(8),
-            Background = HelpPrimaryButtonBrush(),
+            Background = TransparentBrush(),
             Foreground = HelpPrimaryButtonTextBrush(),
-            BorderBrush = HelpPrimaryButtonBrush()
+            BorderBrush = TransparentBrush(),
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
         };
         ApplyHelpButtonColors(
             closeButton,
-            HelpPrimaryButtonBrush(),
+            TransparentBrush(),
             HelpPrimaryButtonTextBrush(),
-            HelpPrimaryButtonBrush(),
+            TransparentBrush(),
             HelpPrimaryButtonHoverBrush(),
             HelpPrimaryButtonPressedBrush());
+        var closeButtonFrame = new Border
+        {
+            Width = 92,
+            Height = 36,
+            CornerRadius = new CornerRadius(8),
+            Background = HelpPrimaryButtonBrush(),
+            BorderBrush = HelpPrimaryButtonBrush(),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = closeButton
+        };
 
         var panelWidth = HelpDialogWidth(contentWidth);
+        var panelHeight = HelpDialogPanelMaxHeight();
         var panelContent = new Grid
         {
             Width = Math.Max(300, panelWidth - 48),
-            RowSpacing = 18
+            Height = Math.Max(0, panelHeight - 48),
+            RowSpacing = 12
         };
         panelContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        panelContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        panelContent.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         panelContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var header = new Grid
         {
+            MinHeight = 38,
             ColumnSpacing = 16
         };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -2562,60 +3390,60 @@ public sealed class TodoWindow : Window
             Foreground = HelpTextBrush(),
             VerticalAlignment = VerticalAlignment.Center
         });
-        var iconClose = new Button
-        {
-            MinWidth = 0,
-            MinHeight = 0,
-            Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(0),
-            Background = TransparentBrush(),
-            Foreground = HelpTextBrush(),
-            BorderBrush = TransparentBrush(),
-            Content = new FontIcon
-            {
-                Glyph = "\uE711",
-                FontSize = 12,
-                Foreground = HelpTextBrush()
-            }
-        };
-        ApplyHelpButtonColors(
-            iconClose,
-            TransparentBrush(),
-            HelpTextBrush(),
-            TransparentBrush(),
-            HelpCloseButtonHoverBrush(),
-            HelpCloseButtonPressedBrush());
         var iconCloseFrame = new Border
         {
             Width = 38,
             Height = 38,
-            Margin = new Thickness(0, 0, 6, 6),
-            Padding = new Thickness(1),
+            Margin = new Thickness(0),
+            Padding = new Thickness(0),
             CornerRadius = new CornerRadius(9),
             Background = HelpCloseButtonBrush(),
             BorderBrush = HelpPanelBorderBrush(),
             BorderThickness = new Thickness(1),
-            Child = iconClose
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new FontIcon
+            {
+                Glyph = "\uE711",
+                FontSize = 12,
+                Foreground = HelpTextBrush(),
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
         };
-        Grid.SetColumn(iconCloseFrame, 1);
-        header.Children.Add(iconCloseFrame);
+        AutomationProperties.SetName(iconCloseFrame, "关闭使用说明");
+        iconCloseFrame.PointerEntered += (_, _) => iconCloseFrame.Background = HelpCloseButtonHoverBrush();
+        iconCloseFrame.PointerExited += (_, _) => iconCloseFrame.Background = HelpCloseButtonBrush();
+        iconCloseFrame.PointerPressed += (_, _) => iconCloseFrame.Background = HelpCloseButtonPressedBrush();
+        iconCloseFrame.PointerReleased += (_, _) => iconCloseFrame.Background = HelpCloseButtonHoverBrush();
+        var iconCloseHost = new Grid
+        {
+            Width = 44,
+            Height = 44,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        iconCloseHost.Children.Add(iconCloseFrame);
+        Grid.SetColumn(iconCloseHost, 1);
+        header.Children.Add(iconCloseHost);
         panelContent.Children.Add(header);
 
         Grid.SetRow(scroll, 1);
         panelContent.Children.Add(scroll);
 
-        var footer = new Grid();
-        footer.Children.Add(closeButton);
-        closeButton.HorizontalAlignment = HorizontalAlignment.Right;
+        var footer = new Grid { MinHeight = 40 };
+        closeButtonFrame.Margin = new Thickness(0, 0, 2, 2);
+        footer.Children.Add(closeButtonFrame);
         Grid.SetRow(footer, 2);
         panelContent.Children.Add(footer);
 
         var panel = new Border
         {
             Width = panelWidth,
-            MaxHeight = HelpDialogPanelMaxHeight(),
+            Height = panelHeight,
             Padding = new Thickness(24),
+            Margin = new Thickness(16),
             CornerRadius = new CornerRadius(18),
             Background = HelpPanelBrush(),
             BorderBrush = HelpPanelBorderBrush(),
@@ -2627,8 +3455,26 @@ public sealed class TodoWindow : Window
         panel.PointerPressed += (_, args) => args.Handled = true;
         modalHost.Children.Add(panel);
 
+        void ApplyResponsiveHelpLayout()
+        {
+            var nextContentWidth = HelpDialogContentWidth();
+            var nextPanelWidth = HelpDialogWidth(nextContentWidth);
+            var nextPanelHeight = HelpDialogPanelMaxHeight();
+            var nextInnerWidth = Math.Max(300, nextPanelWidth - 48);
+            var nextInnerHeight = Math.Max(0, nextPanelHeight - 48);
+
+            layout.Width = nextContentWidth;
+            layout.MaxWidth = nextContentWidth;
+            scroll.Width = nextContentWidth;
+            panel.Width = nextPanelWidth;
+            panel.Height = nextPanelHeight;
+            panelContent.Width = nextInnerWidth;
+            panelContent.Height = nextInnerHeight;
+        }
+
         var completion = new TaskCompletionSource<object?>();
         var closed = false;
+        SizeChangedEventHandler? sizeChangedHandler = (_, _) => ApplyResponsiveHelpLayout();
         void Close()
         {
             if (closed)
@@ -2637,6 +3483,11 @@ public sealed class TodoWindow : Window
             }
 
             closed = true;
+            if (sizeChangedHandler is not null)
+            {
+                _root.SizeChanged -= sizeChangedHandler;
+                sizeChangedHandler = null;
+            }
             _root.Children.Remove(overlay);
             completion.TrySetResult(null);
         }
@@ -2651,9 +3502,11 @@ public sealed class TodoWindow : Window
             }
         };
         closeButton.Click += (_, _) => Close();
-        iconClose.Click += (_, _) => Close();
+        iconCloseFrame.Tapped += (_, _) => Close();
         overlay.Loaded += (_, _) => overlay.Focus(FocusState.Programmatic);
 
+        _root.SizeChanged += sizeChangedHandler;
+        ApplyResponsiveHelpLayout();
         _root.Children.Add(overlay);
         await completion.Task;
     }
@@ -2740,7 +3593,7 @@ public sealed class TodoWindow : Window
             rootHeight = 860;
         }
 
-        return Math.Min(840, Math.Max(360, rootHeight - 64));
+        return Math.Min(840, Math.Max(1, rootHeight - 32));
     }
 
     private double HelpDialogWidth(double contentWidth)
@@ -3123,19 +3976,86 @@ public sealed class TodoWindow : Window
         SaveDataAndRefresh();
     }
 
-    private void DeleteTask(TodoTask task)
+    private async Task DeleteTaskAsync(TodoTask task)
     {
-        var removeIds = TodoQuery.DescendantIds(_data, task.Id)
-            .Append(task.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        _data.Tasks.RemoveAll(candidate => removeIds.Contains(candidate.Id));
-        _settings.CollapsedTaskIds.RemoveAll(removeIds.Contains);
-        _selectedTaskId = FirstTaskForSelection(_currentViewId)?.Id;
+        var descendantCount = TodoQuery.DescendantIds(_data, task.Id).Count();
+        if (descendantCount > 0 && !await ConfirmDeleteTaskTreeAsync(descendantCount))
+        {
+            return;
+        }
+
+        DeleteTaskTree(task);
+    }
+
+    private async Task<bool> ConfirmDeleteTaskTreeAsync(int descendantCount)
+    {
+        var target = _settings.IsRecycleBinEnabled ? "移动到回收站" : "永久删除";
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _root.XamlRoot,
+            RequestedTheme = ResolveElementTheme(),
+            Title = "删除任务树",
+            Content = $"当前任务包含 {descendantCount} 个子任务或孙任务。确认后将{target}当前任务及全部后代。",
+            PrimaryButtonText = "确认删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private void DeleteTaskTree(TodoTask task)
+    {
+        var treeIds = TodoRecycleBin.TaskTreeIds(_data, task.Id);
+        if (!TodoRecycleBin.DeleteTaskTree(_data, _settings, task.Id))
+        {
+            return;
+        }
+
+        if (!_settings.IsRecycleBinEnabled)
+        {
+            _settings.CollapsedTaskIds.RemoveAll(treeIds.Contains);
+        }
+
+        _selectedTaskId = null;
         SaveDataAndRefresh();
+    }
+
+    private void RestoreTaskTree(TodoTask task)
+    {
+        if (TodoRecycleBin.RestoreTaskTree(_data, task.Id))
+        {
+            _selectedTaskId = null;
+            SaveDataAndRefresh();
+        }
+    }
+
+    private async Task PermanentlyDeleteTaskTreeAsync(TodoTask task)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _root.XamlRoot,
+            RequestedTheme = ResolveElementTheme(),
+            Title = "永久删除任务",
+            Content = "此操作无法恢复所选任务及其全部后代。",
+            PrimaryButtonText = "永久删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        if (TodoRecycleBin.PermanentlyDeleteTaskTree(_data, task.Id))
+        {
+            _selectedTaskId = null;
+            SaveDataAndRefresh();
+        }
     }
 
     private void SaveDataAndRefresh()
     {
+        TodoRecycleBin.PurgeExpired(_data, _settings);
         _store.SaveData(_data);
         SaveSettings();
         RefreshAll();
@@ -3164,8 +4084,6 @@ public sealed class TodoWindow : Window
 
     private void OpenStickyMode(bool closeMainWindow = true)
     {
-        var stickyViewId = _currentViewId == TodoViewIds.Completed ? TodoViewIds.Today : _currentViewId;
-        _settings.CurrentViewId = stickyViewId;
         _settings.IsStickyModeEnabled = true;
         _store.SaveSettings(_settings);
 
@@ -3218,8 +4136,49 @@ public sealed class TodoWindow : Window
     {
         _data = _store.LoadData();
         _settings = _store.LoadSettings();
+        PurgeExpiredRecycleBin();
         _currentViewId = IsKnownView(_settings.CurrentViewId) ? _settings.CurrentViewId : TodoViewIds.Today;
+        if (_currentViewId == TodoViewIds.RecycleBin && !_settings.IsRecycleBinEnabled)
+        {
+            _currentViewId = TodoViewIds.Today;
+        }
         _selectedTaskId = _settings.SelectedTaskId;
+    }
+
+    private void NavigateToView(string viewId)
+    {
+        _dateRangeFilter = null;
+        _listIdFilter = null;
+        _currentViewId = viewId;
+        _selectedTaskId = FirstTaskForSelection(viewId)?.Id;
+        SaveSettings();
+        RefreshAll();
+    }
+
+    private void PurgeExpiredRecycleBin()
+    {
+        if (TodoRecycleBin.PurgeExpired(_data, _settings) > 0)
+        {
+            _store.SaveData(_data);
+        }
+    }
+
+    private void StartRecycleBinMaintenanceTimer()
+    {
+        _recycleBinMaintenanceTimer = DispatcherQueue.CreateTimer();
+        _recycleBinMaintenanceTimer.Interval = TimeSpan.FromHours(1);
+        _recycleBinMaintenanceTimer.Tick += (_, _) =>
+        {
+            if (!_store.UpdateData((latestData, latestSettings) =>
+                    TodoRecycleBin.PurgeExpired(latestData, latestSettings) > 0))
+            {
+                return;
+            }
+
+            ReloadDataAndSettings();
+            RefreshAll();
+        };
+        _recycleBinMaintenanceTimer.Start();
     }
 
     private IEnumerable<TodoTask> ActiveTasksForView(string viewId)
@@ -3234,12 +4193,24 @@ public sealed class TodoWindow : Window
 
     private IEnumerable<TodoTaskNode> ActiveTaskNodesForView(string viewId)
     {
-        return TodoQuery.ActiveTaskNodesForView(_data, viewId, CollapsedTaskIds());
+        return TodoQuery.ActiveTaskNodesForView(
+            _data,
+            viewId,
+            CollapsedTaskIds(),
+            dateFilter: _dateRangeFilter,
+            maximumDepth: _maximumVisibleTaskDepth,
+            listIdFilter: _listIdFilter);
     }
 
     private IEnumerable<TodoTaskNode> CompletedTaskNodesForView(string viewId)
     {
-        return TodoQuery.CompletedTaskNodesForView(_data, viewId, CollapsedTaskIds());
+        return TodoQuery.CompletedTaskNodesForView(
+            _data,
+            viewId,
+            CollapsedTaskIds(),
+            dateFilter: _dateRangeFilter,
+            maximumDepth: _maximumVisibleTaskDepth,
+            listIdFilter: _listIdFilter);
     }
 
     private HashSet<string> CollapsedTaskIds()
@@ -3249,12 +4220,12 @@ public sealed class TodoWindow : Window
 
     private IEnumerable<TodoTask> FilterTasks(string viewId, bool completed)
     {
-        return TodoQuery.FilterTasks(_data, viewId, completed);
+        return TodoQuery.FilterTasks(_data, viewId, completed, dateFilter: _dateRangeFilter, listIdFilter: _listIdFilter);
     }
 
     private IEnumerable<TodoTask> TasksForList(string listId)
     {
-        return _data.Tasks.Where(task => string.Equals(task.ListId, listId, StringComparison.Ordinal));
+        return _data.Tasks.Where(task => task.DeletedAt is null && string.Equals(task.ListId, listId, StringComparison.Ordinal));
     }
 
     private TodoTask? SelectedTask()
@@ -3272,6 +4243,11 @@ public sealed class TodoWindow : Window
 
     private TodoTask? FirstTaskForSelection(string viewId)
     {
+        if (viewId == TodoViewIds.RecycleBin)
+        {
+            return null;
+        }
+
         return viewId == TodoViewIds.Completed
             ? CompletedTasksForView(viewId).FirstOrDefault()
             : ActiveTasksForView(viewId).Concat(CompletedTasksForView(viewId)).FirstOrDefault();
@@ -3279,6 +4255,10 @@ public sealed class TodoWindow : Window
 
     private bool TaskBelongsToView(TodoTask task, string viewId)
     {
+        if (task.DeletedAt is not null || viewId == TodoViewIds.RecycleBin)
+        {
+            return false;
+        }
         if (viewId == TodoViewIds.Completed)
         {
             return task.IsCompleted;
@@ -3291,19 +4271,7 @@ public sealed class TodoWindow : Window
 
     private string ViewTitle(string viewId)
     {
-        if (TodoViewIds.IsList(viewId))
-        {
-            return _data.Lists.FirstOrDefault(list => list.Id == TodoViewIds.ListId(viewId))?.Name ?? "任务清单";
-        }
-
-        return viewId switch
-        {
-            TodoViewIds.Planned => "计划任务",
-            TodoViewIds.Important => "重要任务",
-            TodoViewIds.All => "全部任务",
-            TodoViewIds.Completed => "已完成",
-            _ => "今日任务"
-        };
+        return TodoQuery.ViewTitle(_data, viewId);
     }
 
     private string DefaultListIdForNewTask() => DefaultListId();
@@ -3371,13 +4339,8 @@ public sealed class TodoWindow : Window
 
     private bool IsKnownView(string viewId)
     {
-        if (viewId is TodoViewIds.Today or TodoViewIds.Planned or TodoViewIds.Important or TodoViewIds.All or TodoViewIds.Completed)
-        {
-            return true;
-        }
-
-        return TodoViewIds.IsList(viewId) &&
-            _data.Lists.Any(list => string.Equals(list.Id, TodoViewIds.ListId(viewId), StringComparison.Ordinal));
+        return TodoQuery.IsKnownView(_data, viewId) &&
+            (viewId != TodoViewIds.RecycleBin || _settings.IsRecycleBinEnabled);
     }
 
     private string TaskMeta(TodoTask task)
@@ -3600,7 +4563,11 @@ public sealed class TodoWindow : Window
         return button;
     }
 
-    private UIElement DetailField(string glyph, string label, FrameworkElement value)
+    private UIElement DetailField(
+        string glyph,
+        string label,
+        FrameworkElement value,
+        double minimumValueWidth = 0)
     {
         var grid = new Grid
         {
@@ -3609,7 +4576,11 @@ public sealed class TodoWindow : Window
         };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(88) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(1, GridUnitType.Star),
+            MinWidth = minimumValueWidth
+        });
         grid.Children.Add(new FontIcon
         {
             Glyph = glyph,
@@ -3652,25 +4623,181 @@ public sealed class TodoWindow : Window
         return button;
     }
 
-    private Brush ListColorBrush(string listId)
+    private void ChangeListColor(TodoList list, string colorId)
     {
-        return listId switch
+        var normalizedColorId = TodoListColorIds.Normalize(colorId, list.Id);
+        if (string.Equals(list.ColorId, normalizedColorId, StringComparison.Ordinal))
         {
-            TodoStore.DefaultListId => Brush(0x128CA2),
-            "personal" => Brush(0x18A957),
-            "study" => Brush(0x8B5CF6),
-            _ => Brush(0x1D6DFF)
+            return;
+        }
+
+        list.ColorId = normalizedColorId;
+        _store.SaveData(_data);
+        RefreshAll();
+    }
+
+    private async Task ShowListColorDialogAsync(TodoList list)
+    {
+        var palette = new Grid
+        {
+            MinWidth = 392,
+            ColumnSpacing = 12,
+            RowSpacing = 12
+        };
+        palette.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        palette.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var row = 0; row < TodoListColorIds.All.Count / 2; row++)
+        {
+            palette.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _root.XamlRoot,
+            RequestedTheme = ResolveElementTheme(),
+            Title = $"{list.Name} 的配色",
+            Content = palette,
+            CloseButtonText = "完成"
+        };
+
+        for (var index = 0; index < TodoListColorIds.All.Count; index++)
+        {
+            var colorId = TodoListColorIds.Normalize(TodoListColorIds.All[index], list.Id);
+            var isSelected = string.Equals(list.ColorId, colorId, StringComparison.Ordinal);
+            var primary = ListColorBrushForColorId(colorId);
+            var soft = ListSoftColorBrushForColorId(colorId);
+            var card = new Button
+            {
+                Height = 56,
+                Padding = new Thickness(14, 0, 12, 0),
+                CornerRadius = new CornerRadius(10),
+                BorderThickness = new Thickness(isSelected ? 2 : 1),
+                BorderBrush = isSelected ? primary : PaletteCardBorderBrush(),
+                Background = soft,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
+            };
+            card.Resources["ButtonBackground"] = soft;
+            card.Resources["ButtonBackgroundPointerOver"] = soft;
+            card.Resources["ButtonBackgroundPressed"] = soft;
+            card.Resources["ButtonBorderBrush"] = card.BorderBrush;
+            card.Resources["ButtonBorderBrushPointerOver"] = primary;
+            card.Resources["ButtonBorderBrushPressed"] = primary;
+            card.Resources["ButtonBorderThickness"] = card.BorderThickness;
+            card.Resources["ButtonBorderThicknessPointerOver"] = card.BorderThickness;
+            card.Resources["ButtonBorderThicknessPressed"] = card.BorderThickness;
+
+            var content = new Grid { ColumnSpacing = 10 };
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+            {
+                Width = 18,
+                Height = 18,
+                Fill = primary,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var label = new TextBlock
+            {
+                Text = ListColorLabel(colorId),
+                FontSize = 14,
+                FontWeight = MuxFontWeights.SemiBold,
+                Foreground = primary,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(label, 1);
+            content.Children.Add(label);
+            if (isSelected)
+            {
+                var selected = new FontIcon
+                {
+                    Glyph = "\uE73E",
+                    FontSize = 16,
+                    Foreground = primary,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(selected, 2);
+                content.Children.Add(selected);
+            }
+
+            card.Content = content;
+            card.Click += (_, _) =>
+            {
+                ChangeListColor(list, colorId);
+                dialog.Hide();
+            };
+            Grid.SetRow(card, index / 2);
+            Grid.SetColumn(card, index % 2);
+            palette.Children.Add(card);
+        }
+
+        await dialog.ShowAsync();
+    }
+
+    private string ListColorId(string listId)
+    {
+        var colorId = _data.Lists.FirstOrDefault(list => string.Equals(list.Id, listId, StringComparison.Ordinal))?.ColorId;
+        return TodoListColorIds.Normalize(colorId, listId);
+    }
+
+    private Brush ListColorBrush(string listId) => ListColorBrushForColorId(ListColorId(listId));
+
+    private Brush ListColorBrushForColorId(string colorId)
+    {
+        return TodoListColorIds.Normalize(colorId) switch
+        {
+            TodoListColorIds.Cyan => Brush(0x2B7F82),
+            TodoListColorIds.Indigo => Brush(0x5D6F9D),
+            TodoListColorIds.Purple => Brush(0x8064A7),
+            TodoListColorIds.Pink => Brush(0xB86B87),
+            TodoListColorIds.Red => Brush(0xB86A62),
+            TodoListColorIds.Orange => Brush(0xB98B45),
+            TodoListColorIds.Green => Brush(0x4A8B6B),
+            TodoListColorIds.Cobalt => Brush(0x526C91),
+            TodoListColorIds.Mauve => Brush(0x967B9B),
+            TodoListColorIds.Olive => Brush(0x7F8A59),
+            TodoListColorIds.Copper => Brush(0xA17461),
+            _ => Brush(0x426DAD)
         };
     }
 
-    private Brush ListSoftColorBrush(string listId)
+    private Brush ListSoftColorBrush(string listId) => ListSoftColorBrushForColorId(ListColorId(listId));
+
+    private Brush ListSoftColorBrushForColorId(string colorId)
     {
-        return listId switch
+        return TodoListColorIds.Normalize(colorId) switch
         {
-            TodoStore.DefaultListId => Brush(0xE6F7F9),
-            "personal" => Brush(0xE5F7EA),
-            "study" => Brush(0xF0E8FF),
-            _ => Brush(0xE8F1FF)
+            TodoListColorIds.Cyan => Brush(0xE5F1F1),
+            TodoListColorIds.Indigo => Brush(0xEBEEF4),
+            TodoListColorIds.Purple => Brush(0xF0ECF7),
+            TodoListColorIds.Pink => Brush(0xF8ECEF),
+            TodoListColorIds.Red => Brush(0xF8ECEA),
+            TodoListColorIds.Orange => Brush(0xF8F1E4),
+            TodoListColorIds.Green => Brush(0xEAF3EE),
+            TodoListColorIds.Cobalt => Brush(0xECF0F5),
+            TodoListColorIds.Mauve => Brush(0xF3EDF4),
+            TodoListColorIds.Olive => Brush(0xF1F2E8),
+            TodoListColorIds.Copper => Brush(0xF5EDE8),
+            _ => Brush(0xE8EEF8)
+        };
+    }
+
+    private static string ListColorLabel(string colorId)
+    {
+        return TodoListColorIds.Normalize(colorId) switch
+        {
+            TodoListColorIds.Cyan => "孔雀青",
+            TodoListColorIds.Indigo => "石板蓝",
+            TodoListColorIds.Purple => "紫晶",
+            TodoListColorIds.Pink => "玫瑰",
+            TodoListColorIds.Red => "珊瑚",
+            TodoListColorIds.Orange => "琥珀",
+            TodoListColorIds.Green => "祖母绿",
+            TodoListColorIds.Cobalt => "深海蓝",
+            TodoListColorIds.Mauve => "雾紫",
+            TodoListColorIds.Olive => "橄榄",
+            TodoListColorIds.Copper => "铜棕",
+            _ => "蓝宝石"
         };
     }
 
@@ -3688,12 +4815,14 @@ public sealed class TodoWindow : Window
 
     private void ClearCompletedForCurrentView()
     {
-        foreach (var task in CompletedTasksForView(_currentViewId).ToList())
+        foreach (var task in CompletedTasksForView(_currentViewId)
+                     .Where(task => task.DeletedAt is null)
+                     .ToList())
         {
-            _data.Tasks.Remove(task);
+            TodoRecycleBin.DeleteTaskTree(_data, _settings, task.Id);
         }
 
-        _selectedTaskId = FirstTaskForSelection(_currentViewId)?.Id;
+        _selectedTaskId = null;
         SaveDataAndRefresh();
     }
 
@@ -3907,6 +5036,28 @@ public sealed class TodoWindow : Window
     private SolidColorBrush MutedBrush() => Brush(0x96A4AA);
     private SolidColorBrush AccentBrush() => Brush(0x128CA2);
     private SolidColorBrush AccentDarkBrush() => Brush(0x0C6F82);
+    private SolidColorBrush TaskHoverBorderBrush(bool completed) => IsDarkTheme()
+        ? Brush(completed ? 0x4E7C63u : 0x3F7480u)
+        : Brush(completed ? 0xA9D7BDu : 0x9BCED7u);
+    private SolidColorBrush TaskHoverBackgroundBrush(bool completed) => IsDarkTheme()
+        ? Brush(completed ? 0x1B2A23u : 0x19282Fu)
+        : Brush(completed ? 0xF5FBF6u : 0xF4FAFBu);
+    private SolidColorBrush FilterActiveBorderBrush() => IsDarkTheme() ? Brush(0x3F8694) : Brush(0x8CC9D3);
+    private SolidColorBrush FilterActiveBackgroundBrush() => IsDarkTheme() ? Brush(0x19313A) : Brush(0xEEF9FA);
+    private SolidColorBrush FilterActiveTextBrush() => IsDarkTheme() ? Brush(0x9DDFE8) : Brush(0x0C6F82);
+    private SolidColorBrush FilterHoverBorderBrush(bool active) => IsDarkTheme()
+        ? Brush(active ? 0x63BBC9u : 0x4F94A1u)
+        : Brush(active ? 0x5EB3C1u : 0x7ABCC7u);
+    private SolidColorBrush FilterHoverBackgroundBrush(bool active) => IsDarkTheme()
+        ? Brush(active ? 0x20444Fu : 0x1C2B33u)
+        : Brush(active ? 0xDDF4F7u : 0xF1F8FAu);
+    private SolidColorBrush FilterPressedBorderBrush(bool active) => IsDarkTheme()
+        ? Brush(active ? 0x4FAABAu : 0x407D89u)
+        : Brush(active ? 0x3599A9u : 0x4B9FAAu);
+    private SolidColorBrush FilterPressedBackgroundBrush(bool active) => IsDarkTheme()
+        ? Brush(active ? 0x173942u : 0x16252Cu)
+        : Brush(active ? 0xCFEFF3u : 0xE6F3F6u);
+    private SolidColorBrush PaletteCardBorderBrush() => IsDarkTheme() ? Brush(0x40505E) : Brush(0xD8E2E6);
     private static SolidColorBrush TransparentBrush() => new(Colors.Transparent);
     private static SolidColorBrush PureWhiteBrush() => new(Colors.White);
     private static SolidColorBrush SolidBrush(uint rgb)
@@ -3958,9 +5109,42 @@ public sealed class TodoWindow : Window
             0xE8F1FF => 0x19304B,
             0xE5F7EA => 0x173524,
             0xF0E8FF => 0x2A2541,
+            0xE6F7F9 => 0x123740,
+            0xEDEBFF => 0x292542,
+            0xFCE7F3 => 0x421F35,
+            0xFEE2E2 => 0x421E22,
+            0xFFF0E5 => 0x43281B,
             0x1D6DFF => 0x7EB0FF,
+            0x4F46E5 => 0xA5B4FC,
             0x18A957 => 0x8CE9AD,
             0x8B5CF6 => 0xC8B5FF,
+            0xDB2777 => 0xF472B6,
+            0xDC2626 => 0xF87171,
+            0xEA580C => 0xFB923C,
+            0x2B7F82 => 0x75C1C2,
+            0x426DAD => 0x94B7EC,
+            0x5D6F9D => 0xA7B4C9,
+            0x8064A7 => 0xC1AFE0,
+            0xB86B87 => 0xE5A8B9,
+            0xB86A62 => 0xE2A8A0,
+            0xB98B45 => 0xE4C182,
+            0x4A8B6B => 0x9DCEB3,
+            0xE5F1F1 => 0x244344,
+            0xE8EEF8 => 0x26364F,
+            0xEBEEF4 => 0x303948,
+            0xF0ECF7 => 0x383044,
+            0xF8ECEF => 0x472E38,
+            0xF8ECEA => 0x482D2A,
+            0xF8F1E4 => 0x493B25,
+            0xEAF3EE => 0x294235,
+            0x526C91 => 0xAAB9CD,
+            0x967B9B => 0xD3BAD5,
+            0x7F8A59 => 0xC7D0A0,
+            0xA17461 => 0xD8B2A1,
+            0xECF0F5 => 0x303943,
+            0xF3EDF4 => 0x3D3340,
+            0xF1F2E8 => 0x3B4130,
+            0xF5EDE8 => 0x43342F,
             _ => rgb
         };
     }

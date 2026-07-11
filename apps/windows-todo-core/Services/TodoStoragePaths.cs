@@ -40,6 +40,13 @@ public sealed class TodoStoragePaths
             legacyTodoRoots);
     }
 
+    public static TodoStoragePaths ForTodoRoot(string todoRoot)
+    {
+        var fullTodoRoot = Path.GetFullPath(todoRoot);
+        var fowanRoot = Directory.GetParent(fullTodoRoot)?.FullName ?? fullTodoRoot;
+        return new TodoStoragePaths(fowanRoot, fullTodoRoot, []);
+    }
+
     public void EnsureReady()
     {
         Directory.CreateDirectory(FowanRoot);

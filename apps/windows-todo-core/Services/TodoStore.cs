@@ -1,5 +1,7 @@
 using Fowan.Todo.Core.Models;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace Fowan.Todo.Core.Services;
 
@@ -7,6 +9,9 @@ public sealed class TodoStore
 {
     public const string DefaultListId = "default";
     public const string DefaultListName = "默认清单";
+
+    private const string StorageMutexName = @"Local\Fowan.Todo.Storage";
+    private static readonly TimeSpan StorageLockTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -27,60 +32,180 @@ public sealed class TodoStore
         SettingsPath = Paths.SettingsPath;
     }
 
+    public TodoStore(string rootPath)
+    {
+        Paths = TodoStoragePaths.ForTodoRoot(rootPath);
+        Paths.EnsureReady();
+        RootPath = Paths.TodoRoot;
+        DataPath = Paths.DataPath;
+        SettingsPath = Paths.SettingsPath;
+    }
+
     public TodoData LoadData()
     {
-        Directory.CreateDirectory(RootPath);
-
-        var data = ReadJson<TodoData>(DataPath) ?? new TodoData();
-        NormalizeData(data);
-        SaveData(data);
-        return data;
+        return LoadDataCore();
     }
 
     public TodoSettings LoadSettings()
     {
-        Directory.CreateDirectory(RootPath);
-
-        var settings = ReadJson<TodoSettings>(SettingsPath) ?? new TodoSettings();
-        NormalizeSettings(settings);
-        SaveSettings(settings);
-        return settings;
+        return LoadSettingsCore();
     }
 
     public void SaveData(TodoData data)
     {
-        Directory.CreateDirectory(RootPath);
-        NormalizeData(data);
-        File.WriteAllText(DataPath, JsonSerializer.Serialize(data, JsonOptions));
+        ArgumentNullException.ThrowIfNull(data);
+        WithStorageLock(() => SaveDataCore(data));
     }
 
     public void SaveSettings(TodoSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        WithStorageLock(() => SaveSettingsCore(settings));
+    }
+
+    public bool UpdateData(Func<TodoData, TodoSettings, bool> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+
+        var updated = false;
+        WithStorageLock(() =>
+        {
+            var data = LoadDataCore();
+            var settings = LoadSettingsCore();
+            if (!update(data, settings))
+            {
+                return;
+            }
+
+            SaveDataCore(data);
+            updated = true;
+        });
+
+        return updated;
+    }
+
+    private TodoData LoadDataCore()
+    {
+        Directory.CreateDirectory(RootPath);
+        var data = ReadJson<TodoData>(DataPath) ?? new TodoData();
+        NormalizeData(data);
+        return data;
+    }
+
+    private TodoSettings LoadSettingsCore()
+    {
+        Directory.CreateDirectory(RootPath);
+        var settings = ReadJson<TodoSettings>(SettingsPath) ?? new TodoSettings();
+        NormalizeSettings(settings);
+        return settings;
+    }
+
+    private void SaveDataCore(TodoData data)
+    {
+        Directory.CreateDirectory(RootPath);
+        NormalizeData(data);
+        WriteJsonAtomically(DataPath, data);
+    }
+
+    private void SaveSettingsCore(TodoSettings settings)
+    {
         Directory.CreateDirectory(RootPath);
         NormalizeSettings(settings);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+        WriteJsonAtomically(SettingsPath, settings);
+    }
+
+    private static void WithStorageLock(Action action)
+    {
+        using var mutex = new Mutex(initiallyOwned: false, StorageMutexName);
+        var lockTaken = false;
+        try
+        {
+            try
+            {
+                lockTaken = mutex.WaitOne(StorageLockTimeout);
+            }
+            catch (AbandonedMutexException)
+            {
+                lockTaken = true;
+            }
+
+            if (!lockTaken)
+            {
+                throw new TimeoutException("Timed out waiting for exclusive access to Fowan Todo storage.");
+            }
+
+            action();
+        }
+        finally
+        {
+            if (lockTaken)
+            {
+                mutex.ReleaseMutex();
+            }
+        }
+    }
+
+    private static void WriteJsonAtomically<T>(string path, T value)
+    {
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            var json = JsonSerializer.Serialize(value, JsonOptions);
+            File.WriteAllText(temporaryPath, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
     }
 
     private static T? ReadJson<T>(string path)
     {
-        try
+        if (!File.Exists(path))
         {
-            if (!File.Exists(path))
+            return default;
+        }
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
             {
+                return JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions);
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                Thread.Sleep(25);
+            }
+            catch (Exception)
+            {
+                BackupUnreadableFile(path);
                 return default;
             }
+        }
 
-            return JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions);
+        return default;
+    }
+
+    private static void BackupUnreadableFile(string path)
+    {
+        try
+        {
+            var backupPath = $"{path}.unreadable-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.bak";
+            File.Copy(path, backupPath, overwrite: false);
         }
         catch
         {
-            return default;
+            // A failed backup must not prevent the app from starting with fresh in-memory data.
         }
     }
 
     private static void NormalizeData(TodoData data)
     {
-        data.SchemaVersion = 3;
+        data.SchemaVersion = 5;
         data.Lists ??= [];
         data.Tasks ??= [];
 
@@ -99,6 +224,8 @@ public sealed class TodoStore
                     ? DefaultListName
                     : "未命名清单";
             }
+
+            list.ColorId = TodoListColorIds.Normalize(list.ColorId, list.Id);
         }
 
         var knownListIds = data.Lists.Select(list => list.Id).ToHashSet(StringComparer.Ordinal);
@@ -190,7 +317,7 @@ public sealed class TodoStore
         }
 
         foreach (var group in data.Tasks
-            .Where(task => !string.IsNullOrWhiteSpace(task.ParentTaskId))
+            .Where(task => task.DeletedAt is null && !string.IsNullOrWhiteSpace(task.ParentTaskId))
             .GroupBy(task => task.ParentTaskId!, StringComparer.Ordinal))
         {
             foreach (var overflow in group
@@ -250,6 +377,17 @@ public sealed class TodoStore
             settings.CurrentViewId = TodoViewIds.Today;
         }
 
+        if (settings.RecycleBinRetentionPreset is not (
+            TodoRecycleBinRetentionPresets.SevenDays or
+            TodoRecycleBinRetentionPresets.ThirtyDays or
+            TodoRecycleBinRetentionPresets.NinetyDays or
+            TodoRecycleBinRetentionPresets.Custom))
+        {
+            settings.RecycleBinRetentionPreset = TodoRecycleBinRetentionPresets.ThirtyDays;
+        }
+
+        settings.RecycleBinCustomRetentionDays = Math.Clamp(settings.RecycleBinCustomRetentionDays, 1, 365);
+
         settings.CollapsedTaskIds = settings.CollapsedTaskIds?
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Select(id => id.Trim())
@@ -300,6 +438,7 @@ public sealed class TodoStore
         {
             Id = id,
             Name = name,
+            ColorId = TodoListColorIds.Normalize(null, id),
             CreatedAt = DateTimeOffset.Now
         });
     }
