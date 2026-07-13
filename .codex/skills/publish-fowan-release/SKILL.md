@@ -27,11 +27,49 @@ Project defaults:
    - `apps/windows/Models/ToolCatalog.cs`
    - `changelogs/toolbox/CHANGELOG.md`
    - `changelogs/tools/todo/CHANGELOG.md` when the bundled Todo tool ships with the toolbox
+   - `changelogs/tools/diary/CHANGELOG.md` when the bundled Diary tool ships with the toolbox
 5. Search for stale release repository URLs:
 
 ```powershell
 rg -n "aliang1016|github\.com/.*/Fowan|AliangHuang/Fowan" .
 ```
+
+## Release Notes Accuracy Gate
+
+Do not package or publish until the current-version changelog text has been checked against the actual component diff. A version heading alone is not sufficient evidence that release notes are ready.
+
+Run the checked-in gate first:
+
+```powershell
+.\.codex\skills\publish-fowan-release\scripts\Test-ReleaseNotes.ps1 -Version <version>
+```
+
+The gate compares the working tree with the most recent earlier version tag, maps changed paths to Toolbox, Todo, and Diary, requires a current-version section with release-note bullets, and blocks no-change placeholder wording for a changed component. If a reviewed component truly contains only non-observable refactoring, tests, packaging metadata, or documentation maintenance, record that reasoning and rerun with an explicit override such as `-AllowNoUserVisibleChanges Diary`.
+
+1. Resolve the previous release tag and inspect changes by component, including staged and unstaged work:
+
+```powershell
+$previousTag = git describe --tags --abbrev=0
+git diff --stat $previousTag -- apps/windows apps/windows-todo apps/windows-todo-sticky apps/windows-todo-shared
+git diff --stat $previousTag -- apps/windows-diary apps/windows-diary-shared
+git diff --stat $previousTag -- installer scripts
+```
+
+2. Read each current-version changelog section as UTF-8 and compare every user-visible behavior in the diff with the notes:
+
+```powershell
+Get-Content changelogs/toolbox/CHANGELOG.md -Encoding UTF8 | Select-Object -First 20
+Get-Content changelogs/tools/todo/CHANGELOG.md -Encoding UTF8 | Select-Object -First 20
+Get-Content changelogs/tools/diary/CHANGELOG.md -Encoding UTF8 | Select-Object -First 20
+```
+
+3. Map component changes to their changelog:
+   - `apps/windows-todo*`, `apps/windows-todo-shared`, Todo tests, and Todo requirements/design docs require review of the Todo section.
+   - `apps/windows-diary*`, `apps/windows-diary-shared`, Diary tests, and Diary requirements/design docs require review of the Diary section.
+   - `apps/windows`, installer behavior, update behavior, and bundled-tool changes require review of the toolbox section.
+4. Treat phrases such as “no user-visible changes”, “随发布包更新”, “maintenance release”, or equivalent placeholder wording as a release blocker whenever that component has UI, interaction, workflow, settings, storage-format, lifecycle, installer, or other observable behavior changes.
+5. “No user-visible changes” is allowed only after the component diff has been inspected and is limited to packaging/version metadata, internal refactoring with equivalent behavior, tests, or documentation-only maintenance. Record that conclusion in the release handoff.
+6. Before proceeding, summarize the concrete user-visible changes from each affected component. The GitHub Release notes must be generated from these validated current-version changelog sections, not from memory or a previous release.
 
 ## Build And Package
 
@@ -85,7 +123,18 @@ gh release create v<version> `
 
 If `gh` is unavailable, use the GitHub REST API with an authenticated token from Git Credential Manager or another secure source. Never print the token. Create the release through `api.github.com`, then upload assets through the `upload_url` returned by the release response.
 
-Release notes should mention the user-visible changes and the update mechanism when relevant.
+Release notes must mention the validated user-visible changes for every affected component and the update mechanism when relevant. After creating or editing a release, read the release body back from GitHub and compare it with the current changelog sections before declaring success.
+
+## Correct An Already Published Release
+
+When binaries are correct but release notes are incomplete or inaccurate:
+
+1. Correct the relevant current-version changelog sections in the repository.
+2. Commit and push the documentation/workflow correction to `main`.
+3. Update the existing GitHub Release body in place from the corrected changelog sections.
+4. Do not move or recreate the existing tag, and do not rebuild or re-upload unchanged installer/manifest assets.
+5. Read the release body back through the GitHub API or release page and verify the corrected text is publicly visible.
+6. Re-run the public manifest and asset checks so the correction does not accidentally disturb the release.
 
 ## Asset Upload Checklist
 
@@ -223,3 +272,5 @@ Confirm the downloaded manifest:
 - has `installerUrl` pointing to the release asset
 - has `installerSha256` equal to the uploaded installer hash
 - can be consumed by the toolbox update checker
+
+Also confirm the GitHub Release body contains the validated current-version toolbox, Todo, and Diary notes without stale placeholder claims.
