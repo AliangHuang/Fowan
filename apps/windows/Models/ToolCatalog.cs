@@ -2,7 +2,7 @@ namespace Fowan.Windows.Models;
 
 public static class ToolCatalog
 {
-    private const string CurrentReleaseDate = "2026-07-12";
+    private const string CurrentReleaseDate = "2026-07-13";
 
     public static IReadOnlyList<ToolCategory> Categories { get; } =
     [
@@ -37,7 +37,7 @@ public static class ToolCatalog
         {
             var version = typeof(ToolCatalog).Assembly.GetName().Version;
             return version is null
-                ? "0.1.3"
+                ? "0.1.4"
                 : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
         }
     }

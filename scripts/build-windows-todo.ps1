@@ -50,7 +50,7 @@ if ($Clean) {
 
     foreach ($legacyBin in @(
         (Join-Path $repoRoot "apps/windows-todo/bin"),
-        (Join-Path $repoRoot "apps/windows-todo-core/bin"),
+        (Join-Path $repoRoot "apps/windows-todo-shared/bin"),
         (Join-Path $repoRoot "apps/windows-todo-sticky/bin")
     )) {
         Remove-DirectoryInside `

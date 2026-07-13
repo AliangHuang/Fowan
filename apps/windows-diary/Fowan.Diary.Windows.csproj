@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\windows-diary-core\Fowan.Diary.Core.csproj" />
+    <ProjectReference Include="..\windows-diary-shared\Fowan.Diary.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

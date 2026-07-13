@@ -1,5 +1,5 @@
-using Fowan.Todo.Core.Models;
-using Fowan.Todo.Core.Services;
+using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
@@ -23,9 +23,9 @@ namespace Fowan.Todo.Windows;
 public sealed class TodoWindow : Window
 {
     private const double SidebarWidth = 248;
-    private const double CompletedTimestampEditorWidth = 236;
-    // The detail host has a 1 DIP left border. 433 DIP leaves exactly 236 DIP
-    // for the timestamp editor after its 28/88 DIP columns, spacing and padding.
+    private const double CompletedTimestampEditorWidth = 216;
+    // Keep 20 DIP free after the timestamp editor so its right border and the
+    // TimePicker minute column survive DPI rounding inside the detail panel.
     private const double DetailWidth = 433;
     private const int TaskDragLongPressMilliseconds = 350;
     private const double TaskDragMoveCancelDistance = 6;
@@ -51,6 +51,10 @@ public sealed class TodoWindow : Window
     private FrameworkElement? _completedTaskSection;
     private Border _detailHost = new();
     private FrameworkElement _brandArea = new Grid();
+    private Button _helpButton = new();
+    private Button _stickyModeButton = new();
+    private Grid? _onboardingOverlay;
+    private bool _isOnboardingModalActive;
     private TextBox _addTaskBox = new();
     private TextBlock _taskTitle = new();
     private TextBlock _taskSummary = new();
@@ -77,6 +81,8 @@ public sealed class TodoWindow : Window
     private TodoDateRangeFilter? _dateRangeFilter;
     private string? _listIdFilter;
     private int _maximumVisibleTaskDepth = TodoQuery.MaxTaskTreeDepth;
+    private int _modalSurfaceCount;
+    private int _titleBarUpdateGeneration;
 
     public TodoWindow()
     {
@@ -116,12 +122,21 @@ public sealed class TodoWindow : Window
 
         Activate();
         QueueStickyPrewarm();
+        DispatcherQueue.TryEnqueue(ShowMainOnboardingIfNeeded);
     }
 
     private void ConfigureWindow()
     {
         Title = "Fowan Todo";
         Closed += (_, _) => StickyLauncher.TryShutdown();
+        Activated += (_, _) =>
+        {
+            QueueVirtualTitleBarRegionUpdate();
+            if (!_settings.HasCompletedMainOnboarding && _onboardingOverlay is null)
+            {
+                DispatcherQueue.TryEnqueue(() => ShowMainOnboardingIfNeeded());
+            }
+        };
 
         try
         {
@@ -188,9 +203,38 @@ public sealed class TodoWindow : Window
 
     private void ConfigureVirtualTitleBarRegions()
     {
-        _root.Loaded += (_, _) => UpdateVirtualTitleBarRegions();
-        _root.SizeChanged += (_, _) => UpdateVirtualTitleBarRegions();
-        UpdateVirtualTitleBarRegions();
+        _root.Loaded += (_, _) => QueueVirtualTitleBarRegionUpdate();
+        _root.SizeChanged += (_, _) => QueueVirtualTitleBarRegionUpdate();
+        QueueVirtualTitleBarRegionUpdate();
+    }
+
+    private void QueueVirtualTitleBarRegionUpdate()
+    {
+        var generation = ++_titleBarUpdateGeneration;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (generation == _titleBarUpdateGeneration)
+            {
+                UpdateVirtualTitleBarRegions();
+            }
+        });
+    }
+
+    private void ClearVirtualTitleBarRegions()
+    {
+        _titleBarUpdateGeneration++;
+        try
+        {
+            SetTitleBar(null);
+            var windowId = Win32Interop.GetWindowIdFromWindow(WindowHandle());
+            var inputSource = InputNonClientPointerSource.GetForWindowId(windowId);
+            inputSource.ClearRegionRects(NonClientRegionKind.Caption);
+            inputSource.ClearRegionRects(NonClientRegionKind.Passthrough);
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to clear Todo title-bar regions: {exception}");
+        }
     }
 
     private void UpdateVirtualTitleBarRegions()
@@ -202,42 +246,35 @@ public sealed class TodoWindow : Window
 
         try
         {
-            var hwnd = WindowHandle();
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+            if (_modalSurfaceCount > 0 || !_brandArea.IsLoaded)
+            {
+                ClearVirtualTitleBarRegions();
+                return;
+            }
+
+            var windowId = Win32Interop.GetWindowIdFromWindow(WindowHandle());
             var appWindow = AppWindow.GetFromWindowId(windowId);
-            var scale = Math.Clamp(GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
+            var scale = Math.Clamp(_root.XamlRoot.RasterizationScale, 1.0, 3.0);
             var clientWidth = Math.Max(0, (int)Math.Ceiling(_root.ActualWidth * scale));
             var clientHeight = Math.Max(0, (int)Math.Ceiling(_root.ActualHeight * scale));
-            var systemTitleBarHeight = Math.Max(0, appWindow.TitleBar.Height);
-            var virtualTitleBarHeight = Math.Max(
-                systemTitleBarHeight,
-                (int)Math.Ceiling(_brandArea.ActualHeight * scale));
+            var systemTitleBarHeightDip = appWindow.TitleBar.Height / scale;
+            var virtualTitleBarHeightDip = Math.Max(systemTitleBarHeightDip, _brandArea.ActualHeight);
+            var virtualTitleBarHeight = (int)Math.Ceiling(virtualTitleBarHeightDip * scale);
             var captionWidth = Math.Max(0, clientWidth - appWindow.TitleBar.RightInset);
             var inputSource = InputNonClientPointerSource.GetForWindowId(windowId);
-
-            var captionRects = new List<RectInt32>();
-            if (captionWidth > 0 && systemTitleBarHeight > 0)
-            {
-                captionRects.Add(new RectInt32(0, 0, captionWidth, systemTitleBarHeight));
-            }
-
-            if (virtualTitleBarHeight > systemTitleBarHeight)
-            {
-                captionRects.Add(new RectInt32(
-                    0,
-                    systemTitleBarHeight,
-                    clientWidth,
-                    virtualTitleBarHeight - systemTitleBarHeight));
-            }
-
-            inputSource.SetRegionRects(NonClientRegionKind.Caption, captionRects.ToArray());
+            SetTitleBar(_brandArea);
+            inputSource.SetRegionRects(
+                NonClientRegionKind.Caption,
+                captionWidth > 0 && virtualTitleBarHeight > 0
+                    ? [new RectInt32(0, 0, captionWidth, virtualTitleBarHeight)]
+                    : []);
 
             var passThroughRects = new List<RectInt32>();
             foreach (var element in _titleBarInteractiveElements.Where(element => element.IsHitTestVisible))
             {
                 if (!TryGetElementBounds(element, out var bounds) ||
                     bounds.Bottom <= 0 ||
-                    bounds.Top >= virtualTitleBarHeight / scale)
+                    bounds.Top >= virtualTitleBarHeightDip)
                 {
                     continue;
                 }
@@ -257,15 +294,55 @@ public sealed class TodoWindow : Window
 
             inputSource.SetRegionRects(NonClientRegionKind.Passthrough, passThroughRects.ToArray());
         }
-        catch
+        catch (Exception exception)
         {
-            // A native title-bar API failure must not prevent the Todo window from rendering.
+            System.Diagnostics.Debug.WriteLine($"Failed to update Todo title-bar regions: {exception}");
         }
     }
 
     private void RegisterTitleBarInteractiveElement(FrameworkElement element)
     {
         _titleBarInteractiveElements.Add(element);
+    }
+
+    private void EnterModalSurface()
+    {
+        _modalSurfaceCount++;
+        ClearVirtualTitleBarRegions();
+    }
+
+    private void ExitModalSurface()
+    {
+        _modalSurfaceCount = Math.Max(0, _modalSurfaceCount - 1);
+        if (_modalSurfaceCount == 0)
+        {
+            QueueVirtualTitleBarRegionUpdate();
+        }
+    }
+
+    private async Task<ContentDialogResult> ShowModalDialogAsync(ContentDialog dialog)
+    {
+        EnterModalSurface();
+        try
+        {
+            return await dialog.ShowAsync();
+        }
+        finally
+        {
+            ExitModalSurface();
+        }
+    }
+
+    private Task WaitForMainLayoutAsync()
+    {
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => completion.TrySetResult(null))))
+        {
+            completion.TrySetResult(null);
+        }
+
+        return completion.Task;
     }
 
     private UIElement BuildSidebar()
@@ -370,10 +447,10 @@ public sealed class TodoWindow : Window
         var settingsButton = SidebarIconButton("\uE713", "设置");
         settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
         bottom.Children.Add(settingsButton);
-        var help = SidebarIconButton("\uE897", "帮助");
-        help.Click += async (_, _) => await ShowHelpDialogAsync();
-        Grid.SetColumn(help, 2);
-        bottom.Children.Add(help);
+        _helpButton = SidebarIconButton("\uE897", "帮助");
+        _helpButton.Click += async (_, _) => await ShowHelpDialogAsync();
+        Grid.SetColumn(_helpButton, 2);
+        bottom.Children.Add(_helpButton);
         Grid.SetRow(bottom, 2);
         layout.Children.Add(bottom);
 
@@ -429,11 +506,11 @@ public sealed class TodoWindow : Window
         RegisterTitleBarInteractiveElement(_filterButton);
         RefreshFilterButtonState();
 
-        var stickyMode = IconOnlyButton("\uE8A7", "切换便签模式");
-        stickyMode.Click += (_, _) => OpenStickyMode();
-        Grid.SetColumn(stickyMode, 2);
-        header.Children.Add(stickyMode);
-        RegisterTitleBarInteractiveElement(stickyMode);
+        _stickyModeButton = IconOnlyButton("\uE8A7", "切换便签模式");
+        _stickyModeButton.Click += (_, _) => OpenStickyMode();
+        Grid.SetColumn(_stickyModeButton, 2);
+        header.Children.Add(_stickyModeButton);
+        RegisterTitleBarInteractiveElement(_stickyModeButton);
         grid.Children.Add(header);
 
         var addShell = new Border
@@ -2238,13 +2315,9 @@ public sealed class TodoWindow : Window
                 Width = CompletedTimestampEditorWidth,
                 HorizontalAlignment = HorizontalAlignment.Left
             };
-            var completedTimePicker = new TimePicker
-            {
-                Time = completedLocal.TimeOfDay,
-                ClockIdentifier = "24HourClock",
-                Width = CompletedTimestampEditorWidth,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
+            var completedHourBox = CompletionTimePartBox(24, completedLocal.Hour, "完成小时");
+            var completedMinuteBox = CompletionTimePartBox(60, completedLocal.Minute, "完成分钟");
+            var completedTimeEditor = CompletionTimeEditor(completedHourBox, completedMinuteBox);
             var completionActions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -2263,7 +2336,8 @@ public sealed class TodoWindow : Window
             {
                 isSynchronizingCompletionDraft = true;
                 completedDatePicker.Date = new DateTimeOffset(originalCompletedAt.ToLocalTime().Date);
-                completedTimePicker.Time = originalCompletedAt.ToLocalTime().TimeOfDay;
+                completedHourBox.SelectedIndex = originalCompletedAt.ToLocalTime().Hour;
+                completedMinuteBox.SelectedIndex = originalCompletedAt.ToLocalTime().Minute;
                 isSynchronizingCompletionDraft = false;
                 completionActions.Visibility = Visibility.Collapsed;
             }
@@ -2281,7 +2355,11 @@ public sealed class TodoWindow : Window
                     return;
                 }
 
-                var localCompletedAt = completedDate.DateTime.Date.Add(completedTimePicker.Time);
+                var completionTime = new TimeSpan(
+                    Math.Max(0, completedHourBox.SelectedIndex),
+                    Math.Max(0, completedMinuteBox.SelectedIndex),
+                    0);
+                var localCompletedAt = completedDate.DateTime.Date.Add(completionTime);
                 task.CompletedAt = new DateTimeOffset(
                     localCompletedAt,
                     TimeZoneInfo.Local.GetUtcOffset(localCompletedAt));
@@ -2290,11 +2368,12 @@ public sealed class TodoWindow : Window
             }
 
             completedDatePicker.DateChanged += (_, _) => MarkCompletionDraftChanged();
-            completedTimePicker.TimeChanged += (_, _) => MarkCompletionDraftChanged();
+            completedHourBox.SelectionChanged += (_, _) => MarkCompletionDraftChanged();
+            completedMinuteBox.SelectionChanged += (_, _) => MarkCompletionDraftChanged();
             discardCompletionChange.Click += (_, _) => DiscardCompletionDraft();
             applyCompletionChange.Click += (_, _) => ApplyCompletionDraft();
             panel.Children.Add(DetailField("\uE787", "完成日期", completedDatePicker, CompletedTimestampEditorWidth));
-            panel.Children.Add(DetailField("\uE916", "完成时间", completedTimePicker, CompletedTimestampEditorWidth));
+            panel.Children.Add(DetailField("\uE916", "完成时间", completedTimeEditor, CompletedTimestampEditorWidth));
             panel.Children.Add(completionActions);
         }
 
@@ -2607,7 +2686,7 @@ public sealed class TodoWindow : Window
             }
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         var title = titleBox.Text.Trim();
         if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(title))
         {
@@ -2686,7 +2765,7 @@ public sealed class TodoWindow : Window
             }
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         var title = titleBox.Text.Trim();
         if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(title))
         {
@@ -2721,7 +2800,7 @@ public sealed class TodoWindow : Window
             DefaultButton = ContentDialogButton.Primary
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         var name = nameBox.Text.Trim();
         if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name))
         {
@@ -2767,7 +2846,7 @@ public sealed class TodoWindow : Window
             }
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         var name = nameBox.Text.Trim();
         if (result != ContentDialogResult.Primary ||
             string.IsNullOrWhiteSpace(name) ||
@@ -2793,7 +2872,7 @@ public sealed class TodoWindow : Window
                 Content = "默认清单用于承接未分类任务，不能删除。",
                 CloseButtonText = "知道了"
             };
-            await blocked.ShowAsync();
+            await ShowModalDialogAsync(blocked);
             return;
         }
 
@@ -2811,7 +2890,7 @@ public sealed class TodoWindow : Window
             DefaultButton = ContentDialogButton.Close
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         if (result != ContentDialogResult.Primary)
         {
             return;
@@ -2967,7 +3046,7 @@ public sealed class TodoWindow : Window
             }
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
         if (result == ContentDialogResult.None)
         {
             return;
@@ -3147,6 +3226,25 @@ public sealed class TodoWindow : Window
         layout.Children.Add(themeBox);
         layout.Children.Add(new TextBlock
         {
+            Text = "新手引导",
+            FontSize = 14,
+            FontWeight = MuxFontWeights.SemiBold,
+            Foreground = TextBrush(),
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+        layout.Children.Add(new TextBlock
+        {
+            Text = "重新查看便签模式和帮助入口的两步操作指引。",
+            FontSize = 13,
+            Foreground = SecondaryTextBrush(),
+            TextWrapping = TextWrapping.Wrap
+        });
+        var restartOnboardingButton = PillButton("重新开始新手引导", "\uE72C");
+        AutomationProperties.SetName(restartOnboardingButton, "重新开始新手引导");
+        restartOnboardingButton.HorizontalAlignment = HorizontalAlignment.Left;
+        layout.Children.Add(restartOnboardingButton);
+        layout.Children.Add(new TextBlock
+        {
             Text = "回收站",
             FontSize = 14,
             FontWeight = MuxFontWeights.SemiBold,
@@ -3172,15 +3270,29 @@ public sealed class TodoWindow : Window
             FontSize = 13
         });
 
+        var restartOnboarding = false;
+        var settingsScroller = new ScrollViewer
+        {
+            Content = layout,
+            MaxHeight = 520,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Auto
+        };
         var dialog = new ContentDialog
         {
             XamlRoot = _root.XamlRoot,
             Title = "设置",
-            Content = layout,
+            Content = settingsScroller,
             PrimaryButtonText = "保存",
             SecondaryButtonText = "打开便签模式",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
+        };
+        restartOnboardingButton.Click += (_, _) =>
+        {
+            restartOnboarding = true;
+            dialog.Hide();
         };
         dialog.PrimaryButtonClick += (_, args) =>
         {
@@ -3199,7 +3311,27 @@ public sealed class TodoWindow : Window
             }
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ShowModalDialogAsync(dialog);
+        if (restartOnboarding)
+        {
+            await WaitForMainLayoutAsync();
+            if (_onboardingOverlay is not null)
+            {
+                _root.Children.Remove(_onboardingOverlay);
+                _onboardingOverlay = null;
+            }
+            if (_isOnboardingModalActive)
+            {
+                _isOnboardingModalActive = false;
+                ExitModalSurface();
+            }
+
+            _settings.HasCompletedMainOnboarding = false;
+            SaveSettings();
+            ShowMainOnboardingIfNeeded();
+            return;
+        }
+
         if (result is not (ContentDialogResult.Primary or ContentDialogResult.Secondary))
         {
             return;
@@ -3489,6 +3621,7 @@ public sealed class TodoWindow : Window
                 sizeChangedHandler = null;
             }
             _root.Children.Remove(overlay);
+            ExitModalSurface();
             completion.TrySetResult(null);
         }
 
@@ -3507,8 +3640,270 @@ public sealed class TodoWindow : Window
 
         _root.SizeChanged += sizeChangedHandler;
         ApplyResponsiveHelpLayout();
+        EnterModalSurface();
         _root.Children.Add(overlay);
         await completion.Task;
+    }
+
+    private void ShowMainOnboardingIfNeeded()
+    {
+        if (_settings.HasCompletedMainOnboarding || _onboardingOverlay is not null)
+        {
+            return;
+        }
+
+        if (!_root.IsLoaded)
+        {
+            RoutedEventHandler? loadedHandler = null;
+            loadedHandler = (_, _) =>
+            {
+                _root.Loaded -= loadedHandler;
+                ShowMainOnboardingIfNeeded();
+            };
+            _root.Loaded += loadedHandler;
+            return;
+        }
+
+        var overlay = new Grid
+        {
+            Background = TransparentBrush(),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            IsTabStop = true
+        };
+        _onboardingOverlay = overlay;
+        Grid.SetColumnSpan(overlay, Math.Max(1, _root.ColumnDefinitions.Count));
+        Canvas.SetZIndex(overlay, 2000);
+
+        var canvas = new Canvas
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        overlay.Children.Add(canvas);
+
+        var dimBrush = new SolidColorBrush(ColorHelper.FromArgb(190, 4, 18, 28));
+        var dimRegions = Enumerable.Range(0, 4)
+            .Select(_ => new Border
+            {
+                Background = dimBrush,
+                IsHitTestVisible = false
+            })
+            .ToArray();
+        foreach (var region in dimRegions)
+        {
+            canvas.Children.Add(region);
+        }
+
+        var highlight = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            BorderBrush = AccentBrush(),
+            BorderThickness = new Thickness(3),
+            Background = TransparentBrush(),
+            IsHitTestVisible = false
+        };
+        canvas.Children.Add(highlight);
+
+        var stepTitle = new TextBlock
+        {
+            FontSize = 20,
+            FontWeight = MuxFontWeights.SemiBold,
+            Foreground = TextBrush(),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var stepDescription = new TextBlock
+        {
+            FontSize = 14,
+            Foreground = SecondaryTextBrush(),
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 22
+        };
+        var stepIndicator = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = SecondaryTextBrush(),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var skip = PillButton("跳过", "\uE711");
+        ConfigureStableSecondaryButtonStates(skip);
+        var next = PrimaryButton("下一步", "\uE72A");
+        var actionRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionRow.Children.Add(skip);
+        Grid.SetColumn(stepIndicator, 1);
+        stepIndicator.HorizontalAlignment = HorizontalAlignment.Center;
+        actionRow.Children.Add(stepIndicator);
+        Grid.SetColumn(next, 2);
+        actionRow.Children.Add(next);
+
+        var coach = new Border
+        {
+            Width = 340,
+            Padding = new Thickness(22),
+            CornerRadius = new CornerRadius(14),
+            Background = Brush(0xFFFFFF),
+            BorderBrush = Brush(0xDCE7EA),
+            BorderThickness = new Thickness(1),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    stepTitle,
+                    stepDescription,
+                    actionRow
+                }
+            }
+        };
+        canvas.Children.Add(coach);
+
+        var step = 0;
+        var closed = false;
+        SizeChangedEventHandler? sizeChangedHandler = null;
+
+        void SetCanvasRect(FrameworkElement element, double left, double top, double width, double height)
+        {
+            Canvas.SetLeft(element, Math.Max(0, left));
+            Canvas.SetTop(element, Math.Max(0, top));
+            element.Width = Math.Max(0, width);
+            element.Height = Math.Max(0, height);
+        }
+
+        void LayoutStep()
+        {
+            if (closed || overlay.ActualWidth <= 0 || overlay.ActualHeight <= 0)
+            {
+                return;
+            }
+
+            var target = step == 0 ? _stickyModeButton : _helpButton;
+            if (!target.IsLoaded || target.ActualWidth <= 0 || target.ActualHeight <= 0)
+            {
+                return;
+            }
+
+            var bounds = target.TransformToVisual(_root).TransformBounds(
+                new Rect(0, 0, target.ActualWidth, target.ActualHeight));
+            const double padding = 7;
+            var left = Math.Max(0, bounds.X - padding);
+            var top = Math.Max(0, bounds.Y - padding);
+            var right = Math.Min(overlay.ActualWidth, bounds.Right + padding);
+            var bottom = Math.Min(overlay.ActualHeight, bounds.Bottom + padding);
+            var holeWidth = Math.Max(0, right - left);
+            var holeHeight = Math.Max(0, bottom - top);
+
+            SetCanvasRect(dimRegions[0], 0, 0, overlay.ActualWidth, top);
+            SetCanvasRect(dimRegions[1], 0, top, left, holeHeight);
+            SetCanvasRect(dimRegions[2], right, top, overlay.ActualWidth - right, holeHeight);
+            SetCanvasRect(dimRegions[3], 0, bottom, overlay.ActualWidth, overlay.ActualHeight - bottom);
+            SetCanvasRect(highlight, left, top, holeWidth, holeHeight);
+
+            var coachHeight = coach.ActualHeight > 0 ? coach.ActualHeight : 180;
+            var coachLeft = Math.Clamp(
+                bounds.X + bounds.Width / 2 - coach.Width / 2,
+                18,
+                Math.Max(18, overlay.ActualWidth - coach.Width - 18));
+            var coachTop = bottom + 18;
+            if (coachTop + coachHeight > overlay.ActualHeight - 18)
+            {
+                coachTop = Math.Max(18, top - coachHeight - 18);
+            }
+
+            Canvas.SetLeft(coach, coachLeft);
+            Canvas.SetTop(coach, coachTop);
+        }
+
+        void UpdateStep()
+        {
+            stepIndicator.Text = $"{step + 1} / 2";
+            if (step == 0)
+            {
+                stepTitle.Text = "切换到便签模式";
+                stepDescription.Text = "使用顶部的便签按钮，把今日任务切换到轻量便签窗口。便签可以置顶、调整透明度，也可以吸附到屏幕左右边缘。";
+                next.Content = "下一步";
+            }
+            else
+            {
+                stepTitle.Text = "随时查看使用说明";
+                stepDescription.Text = "需要回顾操作时，点击侧栏底部的帮助按钮，可以查看主界面、便签、筛选和回收站的完整说明。";
+                next.Content = "完成";
+            }
+
+            LayoutStep();
+        }
+
+        void CloseOnboarding()
+        {
+            if (closed)
+            {
+                return;
+            }
+
+            closed = true;
+            if (sizeChangedHandler is not null)
+            {
+                _root.SizeChanged -= sizeChangedHandler;
+                sizeChangedHandler = null;
+            }
+
+            _settings.HasCompletedMainOnboarding = true;
+            SaveSettings();
+            _root.Children.Remove(overlay);
+            _onboardingOverlay = null;
+            if (_isOnboardingModalActive)
+            {
+                _isOnboardingModalActive = false;
+                ExitModalSurface();
+            }
+        }
+
+        skip.Click += (_, _) => CloseOnboarding();
+        next.Click += (_, _) =>
+        {
+            if (step == 0)
+            {
+                step = 1;
+                UpdateStep();
+            }
+            else
+            {
+                CloseOnboarding();
+            }
+        };
+        overlay.KeyDown += (_, args) =>
+        {
+            if (args.Key == VirtualKey.Escape)
+            {
+                args.Handled = true;
+                CloseOnboarding();
+            }
+        };
+        overlay.Loaded += (_, _) =>
+        {
+            overlay.Focus(FocusState.Programmatic);
+            UpdateStep();
+        };
+        coach.Loaded += (_, _) => LayoutStep();
+        sizeChangedHandler = (_, _) => LayoutStep();
+        _root.SizeChanged += sizeChangedHandler;
+
+        try
+        {
+            _root.Children.Add(overlay);
+            _isOnboardingModalActive = true;
+            EnterModalSurface();
+            UpdateStep();
+        }
+        catch (Exception exception)
+        {
+            _root.Children.Remove(overlay);
+            _onboardingOverlay = null;
+            _isOnboardingModalActive = false;
+            System.Diagnostics.Debug.WriteLine($"Failed to show Todo onboarding: {exception}");
+        }
     }
 
     private SolidColorBrush OverlayBrush()
@@ -3930,7 +4325,7 @@ public sealed class TodoWindow : Window
             DefaultButton = ContentDialogButton.Close
         };
 
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await ShowModalDialogAsync(dialog) == ContentDialogResult.Primary;
     }
 
     private void CompleteTaskAndDescendants(TodoTask task)
@@ -4000,7 +4395,7 @@ public sealed class TodoWindow : Window
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await ShowModalDialogAsync(dialog) == ContentDialogResult.Primary;
     }
 
     private void DeleteTaskTree(TodoTask task)
@@ -4041,7 +4436,7 @@ public sealed class TodoWindow : Window
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await ShowModalDialogAsync(dialog) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -4563,6 +4958,64 @@ public sealed class TodoWindow : Window
         return button;
     }
 
+    private ComboBox CompletionTimePartBox(int itemCount, int selectedIndex, string automationName)
+    {
+        var box = new ComboBox
+        {
+            BorderThickness = new Thickness(0),
+            Background = TransparentBrush(),
+            Padding = new Thickness(12, 0, 8, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        for (var value = 0; value < itemCount; value++)
+        {
+            box.Items.Add(value.ToString("00"));
+        }
+        box.SelectedIndex = Math.Clamp(selectedIndex, 0, itemCount - 1);
+
+        AutomationProperties.SetName(box, automationName);
+        return box;
+    }
+
+    private Border CompletionTimeEditor(ComboBox hourBox, ComboBox minuteBox)
+    {
+        var layout = new Grid();
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        layout.Children.Add(hourBox);
+        var separator = new TextBlock
+        {
+            Text = ":",
+            FontSize = 16,
+            FontWeight = MuxFontWeights.SemiBold,
+            Foreground = SecondaryTextBrush(),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        Grid.SetColumn(separator, 1);
+        layout.Children.Add(separator);
+        Grid.SetColumn(minuteBox, 2);
+        layout.Children.Add(minuteBox);
+
+        var editor = new Border
+        {
+            Width = CompletedTimestampEditorWidth,
+            Height = 34,
+            CornerRadius = new CornerRadius(7),
+            BorderBrush = Brush(0xDCE7EA),
+            BorderThickness = new Thickness(1),
+            Background = Brush(0xFFFFFF),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = layout
+        };
+        AutomationProperties.SetName(editor, "完成时间");
+        return editor;
+    }
+
     private UIElement DetailField(
         string glyph,
         string label,
@@ -4731,7 +5184,7 @@ public sealed class TodoWindow : Window
             palette.Children.Add(card);
         }
 
-        await dialog.ShowAsync();
+        await ShowModalDialogAsync(dialog);
     }
 
     private string ListColorId(string listId)
@@ -4934,6 +5387,48 @@ public sealed class TodoWindow : Window
         }
 
         return button;
+    }
+
+    private void ConfigureStableSecondaryButtonStates(Button button)
+    {
+        var isDark = IsDarkTheme();
+        var background = SolidBrush(isDark ? 0x202A34u : 0xF1F6F8u);
+        var hoverBackground = SolidBrush(isDark ? 0x293844u : 0xE5EEF1u);
+        var pressedBackground = SolidBrush(isDark ? 0x314550u : 0xD8E5E9u);
+        var border = SolidBrush(isDark ? 0x3A4854u : 0xC7D8DEu);
+        var hoverBorder = SolidBrush(isDark ? 0x4B5D69u : 0xAFC7CEu);
+        var pressedBorder = SolidBrush(isDark ? 0x5A707Du : 0x94B5BEu);
+        var foreground = SolidBrush(isDark ? 0xEEF3F8u : 0x17242Au);
+        var iconForeground = SolidBrush(isDark ? 0x58CDF0u : 0x128CA2u);
+        button.Background = background;
+        button.BorderBrush = border;
+        button.Foreground = foreground;
+        button.Resources["ButtonBackground"] = background;
+        button.Resources["ButtonBackgroundPointerOver"] = hoverBackground;
+        button.Resources["ButtonBackgroundPressed"] = pressedBackground;
+        button.Resources["ButtonBackgroundDisabled"] = background;
+        button.Resources["ButtonBorderBrush"] = border;
+        button.Resources["ButtonBorderBrushPointerOver"] = hoverBorder;
+        button.Resources["ButtonBorderBrushPressed"] = pressedBorder;
+        button.Resources["ButtonBorderBrushDisabled"] = border;
+        button.Resources["ButtonForeground"] = foreground;
+        button.Resources["ButtonForegroundPointerOver"] = foreground;
+        button.Resources["ButtonForegroundPressed"] = foreground;
+        button.Resources["ButtonForegroundDisabled"] = foreground;
+        if (button.Content is StackPanel stack)
+        {
+            foreach (var child in stack.Children)
+            {
+                if (child is FontIcon icon)
+                {
+                    icon.Foreground = iconForeground;
+                }
+                else if (child is TextBlock text)
+                {
+                    text.Foreground = foreground;
+                }
+            }
+        }
     }
 
     private Button DangerButton(string text, string glyph)

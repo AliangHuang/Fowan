@@ -1,5 +1,5 @@
-using Fowan.Diary.Core.Models;
-using Fowan.Diary.Core.Services;
+using Fowan.Diary.Shared.Models;
+using Fowan.Diary.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;

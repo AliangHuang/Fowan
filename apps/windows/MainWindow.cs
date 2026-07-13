@@ -57,6 +57,7 @@ public sealed class MainWindow : Window
 
     private readonly SettingsStore _settingsStore = new();
     private readonly UpdateService _updateService = new();
+    private readonly AutoStartService _autoStartService = new();
     private readonly LocalizationService _loc = new();
     private readonly List<string> _captures = [];
 
@@ -89,10 +90,17 @@ public sealed class MainWindow : Window
     private bool _ownsTrayIconHandle;
     private bool _isExitRequested;
     private bool _isUpdateDialogOpen;
+    private bool _startupUpdateCheckQueued;
 
-    public MainWindow()
+    public MainWindow(bool startHidden = false)
     {
         StartupTrace.Mark("MainWindow ctor begin");
+        if (startHidden)
+        {
+            ShowWindow(WindowHandle(), ShowWindowHide);
+            StartupTrace.Mark("Native window hidden before initialization");
+        }
+
         _userSettings = _settingsStore.Load();
         StartupTrace.Mark("Settings loaded");
         var settingsChanged = SettingsStore.Normalize(_userSettings);
@@ -122,11 +130,13 @@ public sealed class MainWindow : Window
 
     public void QueueStartupUpdateCheck()
     {
-        if (!_userSettings.UpdateCheckEnabled)
+        if (_startupUpdateCheckQueued || !_userSettings.UpdateCheckEnabled)
         {
-            StartupTrace.Mark("Update check disabled");
+            StartupTrace.Mark(_startupUpdateCheckQueued ? "Update check already queued" : "Update check disabled");
             return;
         }
+
+        _startupUpdateCheckQueued = true;
 
         _ = Task.Run(async () =>
         {
@@ -1747,6 +1757,13 @@ public sealed class MainWindow : Window
         ShowWindow(WindowHandle(), ShowWindowRestore);
         Activate();
         SetForegroundWindow(WindowHandle());
+        QueueStartupUpdateCheck();
+    }
+
+    internal void InitializeHiddenToTray()
+    {
+        EnsureTrayIcon();
+        ShowWindow(WindowHandle(), ShowWindowHide);
     }
 
     internal void RestoreFromExternalActivation()
@@ -2363,10 +2380,27 @@ public sealed class MainWindow : Window
             MinWidth = 260
         };
 
+        var autoStartWasEnabled = _autoStartService.IsEnabled();
+        var autoStartSwitch = new ToggleSwitch
+        {
+            Header = L("Settings_AutoStart"),
+            IsOn = autoStartWasEnabled,
+            OnContent = L("Settings_AutoStart_On"),
+            OffContent = L("Settings_AutoStart_Off"),
+            MinWidth = 260
+        };
+
         var stack = new StackPanel { Spacing = 18 };
         stack.Children.Add(themeBox);
         stack.Children.Add(languageBox);
         stack.Children.Add(closeBehaviorBox);
+        stack.Children.Add(autoStartSwitch);
+        stack.Children.Add(new TextBlock
+        {
+            Text = L("Settings_AutoStart_Description"),
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = ThemeBrush("TextFillColorSecondaryBrush")
+        });
         stack.Children.Add(updateCheckSwitch);
         stack.Children.Add(new TextBlock
         {
@@ -2391,6 +2425,17 @@ public sealed class MainWindow : Window
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary)
         {
+            return;
+        }
+
+        try
+        {
+            _autoStartService.SetEnabled(autoStartSwitch.IsOn);
+        }
+        catch (Exception exception)
+        {
+            autoStartSwitch.IsOn = autoStartWasEnabled;
+            ShowInfo(string.Format(L("Settings_AutoStart_Error"), exception.Message), InfoBarSeverity.Error);
             return;
         }
 

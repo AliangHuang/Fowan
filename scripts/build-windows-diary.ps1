@@ -49,7 +49,7 @@ if ($Clean) {
 
     foreach ($legacyBin in @(
         (Join-Path $repoRoot "apps/windows-diary/bin"),
-        (Join-Path $repoRoot "apps/windows-diary-core/bin")
+        (Join-Path $repoRoot "apps/windows-diary-shared/bin")
     )) {
         Remove-DirectoryInside `
             -Path $legacyBin `

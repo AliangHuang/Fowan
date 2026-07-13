@@ -102,6 +102,16 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - 卸载时默认检查并删除公共桌面上的 `Fowan.lnk`。
 - 卸载时也尽力检查当前用户桌面上的旧版 `Fowan.lnk` 并删除。
 - 如果快捷方式不存在，卸载继续进行，不报错。
+- 首次安装、更新和重装完成页默认勾选“运行 Fowan”；用户可以取消，静默安装不得自动启动工具箱。
+- 完成页启动工具箱时必须使用原始登录用户的普通权限并显示主界面，不得继承安装器管理员权限或使用 `--start-hidden`。
+
+## 开机自启动规则
+
+- 首次安装时询问是否在登录 Windows 后自动启动 Fowan，默认勾选。
+- 自启动按当前用户生效，使用 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `Fowan` 值。
+- 自启动命令必须使用 `--start-hidden`，只初始化隐藏窗口和托盘图标，不得闪现主窗口或任务栏按钮。
+- 升级和重装必须保留已有自启动状态；旧版本没有自启动注册表项时保持关闭。
+- 工具箱设置页必须可以即时开关同一个注册表项；卸载时删除该项。
 
 ## 更新规则
 
@@ -114,7 +124,9 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - 首次安装不得展示更新日志提示。
 - 用户拒绝更新时，直接退出安装器。
 - 发现相同版本或更高版本时，提示用户选择重新安装或退出。
-- 更新前应通过 Windows Restart Manager 或安装器逻辑提示关闭正在运行的 Fowan、Todo 和 Sticky 进程，避免文件替换失败。
+- 更新前先通过 Windows Restart Manager 请求应用正常退出，再强制清理安装目录内仍在运行的 `Fowan.Windows.exe`、`Fowan.Todo.Windows.exe`、`Fowan.Todo.Sticky.Windows.exe` 和 `Fowan.Diary.Windows.exe` 进程树。
+- 强制清理必须同时校验完整进程名和可执行文件路径；不得终止安装目录以外的同名进程。仍有残留时必须中止覆盖并提示用户手动退出。
+- 安装器更新日志必须由打包脚本写为 UTF-8，并使用支持 UTF-8 的 Unicode 文本接口读取，不能经过 ANSI 字符串转换。
 
 ## 卸载规则
 
@@ -146,13 +158,13 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.3
+.\scripts\package-windows.ps1 -Version 0.1.4
 ```
 
 输出安装包：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.3-win-x64.exe
+out\installer\windows\win-x64\FowanSetup-0.1.4-win-x64.exe
 out\installer\windows\win-x64\fowan-update.json
 ```
 

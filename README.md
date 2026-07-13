@@ -8,12 +8,13 @@ Fowan Orchestrates Workflows with AI, Natively.
 apps/
   windows/             # WinUI 3 toolbox shell and launcher
   windows-todo/        # Independent WinUI 3 todo window app
-  windows-todo-core/   # Shared todo models, storage, and services
+  windows-todo-shared/ # Open-source shared Todo models, storage, and services
   windows-todo-sticky/ # Independent sticky todo shell
+  windows-diary/       # Independent WinUI 3 diary window app
+  windows-diary-shared/ # Open-source shared Diary models, storage, and services
 assets/
   brand/          # Brand source assets and generated platform icons
   design/windows/ # Windows UI reference images
-core/             # Future Rust cross-platform core workspace
 docs/             # Architecture and product design documents
 scripts/          # Local build and run helpers
 out/              # Local build outputs, ignored by git
@@ -26,9 +27,19 @@ and launch it, but it must not host Todo business UI or Todo task-management
 logic.
 
 Todo is an independent Windows tool with its own process, windows, data files,
-and build entrypoint. Shared Todo behavior belongs in `apps/windows-todo-core`.
+and build entrypoint. Shared Todo behavior belongs in `apps/windows-todo-shared`.
 The sticky shell remains a separate executable so it can start directly when the
 last saved Todo mode is sticky.
+
+The `Shared` projects are part of this GPL-3.0 open-source client. They contain
+ordinary tool models, local JSON storage, queries, attachments, location, and
+weather integrations; they are not the proprietary Fowan core.
+
+Future AI orchestration, model strategy, user-information encryption, key
+management, sensitive indexing, and commercial policy belong in the private
+`FowanCore` repository. See `docs/repository_boundaries.md` before adding a new
+cross-cutting or security-sensitive capability. No public protocol is defined
+until a concrete private-core use case exists.
 
 Build validation must finish with 0 warnings and 0 errors. Any compiler, restore,
 XAML, package audit, analyzer, or script warning must be fixed even when it is
@@ -101,23 +112,23 @@ update flow, privacy agreement, shortcuts, and uninstall data handling.
 Build the offline x64 installer staging output from the repository root:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.3 -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.1.4 -SkipInstaller
 ```
 
 Build the final setup executable on a machine with Inno Setup 6 installed:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.3
+.\scripts\package-windows.ps1 -Version 0.1.4
 ```
 
 The setup executable and GitHub Release update manifest are written to:
 
 ```text
-out/installer/windows/win-x64/FowanSetup-0.1.3-win-x64.exe
+out/installer/windows/win-x64/FowanSetup-0.1.4-win-x64.exe
 out/installer/windows/win-x64/fowan-update.json
 ```
 
 For auto-update checks, upload both files to a public GitHub Release tagged
-`v0.1.3`. The toolbox reads
+`v0.1.4`. The toolbox reads
 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`
 on startup when automatic update checks are enabled.

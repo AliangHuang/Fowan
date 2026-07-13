@@ -4,14 +4,14 @@
 > 日期：2026-07-01
 > 适用范围：Windows / macOS / iOS / Android 客户端通用功能
 > 全局架构：`docs/fowan_architecture_design_for_ai.md`
-> 核心架构：`docs/core_cross_platform_architecture_design.md`
+> 开闭源边界：`docs/repository_boundaries.md`
 > Windows 首版 UI：`docs/windows_client_ui_design.md`
 
 ---
 
 ## 1. 文档定位
 
-本文件提炼所有原生客户端都应遵守的通用功能设计，不绑定 Windows、macOS、iOS 或 Android 的具体 UI 技术。
+本文件提炼所有原生客户端都应遵守的通用功能设计，不绑定 Windows、macOS、iOS 或 Android 的具体 UI 技术。涉及 Fowan Protocol 或 Engine 的内容描述未来私有能力接入方式，不表示当前 Todo、Diary 等开源工具必须依赖 FowanCore；现有普通工具逻辑继续保留在公开 Shared 项目中。
 
 客户端通用职责：
 

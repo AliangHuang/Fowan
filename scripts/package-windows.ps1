@@ -145,7 +145,10 @@ function Write-ReleaseNotes {
     foreach ($component in $componentChangelogs) {
         $section = Get-ChangelogSection -Path $component.Path -Version $Version
         $componentFile = Join-Path $releaseNotesRoot "$($component.Id).md"
-        Set-Content -LiteralPath $componentFile -Value $section -Encoding UTF8
+        [System.IO.File]::WriteAllText(
+            $componentFile,
+            $section + [System.Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false))
 
         $combined.Add("[$($component.Title)]")
         $combined.Add($section)
@@ -153,7 +156,10 @@ function Write-ReleaseNotes {
     }
 
     $combinedPath = Join-Path $releaseNotesRoot "release-notes.txt"
-    Set-Content -LiteralPath $combinedPath -Value $combined -Encoding UTF8
+    [System.IO.File]::WriteAllText(
+        $combinedPath,
+        ($combined -join [System.Environment]::NewLine) + [System.Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false))
 
     return $combinedPath
 }

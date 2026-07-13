@@ -45,14 +45,29 @@ public partial class App : Application
                 return;
             }
 
-            var mainWindow = new MainWindow();
+            var startHidden = Environment.GetCommandLineArgs().Any(
+                argument => string.Equals(argument, "--start-hidden", StringComparison.OrdinalIgnoreCase));
+            var mainWindow = new MainWindow(startHidden);
             _window = mainWindow;
             StartupTrace.Mark("MainWindow constructed");
-            mainWindow.Activate();
-            StartupTrace.Mark("Window activated");
+            if (startHidden)
+            {
+                mainWindow.InitializeHiddenToTray();
+                StartupTrace.Mark("Hidden tray startup initialized");
+            }
+            else
+            {
+                mainWindow.Activate();
+                StartupTrace.Mark("Window activated");
+            }
+
             StartActivationListener(mainWindow);
-            mainWindow.QueueStartupUpdateCheck();
-            _ = StartupTrace.FlushAsync("window activated");
+            if (!startHidden)
+            {
+                mainWindow.QueueStartupUpdateCheck();
+            }
+
+            _ = StartupTrace.FlushAsync(startHidden ? "hidden tray initialized" : "window activated");
         }
         catch (Exception exception)
         {

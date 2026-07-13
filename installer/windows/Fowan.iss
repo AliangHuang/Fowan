@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.1.3"
+#define AppVersion "0.1.4"
 #endif
 
 #ifndef SourceDir
@@ -29,6 +29,8 @@ AppId={{F6DE2B72-BF97-42CC-AE78-D9A849436768}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductVersion={#AppVersion}
 DefaultDirName={autopf}\Fowan
 DefaultGroupName=Fowan
 DisableProgramGroupPage=yes
@@ -42,6 +44,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
+UsedUserAreasWarning=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
@@ -49,8 +52,10 @@ RestartIfNeededByRun=no
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式:"; Flags: checkedonce
+Name: "autostart"; Description: "登录 Windows 时自动启动 Fowan"; GroupDescription: "启动行为:"; Flags: checkedonce
 
 [Files]
+Source: "close-fowan-processes.ps1"; Flags: dontcopy noencryption
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "uninstall-clean-fowan-data.ps1"; DestDir: "{app}\Installer"; Flags: ignoreversion
 Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
@@ -60,6 +65,12 @@ Source: "{#ReleaseNotesPath}"; Flags: dontcopy
 Name: "{commonprograms}\Fowan\Fowan"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"
 Name: "{commondesktop}\Fowan"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Fowan"; ValueData: """{app}\{#AppExeName}"" --start-hidden"; Tasks: autostart; Flags: uninsdeletevalue
+
+[Run]
+Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "运行 Fowan"; Flags: postinstall nowait skipifsilent runasoriginaluser
+
 [UninstallDelete]
 Type: files; Name: "{commondesktop}\Fowan.lnk"
 Type: dirifempty; Name: "{commonprograms}\Fowan"
@@ -67,11 +78,13 @@ Type: dirifempty; Name: "{commonprograms}\Fowan"
 [Code]
 var
   CleanUninstallRequested: Boolean;
+  ExistingInstallation: Boolean;
 
 function LoadPackagedReleaseNotes(var ReleaseNotes: string): Boolean;
 var
   ReleaseNotesFile: string;
-  ReleaseNotesText: AnsiString;
+  ReleaseNoteLines: TArrayOfString;
+  Index: Integer;
 begin
   Result := False;
   ExtractTemporaryFile('release-notes.txt');
@@ -81,10 +94,18 @@ begin
     exit;
   end;
 
-  Result := LoadStringFromFile(ReleaseNotesFile, ReleaseNotesText);
+  Result := LoadStringsFromFile(ReleaseNotesFile, ReleaseNoteLines);
   if Result then
   begin
-    ReleaseNotes := ReleaseNotesText;
+    ReleaseNotes := '';
+    for Index := 0 to GetArrayLength(ReleaseNoteLines) - 1 do
+    begin
+      if Index > 0 then
+      begin
+        ReleaseNotes := ReleaseNotes + #13#10;
+      end;
+      ReleaseNotes := ReleaseNotes + ReleaseNoteLines[Index];
+    end;
   end;
 end;
 
@@ -189,6 +210,7 @@ var
   Answer: Integer;
 begin
   Result := True;
+  ExistingInstallation := False;
 
   if not IsSupportedWindowsBuild() then
   begin
@@ -202,6 +224,7 @@ begin
 
   if QueryInstalledVersion(InstalledVersion) then
   begin
+    ExistingInstallation := True;
     VersionComparison := CompareVersions(InstalledVersion, '{#AppVersion}');
     if VersionComparison < 0 then
     begin
@@ -229,6 +252,53 @@ begin
         exit;
       end;
     end;
+  end;
+end;
+
+procedure InitializeWizard();
+begin
+  if ExistingInstallation then
+  begin
+    if RegValueExists(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Fowan') then
+    begin
+      WizardSelectTasks('autostart');
+    end
+    else
+    begin
+      WizardSelectTasks('!autostart');
+    end;
+  end;
+end;
+
+function ForceCloseInstalledFowanProcesses(): Boolean;
+var
+  ResultCode: Integer;
+  ScriptPath: string;
+  Params: string;
+begin
+  ExtractTemporaryFile('close-fowan-processes.ps1');
+  ScriptPath := ExpandConstant('{tmp}\close-fowan-processes.ps1');
+  Params :=
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ScriptPath + '" ' +
+    '-InstallRoot "' + ExpandConstant('{app}') + '"';
+
+  Result := Exec(
+    ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    Params,
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) and (ResultCode = 0);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if ExistingInstallation and not ForceCloseInstalledFowanProcesses() then
+  begin
+    Result :=
+      '无法关闭当前安装目录中的 Fowan 进程。' + #13#10 +
+      '请手动退出 Fowan 工具箱及其工具后重试。';
   end;
 end;
 
@@ -377,6 +447,11 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    if not WizardIsTaskSelected('autostart') then
+    begin
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Fowan');
+    end;
+
     InstallVcRedistIfNeeded();
   end;
 end;

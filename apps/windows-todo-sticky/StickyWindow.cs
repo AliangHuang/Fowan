@@ -1,5 +1,5 @@
-using Fowan.Todo.Core.Models;
-using Fowan.Todo.Core.Services;
+using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Shared.Services;
 using Microsoft.Win32;
 using System;
 using System.Diagnostics;
@@ -23,6 +23,9 @@ public sealed class StickyWindow : Window
 {
     private const double BaseWidth = 408;
     private const double BaseHeight = 568;
+    private const double FloatingWindowSize = 52;
+    private const double FloatingEdgeThresholdDip = 16;
+    private const double WindowDragActivationDistanceDip = 6;
     private const double ResizeBorderDip = 10;
     private const int MinResizeBorderPixels = 8;
     private const int MaxResizeBorderPixels = 12;
@@ -51,6 +54,7 @@ public sealed class StickyWindow : Window
     private Border _addRowBorder = new();
     private Border _taskDivider = new();
     private FrameworkElement _dragHandle = new Grid();
+    private FrameworkElement _brandIcon = new Grid();
     private Button _settingsButton = new();
     private Button _addTaskButton = new();
     private TextBlock _titleText = new();
@@ -73,6 +77,18 @@ public sealed class StickyWindow : Window
     private bool _isEnforcingDisplayConstraints;
     private bool _isDraggingWindow;
     private bool _isInNativeMoveSizeLoop;
+    private bool _nativeLoopWasMoving;
+    private bool _isApplyingWindowMode;
+    private bool _hasAppliedInitialWindowMode;
+    private bool _isWindowDragCandidate;
+    private bool _hasWindowDragMoved;
+    private bool _windowDragStartedInFloatingMode;
+    private double _windowDragDistanceX;
+    private double _windowDragDistanceY;
+    private NativePoint _windowDragLastCursor;
+    private UIElement? _windowDragCaptureSource;
+    private DispatcherTimer? _windowDragReleaseTimer;
+    private StickyWindowGeometry? _windowDragStartGeometry;
     private DispatcherTimer? _taskDragTimer;
     private DispatcherTimer? _taskAutoScrollTimer;
     private TodoTask? _dragCandidateTask;
@@ -107,11 +123,21 @@ public sealed class StickyWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         ShowInTaskbar = true;
-        Topmost = _settings.IsStickyTopmost;
-        UpdateMinimumWindowSize(clampCurrentSize: false);
-        var initialMaxSize = CurrentMonitorSizeDip();
-        Width = Math.Clamp(_settings.StickyWidth ?? BaseWidth * _settings.StickyScale, MinWidth, initialMaxSize.Width);
-        Height = Math.Clamp(_settings.StickyHeight ?? BaseHeight * _settings.StickyScale, MinHeight, initialMaxSize.Height);
+        Topmost = _settings.IsStickyFloatingModeEnabled || _settings.IsStickyTopmost;
+        if (_settings.IsStickyFloatingModeEnabled)
+        {
+            MinWidth = FloatingWindowSize;
+            MinHeight = FloatingWindowSize;
+            Width = FloatingWindowSize;
+            Height = FloatingWindowSize;
+        }
+        else
+        {
+            UpdateMinimumWindowSize(clampCurrentSize: false);
+            var initialMaxSize = CurrentMonitorSizeDip();
+            Width = Math.Clamp(_settings.StickyWidth ?? BaseWidth * _settings.StickyScale, MinWidth, initialMaxSize.Width);
+            Height = Math.Clamp(_settings.StickyHeight ?? BaseHeight * _settings.StickyScale, MinHeight, initialMaxSize.Height);
+        }
 
         if (_settings.StickyLeft.HasValue && _settings.StickyTop.HasValue)
         {
@@ -133,22 +159,52 @@ public sealed class StickyWindow : Window
         SourceInitialized += (_, _) =>
         {
             InitializeNativeShell();
-            EnforceWindowDisplayConstraints(save: false);
+            ApplyCurrentWindowMode(save: false);
+            _hasAppliedInitialWindowMode = true;
         };
-        Loaded += (_, _) => EnforceWindowDisplayConstraints(save: true);
+        Loaded += (_, _) => ApplyCurrentWindowMode(save: true);
+        AddHandler(Mouse.PreviewMouseMoveEvent, new MouseEventHandler(OnWindowDragMouseMove), handledEventsToo: true);
+        AddHandler(Mouse.PreviewMouseUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
+        AddHandler(PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
+        AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
+        LostMouseCapture += OnWindowDragLostMouseCapture;
+        Deactivated += (_, _) =>
+        {
+            if (_isWindowDragCandidate)
+            {
+                CompleteWindowDrag(allowFloatingClickRestore: false);
+            }
+        };
         LocationChanged += (_, _) =>
         {
-            if (!_isEnforcingDisplayConstraints && !IsInteractiveMoveResizeInProgress())
+            if (!_hasAppliedInitialWindowMode || _isApplyingWindowMode)
+            {
+                return;
+            }
+
+            if (!_settings.IsStickyFloatingModeEnabled &&
+                !_isEnforcingDisplayConstraints &&
+                !IsInteractiveMoveResizeInProgress())
             {
                 EnforceWindowDisplayConstraints(save: false);
             }
 
-            SaveGeometry();
+            if (!_isWindowDragCandidate || _windowDragStartedInFloatingMode)
+            {
+                SaveGeometry();
+            }
             SynchronizeStickyChildWindows(reposition: true);
         };
         SizeChanged += (_, _) =>
         {
-            if (!_isEnforcingDisplayConstraints && !IsInteractiveMoveResizeInProgress())
+            if (!_hasAppliedInitialWindowMode || _isApplyingWindowMode)
+            {
+                return;
+            }
+
+            if (!_settings.IsStickyFloatingModeEnabled &&
+                !_isEnforcingDisplayConstraints &&
+                !IsInteractiveMoveResizeInProgress())
             {
                 EnforceWindowDisplayConstraints(save: false);
             }
@@ -186,13 +242,19 @@ public sealed class StickyWindow : Window
     private void InitializeNativeShell()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
-        EnableNativeResize(hwnd);
+        SetNativeResizeEnabled(hwnd, !_settings.IsStickyFloatingModeEnabled);
         _source = HwndSource.FromHwnd(hwnd);
         _source?.AddHook(WndProc);
     }
 
     private void BuildUi()
     {
+        if (_settings.IsStickyFloatingModeEnabled)
+        {
+            BuildFloatingUi();
+            return;
+        }
+
         _root = new Grid
         {
             LayoutTransform = _scaleTransform,
@@ -253,6 +315,37 @@ public sealed class StickyWindow : Window
         Content = _root;
     }
 
+    private void BuildFloatingUi()
+    {
+        _root = new Grid { Background = Brushes.Transparent };
+        var floatingIcon = new Image
+        {
+            Width = 30,
+            Height = 30,
+            Source = LoadIconImage(),
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        System.Windows.Automation.AutomationProperties.SetName(floatingIcon, "悬浮待办图标");
+        _shell = new Border
+        {
+            Width = FloatingWindowSize,
+            Height = FloatingWindowSize,
+            CornerRadius = new CornerRadius(13),
+            Background = SurfaceBrush(),
+            BorderBrush = Brush(0xDCE7EA),
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            Child = floatingIcon
+        };
+        ToolTipService.SetToolTip(_shell, "单击恢复便签模式");
+        _shell.MouseLeftButtonDown += OnWindowDragMouseLeftButtonDown;
+        _root.Children.Add(_shell);
+        Content = _root;
+    }
+
     private bool HasOpenStickyChildWindow()
     {
         return _adjustmentWindow is { IsVisible: true } ||
@@ -281,6 +374,7 @@ public sealed class StickyWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var brand = new StackPanel
         {
@@ -288,21 +382,24 @@ public sealed class StickyWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        brand.Children.Add(new Border
+        _brandIcon = new Image
+        {
+            Width = 16,
+            Height = 16,
+            Source = LoadIconImage(),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        System.Windows.Automation.AutomationProperties.SetName(_brandIcon, "便签品牌图标");
+        var brandIconShell = new Border
         {
             Width = 24,
             Height = 24,
             CornerRadius = new CornerRadius(6),
             Background = Brush(0x001B3D),
-            Child = new Image
-            {
-                Width = 16,
-                Height = 16,
-                Source = LoadIconImage(),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        });
+            Child = _brandIcon
+        };
+        brand.Children.Add(brandIconShell);
         brand.Children.Add(new TextBlock
         {
             Text = "Fowan",
@@ -326,7 +423,7 @@ public sealed class StickyWindow : Window
         Grid.SetColumn(topmost, 1);
         grid.Children.Add(topmost);
 
-        var restore = HeaderTextButton("\uE72B", "回到大界面");
+        var restore = HeaderIconButton("\uE72B", "回到大界面");
         restore.Click += (_, _) => ReturnToMain();
         Grid.SetColumn(restore, 2);
         grid.Children.Add(restore);
@@ -336,9 +433,14 @@ public sealed class StickyWindow : Window
         Grid.SetColumn(_settingsButton, 3);
         grid.Children.Add(_settingsButton);
 
+        var minimize = HeaderIconButton("\uE921", "最小化便签");
+        minimize.Click += (_, _) => WindowState = WindowState.Minimized;
+        Grid.SetColumn(minimize, 4);
+        grid.Children.Add(minimize);
+
         var close = HeaderIconButton("\uE711", "关闭便签");
         close.Click += (_, _) => Close();
-        Grid.SetColumn(close, 4);
+        Grid.SetColumn(close, 5);
         grid.Children.Add(close);
 
         header.Child = grid;
@@ -353,20 +455,173 @@ public sealed class StickyWindow : Window
             return;
         }
 
-        try
+        OnWindowDragMouseLeftButtonDown(sender, args);
+    }
+
+    private void OnWindowDragMouseLeftButtonDown(object sender, MouseButtonEventArgs args)
+    {
+        if (args.ChangedButton != MouseButton.Left ||
+            args.ButtonState != MouseButtonState.Pressed ||
+            sender is not UIElement ||
+            !GetCursorPos(out _windowDragLastCursor))
         {
-            _isDraggingWindow = true;
-            DragMove();
+            return;
         }
-        catch (InvalidOperationException)
+
+        _isWindowDragCandidate = true;
+        _hasWindowDragMoved = false;
+        _windowDragStartedInFloatingMode = _settings.IsStickyFloatingModeEnabled;
+        _windowDragStartGeometry = !_windowDragStartedInFloatingMode && WindowState == WindowState.Normal
+            ? new StickyWindowGeometry(Left, Top, Width, Height)
+            : null;
+        _windowDragDistanceX = 0;
+        _windowDragDistanceY = 0;
+        _windowDragCaptureSource = this;
+        if (!CaptureMouse())
         {
-            // DragMove can throw if Windows has already converted the gesture to resize.
+            _isWindowDragCandidate = false;
+            _windowDragCaptureSource = null;
+            _windowDragStartGeometry = null;
+            return;
         }
-        finally
+
+        _windowDragReleaseTimer ??= CreateWindowDragReleaseTimer();
+        _windowDragReleaseTimer.Start();
+        args.Handled = true;
+    }
+
+    private DispatcherTimer CreateWindowDragReleaseTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        timer.Tick += (_, _) =>
         {
-            _isDraggingWindow = false;
-            EnforceWindowDisplayConstraints(save: true);
+            if (_isWindowDragCandidate && !IsLeftMouseButtonPressed())
+            {
+                CompleteWindowDrag(allowFloatingClickRestore: true);
+            }
+        };
+        return timer;
+    }
+
+    private void OnWindowDragMouseMove(object sender, MouseEventArgs args)
+    {
+        if (!_isWindowDragCandidate || args.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
         }
+
+        if (!GetCursorPos(out var cursor))
+        {
+            return;
+        }
+
+        var scale = DeviceScale();
+        var dx = (cursor.X - _windowDragLastCursor.X) / scale.X;
+        var dy = (cursor.Y - _windowDragLastCursor.Y) / scale.Y;
+        _windowDragLastCursor = cursor;
+        _windowDragDistanceX += dx;
+        _windowDragDistanceY += dy;
+
+        if (!_hasWindowDragMoved)
+        {
+            if (Math.Sqrt(
+                    _windowDragDistanceX * _windowDragDistanceX +
+                    _windowDragDistanceY * _windowDragDistanceY) < WindowDragActivationDistanceDip)
+            {
+                return;
+            }
+
+            dx = _windowDragDistanceX;
+            dy = _windowDragDistanceY;
+        }
+
+        _hasWindowDragMoved = true;
+        _isDraggingWindow = true;
+        Left += dx;
+        Top += dy;
+        args.Handled = true;
+    }
+
+    private void OnWindowDragMouseLeftButtonUp(object sender, MouseButtonEventArgs args)
+    {
+        if (!_isWindowDragCandidate || args.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        CompleteWindowDrag(allowFloatingClickRestore: true);
+        args.Handled = true;
+    }
+
+    private void OnWindowDragLostMouseCapture(object sender, MouseEventArgs args)
+    {
+        if (_isWindowDragCandidate)
+        {
+            if (IsLeftMouseButtonPressed())
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (_isWindowDragCandidate && !IsMouseCaptured)
+                    {
+                        CaptureMouse();
+                    }
+                });
+                return;
+            }
+
+            CompleteWindowDrag(allowFloatingClickRestore: false);
+        }
+    }
+
+    private void CompleteWindowDrag(bool allowFloatingClickRestore)
+    {
+        if (GetCursorPos(out var releaseCursor))
+        {
+            _windowDragLastCursor = releaseCursor;
+        }
+
+        var moved = _hasWindowDragMoved;
+        var startedInFloatingMode = _windowDragStartedInFloatingMode;
+        var dragStartGeometry = _windowDragStartGeometry;
+        var captureSource = _windowDragCaptureSource;
+        _isWindowDragCandidate = false;
+        _hasWindowDragMoved = false;
+        _isDraggingWindow = false;
+        _windowDragReleaseTimer?.Stop();
+        _windowDragCaptureSource = null;
+        _windowDragStartGeometry = null;
+        if (captureSource?.IsMouseCaptured == true)
+        {
+            captureSource.ReleaseMouseCapture();
+        }
+
+        if (startedInFloatingMode)
+        {
+            if (moved || !allowFloatingClickRestore)
+            {
+                SnapFloatingWindowToNearestEdge(_windowDragLastCursor);
+            }
+            else
+            {
+                ExitFloatingMode();
+            }
+
+            return;
+        }
+
+        if (moved)
+        {
+            EnforceVerticalDisplayConstraints();
+            if (!TryEnterFloatingModeFromCurrentPosition(_windowDragLastCursor, dragStartGeometry))
+            {
+                SaveGeometry();
+            }
+        }
+    }
+
+    private static bool IsLeftMouseButtonPressed()
+    {
+        return (GetAsyncKeyState(0x01) & 0x8000) != 0;
     }
 
     private static bool IsHeaderButtonHit(DependencyObject? source)
@@ -592,8 +847,9 @@ public sealed class StickyWindow : Window
     private void ApplyStoredSettings()
     {
         ApplyStickyOpacity(refreshTasks: false);
-        _scaleTransform.ScaleX = _settings.StickyScale;
-        _scaleTransform.ScaleY = _settings.StickyScale;
+        var scale = _settings.IsStickyFloatingModeEnabled ? 1.0 : _settings.StickyScale;
+        _scaleTransform.ScaleX = scale;
+        _scaleTransform.ScaleY = scale;
     }
 
     private void RefreshAll()
@@ -2448,6 +2704,217 @@ public sealed class StickyWindow : Window
         Top = centerY - height / 2;
     }
 
+    private void ApplyCurrentWindowMode(bool save)
+    {
+        if (_settings.IsStickyFloatingModeEnabled)
+        {
+            ApplyFloatingModeGeometry(save);
+            return;
+        }
+
+        ResizeMode = ResizeMode.CanResize;
+        Topmost = _settings.IsStickyTopmost;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            SetNativeResizeEnabled(hwnd, enabled: true);
+        }
+
+        EnforceWindowDisplayConstraints(save);
+    }
+
+    private void ApplyFloatingModeGeometry(bool save)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        if (!TryGetMonitorInfo(monitor, out var monitorInfo))
+        {
+            return;
+        }
+
+        var scale = DeviceScale();
+        var workLeft = monitorInfo.WorkArea.Left / scale.X;
+        var workRight = monitorInfo.WorkArea.Right / scale.X;
+        var workTop = monitorInfo.WorkArea.Top / scale.Y;
+        var workBottom = monitorInfo.WorkArea.Bottom / scale.Y;
+        var desiredTop = _settings.StickyFloatingTop ?? (Top + Math.Max(0, Height - FloatingWindowSize) / 2);
+
+        _isApplyingWindowMode = true;
+        try
+        {
+            CloseStickyChildWindows();
+            ResizeMode = ResizeMode.NoResize;
+            MinWidth = FloatingWindowSize;
+            MinHeight = FloatingWindowSize;
+            Width = FloatingWindowSize;
+            Height = FloatingWindowSize;
+            Left = string.Equals(_settings.StickyFloatingEdge, TodoStickyFloatingEdges.Right, StringComparison.Ordinal)
+                ? workRight - FloatingWindowSize
+                : workLeft;
+            Top = Math.Clamp(desiredTop, workTop, Math.Max(workTop, workBottom - FloatingWindowSize));
+            Topmost = true;
+            _settings.StickyFloatingTop = Top;
+            SetNativeResizeEnabled(hwnd, enabled: false);
+        }
+        finally
+        {
+            _isApplyingWindowMode = false;
+        }
+
+        if (save)
+        {
+            _store.SaveSettings(_settings);
+        }
+    }
+
+    private bool TryEnterFloatingModeFromCurrentPosition(
+        NativePoint? releasePoint = null,
+        StickyWindowGeometry? dragStartGeometry = null)
+    {
+        if (_settings.IsStickyFloatingModeEnabled || WindowState != WindowState.Normal)
+        {
+            return false;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var monitor = releasePoint.HasValue
+            ? MonitorFromPoint(releasePoint.Value, MonitorDefaultToNearest)
+            : MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        if (!TryGetMonitorInfo(monitor, out var monitorInfo))
+        {
+            return false;
+        }
+
+        var scale = DeviceScale();
+        var workLeft = monitorInfo.WorkArea.Left / scale.X;
+        var workRight = monitorInfo.WorkArea.Right / scale.X;
+        var windowCenter = Left + (ActualWidth > 0 ? ActualWidth : Width) / 2;
+        var dockEdge = TodoStickyPlacement.FindDockEdgeByCenter(
+            workLeft,
+            workRight,
+            windowCenter,
+            FloatingEdgeThresholdDip);
+        if (dockEdge is null)
+        {
+            return false;
+        }
+
+        var restoreGeometry = dragStartGeometry ?? new StickyWindowGeometry(Left, Top, Width, Height);
+        _settings.StickyLeft = restoreGeometry.Left;
+        _settings.StickyTop = restoreGeometry.Top;
+        _settings.StickyWidth = restoreGeometry.Width;
+        _settings.StickyHeight = restoreGeometry.Height;
+        _settings.StickyFloatingEdge = dockEdge;
+        _settings.StickyFloatingTop = FloatingTopAlignedToBrandIcon();
+        _settings.IsStickyFloatingModeEnabled = true;
+        _store.SaveSettings(_settings);
+
+        CloseStickyChildWindows();
+        BuildUi();
+        ApplyStoredSettings();
+        ApplyFloatingModeGeometry(save: true);
+        return true;
+    }
+
+    private double FloatingTopAlignedToBrandIcon()
+    {
+        if (_brandIcon.IsLoaded && _brandIcon.ActualHeight > 0)
+        {
+            var iconTopInWindow = _brandIcon.TranslatePoint(new Point(0, 0), this).Y;
+            return TodoStickyPlacement.AlignCenters(
+                Top + iconTopInWindow,
+                _brandIcon.ActualHeight,
+                FloatingWindowSize);
+        }
+
+        return Top;
+    }
+
+    private void SnapFloatingWindowToNearestEdge(NativePoint? releasePoint = null)
+    {
+        if (!_settings.IsStickyFloatingModeEnabled)
+        {
+            return;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var windowRect))
+        {
+            return;
+        }
+
+        var monitor = releasePoint.HasValue
+            ? MonitorFromPoint(releasePoint.Value, MonitorDefaultToNearest)
+            : MonitorFromRect(ref windowRect, MonitorDefaultToNearest);
+        if (!TryGetMonitorInfo(monitor, out var monitorInfo))
+        {
+            return;
+        }
+
+        var centerX = releasePoint?.X ?? windowRect.Left + (windowRect.Right - windowRect.Left) / 2;
+        _settings.StickyFloatingEdge = TodoStickyPlacement.NearestEdge(
+            monitorInfo.WorkArea.Left,
+            monitorInfo.WorkArea.Right,
+            centerX);
+        _settings.StickyFloatingTop = Top;
+        ApplyFloatingModeGeometry(save: true);
+    }
+
+    private void ExitFloatingMode()
+    {
+        if (!_settings.IsStickyFloatingModeEnabled)
+        {
+            return;
+        }
+
+        _settings.IsStickyFloatingModeEnabled = false;
+        _settings.StickyFloatingEdge = null;
+        _settings.StickyFloatingTop = null;
+        _store.SaveSettings(_settings);
+
+        _isApplyingWindowMode = true;
+        try
+        {
+            ResizeMode = ResizeMode.CanResize;
+            UpdateMinimumWindowSize(clampCurrentSize: false);
+            var maxSize = CurrentMonitorSizeDip();
+            Width = Math.Clamp(_settings.StickyWidth ?? BaseWidth * _settings.StickyScale, MinWidth, maxSize.Width);
+            Height = Math.Clamp(_settings.StickyHeight ?? BaseHeight * _settings.StickyScale, MinHeight, maxSize.Height);
+            if (_settings.StickyLeft.HasValue && _settings.StickyTop.HasValue)
+            {
+                Left = _settings.StickyLeft.Value;
+                Top = _settings.StickyTop.Value;
+            }
+
+            Topmost = _settings.IsStickyTopmost;
+            BuildUi();
+            ApplyStoredSettings();
+            RefreshAll();
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                SetNativeResizeEnabled(hwnd, enabled: true);
+            }
+        }
+        finally
+        {
+            _isApplyingWindowMode = false;
+        }
+
+        EnforceWindowDisplayConstraints(save: true);
+        Activate();
+    }
+
     private void UpdateMinimumWindowSize(bool clampCurrentSize)
     {
         var maxSize = CurrentMonitorSizeDip();
@@ -2634,6 +3101,11 @@ public sealed class StickyWindow : Window
 
     private void SaveGeometry()
     {
+        if (WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
         if (!IsLoaded && PresentationSource.FromVisual(this) is null)
         {
             return;
@@ -2644,10 +3116,17 @@ public sealed class StickyWindow : Window
             return;
         }
 
-        _settings.StickyLeft = Left;
-        _settings.StickyTop = Top;
-        _settings.StickyWidth = Width;
-        _settings.StickyHeight = Height;
+        if (_settings.IsStickyFloatingModeEnabled)
+        {
+            _settings.StickyFloatingTop = Top;
+        }
+        else
+        {
+            _settings.StickyLeft = Left;
+            _settings.StickyTop = Top;
+            _settings.StickyWidth = Width;
+            _settings.StickyHeight = Height;
+        }
         _store.SaveSettings(_settings);
     }
 
@@ -2679,10 +3158,24 @@ public sealed class StickyWindow : Window
 
     internal void RestoreFromExternalActivation()
     {
-        ReloadSettingsAndRefresh();
-        if (WindowState == WindowState.Minimized)
+        var wasMinimized = WindowState == WindowState.Minimized;
+        if (wasMinimized)
         {
-            WindowState = WindowState.Normal;
+            _isApplyingWindowMode = true;
+            try
+            {
+                WindowState = WindowState.Normal;
+            }
+            finally
+            {
+                _isApplyingWindowMode = false;
+            }
+
+            RefreshAll();
+        }
+        else
+        {
+            ReloadSettingsAndRefresh();
         }
 
         if (!IsVisible)
@@ -2710,12 +3203,16 @@ public sealed class StickyWindow : Window
         _settings = _store.LoadSettings();
         PurgeExpiredRecycleBin();
 
-        Topmost = _settings.IsStickyTopmost;
+        Topmost = _settings.IsStickyFloatingModeEnabled || _settings.IsStickyTopmost;
         CloseStickyChildWindows();
         BuildUi();
         ApplyStoredSettings();
         RefreshAll();
         UpdatePopupDismissOverlay();
+        if (WindowState != WindowState.Minimized)
+        {
+            ApplyCurrentWindowMode(save: false);
+        }
     }
 
     private void PurgeExpiredRecycleBin()
@@ -2812,6 +3309,7 @@ public sealed class StickyWindow : Window
             ToolTip = label,
             VerticalAlignment = VerticalAlignment.Center
         };
+        System.Windows.Automation.AutomationProperties.SetName(button, label);
         button.Template = ButtonTemplate(new CornerRadius(7), Brushes.Transparent, Brush(0xEEF9FA));
         return button;
     }
@@ -3088,27 +3586,67 @@ public sealed class StickyWindow : Window
         return rgb;
     }
 
-    private void EnableNativeResize(IntPtr hwnd)
+    private void SetNativeResizeEnabled(IntPtr hwnd, bool enabled)
     {
         var style = GetWindowLongPtr(hwnd, GwlStyle).ToInt64();
-        style |= WsThickFrame | WsMinimizeBox | WsMaximizeBox;
+        if (enabled)
+        {
+            style |= WsThickFrame | WsMinimizeBox;
+            style &= ~WsMaximizeBox;
+        }
+        else
+        {
+            style &= ~(WsThickFrame | WsMaximizeBox);
+        }
+
         SetWindowLongPtr(hwnd, GwlStyle, new IntPtr(style));
         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpFrameChanged);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if ((message == WmLeftButtonUp || message == WmNonClientLeftButtonUp) && _isWindowDragCandidate)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_isWindowDragCandidate)
+                {
+                    CompleteWindowDrag(allowFloatingClickRestore: true);
+                }
+            });
+        }
+
         if (message == WmEnterSizeMove)
         {
             _isInNativeMoveSizeLoop = true;
+            _nativeLoopWasMoving = false;
+            return IntPtr.Zero;
+        }
+
+        if (message == WmMoving)
+        {
+            _nativeLoopWasMoving = true;
             return IntPtr.Zero;
         }
 
         if (message == WmExitSizeMove)
         {
             _isInNativeMoveSizeLoop = false;
-            EnforceWindowDisplayConstraints(save: true);
-            SynchronizeStickyChildWindows(reposition: true);
+            var shouldTryFloatingMode = _nativeLoopWasMoving;
+            _nativeLoopWasMoving = false;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_settings.IsStickyFloatingModeEnabled)
+                {
+                    return;
+                }
+
+                if (!shouldTryFloatingMode || !TryEnterFloatingModeFromCurrentPosition())
+                {
+                    EnforceWindowDisplayConstraints(save: true);
+                    SynchronizeStickyChildWindows(reposition: true);
+                }
+            });
             return IntPtr.Zero;
         }
 
@@ -3118,6 +3656,11 @@ public sealed class StickyWindow : Window
         }
 
         handled = true;
+        if (_settings.IsStickyFloatingModeEnabled)
+        {
+            return new IntPtr(HtClient);
+        }
+
         return new IntPtr(HitTestResizeBorder(hwnd, lParam));
     }
 
@@ -3828,6 +4371,35 @@ public sealed class StickyWindow : Window
         }
     }
 
+    private void EnforceVerticalDisplayConstraints()
+    {
+        if (!TryGetDragHandleScreenRect(out var dragRect))
+        {
+            return;
+        }
+
+        var monitor = MonitorFromRect(ref dragRect, MonitorDefaultToNearest);
+        if (!TryGetMonitorInfo(monitor, out var monitorInfo))
+        {
+            return;
+        }
+
+        var dy = 0;
+        if (dragRect.Top < monitorInfo.WorkArea.Top)
+        {
+            dy = monitorInfo.WorkArea.Top - dragRect.Top;
+        }
+        else if (dragRect.Bottom > monitorInfo.WorkArea.Bottom)
+        {
+            dy = monitorInfo.WorkArea.Bottom - dragRect.Bottom;
+        }
+
+        if (dy != 0)
+        {
+            Top += dy / DeviceScale().Y;
+        }
+    }
+
     private sealed class StickyAddTaskWindow : Window, IStickyChildWindow
     {
         private const double BaseWindowWidth = 320;
@@ -4082,6 +4654,9 @@ public sealed class StickyWindow : Window
 
     private const int GwlStyle = -16;
     private const int WmNcHitTest = 0x0084;
+    private const int WmNonClientLeftButtonUp = 0x00A2;
+    private const int WmLeftButtonUp = 0x0202;
+    private const int WmMoving = 0x0216;
     private const int WmEnterSizeMove = 0x0231;
     private const int WmExitSizeMove = 0x0232;
     private const int HtClient = 1;
@@ -4102,6 +4677,8 @@ public sealed class StickyWindow : Window
     private const uint SwpFrameChanged = 0x0020;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
+    private readonly record struct StickyWindowGeometry(double Left, double Top, double Width, double Height);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect
     {
@@ -4109,6 +4686,13 @@ public sealed class StickyWindow : Window
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -4136,7 +4720,16 @@ public sealed class StickyWindow : Window
     private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
 
     [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromRect(ref Rect rect, uint flags);

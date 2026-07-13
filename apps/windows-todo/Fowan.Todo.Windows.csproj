@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\windows-todo-core\Fowan.Todo.Core.csproj" />
+    <ProjectReference Include="..\windows-todo-shared\Fowan.Todo.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

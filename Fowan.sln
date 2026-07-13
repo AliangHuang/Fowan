@@ -9,17 +9,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Windows", "apps\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{E734C8D4-8651-4FAD-9F54-A474C3177CDB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Core", "apps\windows-todo-core\Fowan.Todo.Core.csproj", "{B846A653-8B42-407A-83F6-6657B1952427}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Shared", "apps\windows-todo-shared\Fowan.Todo.Shared.csproj", "{B846A653-8B42-407A-83F6-6657B1952427}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Sticky.Windows", "apps\windows-todo-sticky\Fowan.Todo.Sticky.Windows.csproj", "{FB088CD9-430A-4094-A3D2-EA309B07F180}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Core", "apps\windows-diary-core\Fowan.Diary.Core.csproj", "{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Shared", "apps\windows-diary-shared\Fowan.Diary.Shared.csproj", "{D6B0A3F4-E195-4E3C-BF28-B478EF73B566}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Windows", "apps\windows-diary\Fowan.Diary.Windows.csproj", "{C7BA0B37-2F2B-42D5-A523-1DCCB6AF9F2E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Core.Tests", "tests\Fowan.Diary.Core.Tests\Fowan.Diary.Core.Tests.csproj", "{E3431B74-A27F-4A90-A1A4-4A95E16971C8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Diary.Shared.Tests", "tests\Fowan.Diary.Shared.Tests\Fowan.Diary.Shared.Tests.csproj", "{E3431B74-A27F-4A90-A1A4-4A95E16971C8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Core.Tests", "tests\Fowan.Todo.Core.Tests\Fowan.Todo.Core.Tests.csproj", "{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fowan.Todo.Shared.Tests", "tests\Fowan.Todo.Shared.Tests\Fowan.Todo.Shared.Tests.csproj", "{A05DB7D0-2D4F-4F9A-8F50-9BCB625C92EA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

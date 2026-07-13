@@ -4,7 +4,7 @@
 > 日期：2026-07-01
 > 适用范围：Windows Client 首版工具箱 UI / UX
 > 客户端通用功能：`docs/client_common_function_design.md`
-> 核心架构：`docs/core_cross_platform_architecture_design.md`
+> 开闭源边界：`docs/repository_boundaries.md`
 
 ---
 
