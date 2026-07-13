@@ -7,7 +7,7 @@ description: Package and publish a Fowan Windows GitHub Release. Use when prepar
 
 ## Overview
 
-Use this workflow for Fowan stable Windows releases. A release is complete only when the code commit, `v<version>` tag, GitHub Release, installer asset, and `fowan-update.json` asset all exist and the latest manifest is publicly readable.
+Use this workflow for Fowan stable Windows releases. A release is complete only when the code commit, `v<version>` tag, GitHub Release, installer asset, and `fowan-update.json` asset all exist; the installer-embedded release notes match the validated changelogs; and the latest manifest is publicly readable.
 
 Project defaults:
 
@@ -93,6 +93,14 @@ Get-FileHash "out\installer\windows\win-x64\FowanSetup-<version>-win-x64.exe" -A
 
 The manifest must use `channel: stable`, point at the `AliangHuang/Fowan` release asset URL, and contain a SHA-256 that matches the installer.
 
+Then run the mandatory post-package gate:
+
+```powershell
+.\.codex\skills\publish-fowan-release\scripts\Test-PackagedRelease.ps1 -Version <version>
+```
+
+This gate compares `app/ReleaseNotes/toolbox.md`, `todo.md`, `diary.md`, and `release-notes.txt` with the current-version source changelogs; verifies the installer was generated after those packaged notes; and verifies the manifest version, channel, asset URL, and SHA-256. Do not commit, tag, create a release, or upload assets if this gate fails.
+
 ## Commit And Tag
 
 Commit only source, docs, scripts, and project metadata. Do not add ignored generated output under `out/`.
@@ -127,14 +135,17 @@ Release notes must mention the validated user-visible changes for every affected
 
 ## Correct An Already Published Release
 
-When binaries are correct but release notes are incomplete or inaccurate:
+Release notes are embedded in the Windows installer, so a changelog correction can change the distributed installer even when application binaries are unchanged.
 
-1. Correct the relevant current-version changelog sections in the repository.
-2. Commit and push the documentation/workflow correction to `main`.
-3. Update the existing GitHub Release body in place from the corrected changelog sections.
-4. Do not move or recreate the existing tag, and do not rebuild or re-upload unchanged installer/manifest assets.
-5. Read the release body back through the GitHub API or release page and verify the corrected text is publicly visible.
-6. Re-run the public manifest and asset checks so the correction does not accidentally disturb the release.
+1. Determine whether the inaccurate text exists only in the GitHub Release body or is also present under the packaged `app/ReleaseNotes` directory.
+2. If only the GitHub body is wrong, update it in place, read it back, and leave the tag and assets unchanged.
+3. If packaged notes are wrong, do not describe the installer as unchanged. Ask the user to choose between:
+   - keeping the already-published installer unchanged and documenting the known mismatch;
+   - rebuilding the same version, regenerating `fowan-update.json`, and replacing both assets;
+   - publishing a new patch version with corrected embedded notes.
+4. Never move or recreate an existing release tag without an explicit versioning decision from the user.
+5. When assets are replaced, run `Test-PackagedRelease.ps1`, verify both uploaded asset states, then re-check the public latest manifest and installer URL.
+6. When the user keeps the old installer, do not claim that the embedded release notes were corrected; report separately what was corrected in source and on GitHub.
 
 ## Asset Upload Checklist
 
@@ -146,6 +157,14 @@ Upload exactly these assets:
 If retrying a partially failed upload, list existing assets first and delete same-name assets before re-uploading. A GitHub asset in `starter` state is incomplete and must be deleted.
 
 Treat the release as incomplete until both assets are visible on the release page.
+
+Immediately before uploading, rerun:
+
+```powershell
+.\.codex\skills\publish-fowan-release\scripts\Test-PackagedRelease.ps1 -Version <version>
+```
+
+This prevents uploading an installer built before the final changelog edit or a manifest generated for a different installer hash.
 
 When the normal upload path fails but GitHub API and push are otherwise authenticated, use this Windows fallback:
 
@@ -274,3 +293,5 @@ Confirm the downloaded manifest:
 - can be consumed by the toolbox update checker
 
 Also confirm the GitHub Release body contains the validated current-version toolbox, Todo, and Diary notes without stale placeholder claims.
+
+Rerun `Test-PackagedRelease.ps1` during final verification. The source changelogs, packaged component notes, combined installer notes, installer timestamp, and manifest hash must still form one consistent release set.
