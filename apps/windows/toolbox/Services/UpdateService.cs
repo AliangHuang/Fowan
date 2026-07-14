@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Fowan.Windows.Services;
 
-public sealed class UpdateService
+internal sealed class UpdateService : Fowan.Windows.AppPorts.IUpdateChecker
 {
     public const string DefaultManifestUrl = "https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json";
     private const string StableChannel = "stable";
@@ -224,7 +224,7 @@ public sealed class UpdateService
     }
 }
 
-public sealed record UpdateInfo(
+internal sealed record UpdateInfo(
     string Version,
     string InstallerUrl,
     string InstallerSha256,

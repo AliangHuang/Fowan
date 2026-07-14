@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\shared\Fowan.Diary.Shared.csproj" />
+    <ProjectReference Include="..\..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

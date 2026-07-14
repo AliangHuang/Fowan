@@ -64,13 +64,16 @@ if ($Clean) {
 $usePublish = $Publish
 $command = if ($usePublish) { "publish" } else { "build" }
 $candidate = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-todo-candidate"
+$staging = $null
+try {
 
 $index = 0
 foreach ($projectToBuild in @($project, $stickyProject)) {
     $staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-todo-$index"
+    $dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $staging
     & $dotnet $command $projectToBuild `
         -c $Configuration `
-        -o $staging `
+        -o $dotnetOutput `
         --nologo
 
     if ($LASTEXITCODE -ne 0) {
@@ -79,7 +82,7 @@ foreach ($projectToBuild in @($project, $stickyProject)) {
         exit $LASTEXITCODE
     }
     Copy-BuildDirectoryContent -Source $staging -Destination $candidate
-    Remove-Item -LiteralPath $staging -Recurse -Force
+    Remove-IsolatedBuildDirectory -Path $staging
     $index++
 }
 
@@ -102,3 +105,8 @@ $stickyExe = Join-Path $output "Fowan.Todo.Sticky.Windows.exe"
 Write-Host "Windows todo client $command output: $output"
 Write-Host "Executable: $exe"
 Write-Host "Sticky executable: $stickyExe"
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $staging
+    Remove-IsolatedBuildDirectory -Path $candidate
+}

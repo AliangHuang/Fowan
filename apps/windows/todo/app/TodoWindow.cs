@@ -1,5 +1,7 @@
 using Fowan.Todo.Shared.Models;
 using Fowan.Todo.Shared.Services;
+using Fowan.Todo.Windows.AppPorts;
+using Fowan.Todo.Windows.Platform.Windows;
 using Fowan.Todo.Windows.Presentation;
 using Microsoft.UI;
 using Microsoft.UI.Input;
@@ -41,6 +43,7 @@ public sealed class TodoWindow : Window
 
     private readonly TodoPersistenceController _store = TodoPersistenceController.CreateDefault();
     private readonly TodoWindowPresentationController _presentation = new();
+    private readonly IStickyProcessCoordinator _stickyProcesses = new WindowsStickyProcessCoordinator();
     private TodoData _data;
     private TodoSettings _settings;
 
@@ -67,7 +70,6 @@ public sealed class TodoWindow : Window
 
     private string _currentViewId;
     private string? _selectedTaskId;
-    private System.Diagnostics.Process? _stickyProcess;
     private readonly global::Windows.UI.ViewManagement.UISettings _uiSettings = new();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _taskDragTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _taskAutoScrollTimer;
@@ -129,7 +131,7 @@ public sealed class TodoWindow : Window
     private void ConfigureWindow()
     {
         Title = "Fowan Todo";
-        Closed += (_, _) => StickyLauncher.TryShutdown();
+        Closed += (_, _) => _stickyProcesses.TryShutdown();
         Activated += (_, _) =>
         {
             QueueVirtualTitleBarRegionUpdate();
@@ -144,7 +146,7 @@ public sealed class TodoWindow : Window
             var hwnd = WindowHandle();
             var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
-            var scale = Math.Clamp(GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
+            var scale = Math.Clamp(NativeWindowMethods.GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
             var width = (int)Math.Round(1280 * scale);
             var height = (int)Math.Round(820 * scale);
             appWindow.Resize(new SizeInt32(width, height));
@@ -4263,10 +4265,8 @@ public sealed class TodoWindow : Window
         _settings.IsStickyModeEnabled = true;
         _store.SaveSettings(_settings);
 
-        if (StickyLauncher.TryShow(out var process))
+        if (_stickyProcesses.TryShow())
         {
-            _stickyProcess = process;
-
             if (closeMainWindow)
             {
                 HideNativeWindow();
@@ -4280,7 +4280,6 @@ public sealed class TodoWindow : Window
 
         _settings.IsStickyModeEnabled = false;
         _store.SaveSettings(_settings);
-        _stickyProcess = null;
         ShowNativeWindow();
         Activate();
     }
@@ -4302,10 +4301,7 @@ public sealed class TodoWindow : Window
             return;
         }
 
-        if (StickyLauncher.TryPrewarm(out var process))
-        {
-            _stickyProcess = process;
-        }
+        _stickyProcesses.TryPrewarm();
     }
 
     private void ReloadDataAndSettings()
@@ -5496,12 +5492,12 @@ public sealed class TodoWindow : Window
         RefreshAll();
 
         var hwnd = WindowHandle();
-        ShowWindow(hwnd, ShowWindowRestore);
+        NativeWindowMethods.ShowWindow(hwnd, ShowWindowRestore);
         Activate();
-        SetForegroundWindow(hwnd);
+        NativeWindowMethods.SetForegroundWindow(hwnd);
         if (wasStickyModeEnabled)
         {
-            StickyLauncher.TryShutdown();
+            _stickyProcesses.TryShutdown();
         }
 
         QueueStickyPrewarm();
@@ -5511,12 +5507,12 @@ public sealed class TodoWindow : Window
 
     private void HideNativeWindow()
     {
-        ShowWindow(WindowHandle(), ShowWindowHide);
+        NativeWindowMethods.ShowWindow(WindowHandle(), ShowWindowHide);
     }
 
     private void ShowNativeWindow()
     {
-        ShowWindow(WindowHandle(), ShowWindowShow);
+        NativeWindowMethods.ShowWindow(WindowHandle(), ShowWindowShow);
     }
 
     private sealed record TodoDropTarget(string TaskId, TodoDropPlacement Placement);
@@ -5529,12 +5525,4 @@ public sealed class TodoWindow : Window
         TopLevelEnd
     }
 
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
 }

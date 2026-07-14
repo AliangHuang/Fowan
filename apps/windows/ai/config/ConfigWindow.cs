@@ -1,6 +1,8 @@
 using Fowan.Ai.Shared.Models;
 using Fowan.Ai.Shared.Services;
+using Fowan.Ai.Shared.Application.Ports;
 using Fowan.Ai.Config.Windows.Presentation;
+using Fowan.Ai.Config.Windows.Platform.Windows;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Text;
@@ -16,7 +18,8 @@ namespace Fowan.Ai.Config.Windows;
 public sealed partial class ConfigWindow : Window
 {
     private readonly AiLocalizationService _loc = new();
-    private readonly AiCoreClient _client = new();
+    private readonly AiCoreClient _client;
+    private readonly IAiApplicationLauncher _applicationLauncher;
     private readonly AiConfigController _controller;
     private readonly List<AiChannel> _channels;
     private readonly List<AiCredential> _credentials;
@@ -36,6 +39,8 @@ public sealed partial class ConfigWindow : Window
 
     public ConfigWindow(string initialPage)
     {
+        _client = new AiCoreClient(new WindowsAiCoreProcessLauncher());
+        _applicationLauncher = new WindowsAiApplicationLauncher();
         _controller = new AiConfigController(new AiCoreApi(_client), new AiConsentCoordinator(_client));
         _channels = _controller.Channels;
         _credentials = _controller.Credentials;
@@ -215,12 +220,8 @@ public sealed partial class ConfigWindow : Window
             presenter.Restore();
         }
         Activate();
-        SetForegroundWindow(hwnd);
+        NativeWindowMethods.SetForegroundWindow(hwnd);
     }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
 
     private void BuildContent()
     {
@@ -246,7 +247,7 @@ public sealed partial class ConfigWindow : Window
         BindingsNavButton.Click += (_, _) => SelectConfigPage(2);
         OpenChatButton.Click += (_, _) =>
         {
-            try { AiApplicationLauncher.Launch(AiApplication.Chat); }
+            try { _applicationLauncher.Launch(AiApplication.Chat); }
             catch (Exception exception) { ShowError(exception); }
         };
         AddCredentialButton.Click += async (_, _) => await AddCredentialAsync();

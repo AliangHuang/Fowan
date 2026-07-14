@@ -6,6 +6,7 @@ Fowan Orchestrates Workflows with AI, Natively.
 
 ```text
 apps/windows/
+  platform/contracts/ # WinUI-free process, clipboard, dialog and dispatcher ports
   toolbox/             # WinUI 3 toolbox shell and launcher
   todo/
     contracts/         # Stable Todo JSON contract shared with Diary
@@ -24,6 +25,12 @@ protocol/ai/v0.1/      # Public JSON-RPC contract, schema, and fixtures
 artifacts/             # Ignored ordinary build/intermediate output
 out/                   # Explicit runnable/publish output only
 ```
+
+Shared platform contracts stay intentionally small. Application-specific process
+lifecycle operations live under each application's `Application/Ports`, while
+all `Process`, picker, clipboard, tray, window-host, and native implementations
+live under `Platform/Windows`. Toolbox tray commands are routed through pure
+application logic before a restore or exit action is raised.
 
 Todo and Diary keep their compatible JSON formats and continue to use
 `%LOCALAPPDATA%\Fowan\Todo` and `%LOCALAPPDATA%\Fowan\Diary`. Assembly names,
@@ -59,8 +66,9 @@ The verify script requires a stable .NET SDK 8.0.422 or newer (CI exercises the
 8.0.422 minimum while local development may use a newer stable SDK) and runs restore, Debug and
 Release builds and tests, JSON Schema validation for every declared protocol
 fixture, documentation-link and retired-path checks, tracked-artifact checks,
-and a before/after worktree cleanliness check. It never installs or changes a
-toolchain.
+deterministic protocol regeneration, staging/backup residue checks, platform
+boundary scans, and a before/after worktree cleanliness check. It never installs
+or changes a toolchain.
 
 Runnable outputs are created only by explicit build scripts. Release is still a
 normal build unless `-Publish` is supplied:
@@ -77,8 +85,17 @@ Fowan consumes Core only from
 an explicit `-CoreArtifactPath`. It does not search Cargo `target` directories.
 Build scripts do not stop running applications; a locked output produces an
 explicit error so the corresponding stop/run workflow remains a separate step.
+All temporary output is created below `artifacts/staging/<component>/<guid>/`;
+the scripts pass an absolute, trailing-separator directory to MSBuild and remove
+the isolated staging directory on every exit path. Output installation uses a
+tested backup/replace/rollback exchange; if both replacement and restoration
+fail, the error reports both phases and leaves the backup available for recovery.
 Use `scripts/stop-windows.ps1 -Component <Toolbox|Todo|Diary|Ai|All>` only when
 you intentionally want to stop a running component.
+
+Startup update checks are owned by an application coordinator. Window close
+cancels without blocking shutdown, while cancellation, dispatcher rejection,
+dialog failure, and check failure all complete with an observed outcome.
 
 ## Packaging
 

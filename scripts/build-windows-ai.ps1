@@ -16,10 +16,12 @@ $projects = @{
     "windows-ai-config" = "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"
 }
 $builds = @{}
+try {
 foreach ($toolOutput in $projects.Keys) {
     $output = Join-Path $repoRoot "out/$toolOutput/$outputConfiguration"
     $staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component $toolOutput
-    & $dotnet build (Join-Path $repoRoot $projects[$toolOutput]) -c $Configuration -o $staging --nologo
+    $dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $staging
+    & $dotnet build (Join-Path $repoRoot $projects[$toolOutput]) -c $Configuration -o $dotnetOutput --nologo
     if ($LASTEXITCODE -ne 0) {
         Remove-IsolatedBuildDirectory -Path $staging
         foreach ($completed in $builds.Values) { Remove-IsolatedBuildDirectory -Path $completed.Staging }
@@ -59,3 +61,8 @@ foreach ($toolOutput in @("windows-ai-chat", "windows-ai-config")) {
 
 Write-Host "AI Chat: $(Join-Path $repoRoot "out/windows-ai-chat/$outputConfiguration/Fowan.Ai.Chat.Windows.exe")"
 Write-Host "AI Config: $(Join-Path $repoRoot "out/windows-ai-config/$outputConfiguration/Fowan.Ai.Config.Windows.exe")"
+}
+finally {
+    foreach ($completed in $builds.Values) { Remove-IsolatedBuildDirectory -Path $completed.Staging }
+    if ($staging) { Remove-IsolatedBuildDirectory -Path $staging }
+}

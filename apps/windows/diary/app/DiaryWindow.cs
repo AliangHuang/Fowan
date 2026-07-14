@@ -1,6 +1,8 @@
 using Fowan.Diary.Shared.Models;
 using Fowan.Diary.Shared.Services;
 using Fowan.Diary.Windows.Presentation;
+using Fowan.Diary.Windows.Platform.Windows;
+using Fowan.Windows.Platform.Contracts;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -37,7 +39,7 @@ public sealed class DiaryWindow : Window
     private const string TimelineRangeYear = DiaryTimelineStateController.RangeYear;
 
     private readonly DiaryPersistenceController _persistence;
-    private readonly IDiaryFilePickerService _filePicker = new WindowsDiaryFilePickerService();
+    private readonly IFileDialogService _filePicker;
     private readonly DiaryTimelineStateController _timeline = new(DiaryRuntime.Today);
     private readonly IDiaryReverseGeocoder _reverseGeocoder = new NominatimReverseGeocoder();
     private readonly IDiaryWeatherProvider _weatherProvider = new OpenMeteoWeatherProvider();
@@ -69,6 +71,7 @@ public sealed class DiaryWindow : Window
 
     public DiaryWindow()
     {
+        _filePicker = new WindowsFileDialogService(WinRT.Interop.WindowNative.GetWindowHandle(this));
         _persistence = DiaryPersistenceController.CreateDefault();
         _data = _persistence.LoadData();
         _settings = _persistence.LoadSettings();
@@ -201,7 +204,7 @@ public sealed class DiaryWindow : Window
     {
         try
         {
-            var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var dpi = NativeWindowMethods.GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
             return dpi > 0 ? dpi / 96.0 : 1;
         }
         catch
@@ -2151,9 +2154,8 @@ public sealed class DiaryWindow : Window
     {
         try
         {
-            var path = await _filePicker.PickOpenPathAsync(
-                this,
-                [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+            var path = await _filePicker.PickOpenFileAsync(new FileOpenRequest(
+                [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]));
             if (string.IsNullOrWhiteSpace(path)) return;
             var draft = EnsureDraft();
             var attachment = _persistence.ImportAttachment(draft.Id, path);
@@ -2262,10 +2264,11 @@ public sealed class DiaryWindow : Window
     {
         try
         {
-            await _filePicker.ExportMarkdownAsync(
-                this,
+            await _filePicker.SaveTextFileAsync(new TextFileSaveRequest(
                 SafeFileName(entry.Title),
-                ToMarkdown(entry));
+                ToMarkdown(entry),
+                "Markdown 文档",
+                ".md"));
         }
         catch
         {
@@ -2602,6 +2605,4 @@ public sealed class DiaryWindow : Window
 
     private static Uri FileUri(string path) => new UriBuilder { Scheme = Uri.UriSchemeFile, Path = Path.GetFullPath(path) }.Uri;
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
 }

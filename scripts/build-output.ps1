@@ -4,10 +4,23 @@ function New-IsolatedBuildDirectory {
         [Parameter(Mandatory = $true)][string]$Component
     )
 
-    $root = Join-Path $RepositoryRoot "artifacts/staging/$Component"
+    if ($Component.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+        $Component.Contains([IO.Path]::DirectorySeparatorChar) -or
+        $Component.Contains([IO.Path]::AltDirectorySeparatorChar)) {
+        throw "Build component must be a single safe directory name: $Component"
+    }
+
+    $root = Join-Path ([IO.Path]::GetFullPath($RepositoryRoot)) "artifacts/staging/$Component"
     $path = Join-Path $root ([guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $path | Out-Null
     return $path
+}
+
+function ConvertTo-DotnetOutputDirectory {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $resolved = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    return $resolved + [IO.Path]::DirectorySeparatorChar
 }
 
 function Copy-BuildDirectoryContent {
@@ -26,7 +39,11 @@ function Install-IsolatedBuildDirectory {
     param(
         [Parameter(Mandatory = $true)][string]$StagingDirectory,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [Parameter(Mandatory = $true)][string]$AllowedOutputRoot
+        [Parameter(Mandatory = $true)][string]$AllowedOutputRoot,
+        [scriptblock]$MoveDirectory = {
+            param([string]$Source, [string]$Target)
+            Move-Item -LiteralPath $Source -Destination $Target -ErrorAction Stop
+        }
     )
 
     $resolvedDestination = [IO.Path]::GetFullPath($Destination)
@@ -36,15 +53,20 @@ function Install-IsolatedBuildDirectory {
         throw "Refusing to replace output outside $resolvedRoot`: $resolvedDestination"
     }
 
+    $resolvedStaging = [IO.Path]::GetFullPath($StagingDirectory)
+    if (-not (Test-Path -LiteralPath $resolvedStaging -PathType Container)) {
+        throw "The isolated staging directory does not exist: $resolvedStaging"
+    }
+
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
     $backup = "$resolvedDestination.backup-$([guid]::NewGuid().ToString('N'))"
     $hadDestination = Test-Path -LiteralPath $Destination
     $installed = $false
     try {
         if ($hadDestination) {
-            Move-Item -LiteralPath $Destination -Destination $backup -ErrorAction Stop
+            & $MoveDirectory $resolvedDestination $backup
         }
-        Move-Item -LiteralPath $StagingDirectory -Destination $Destination -ErrorAction Stop
+        & $MoveDirectory $resolvedStaging $resolvedDestination
         $installed = $true
         if (Test-Path -LiteralPath $backup) {
             Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction Stop
@@ -57,7 +79,7 @@ function Install-IsolatedBuildDirectory {
                 if (Test-Path -LiteralPath $Destination) {
                     Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction Stop
                 }
-                Move-Item -LiteralPath $backup -Destination $Destination -ErrorAction Stop
+                & $MoveDirectory $backup $resolvedDestination
             }
             elseif (-not $hadDestination -and (Test-Path -LiteralPath $Destination)) {
                 Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction Stop
@@ -69,9 +91,7 @@ function Install-IsolatedBuildDirectory {
         throw "Could not replace runnable output '$Destination'. The previous output was restored. Stop the application if files are locked, then retry. $($replaceError.Exception.Message)"
     }
     finally {
-        if (-not $installed -and (Test-Path -LiteralPath $StagingDirectory)) {
-            Remove-Item -LiteralPath $StagingDirectory -Recurse -Force -ErrorAction SilentlyContinue
-        }
+        Remove-IsolatedBuildDirectory -Path $StagingDirectory
     }
 }
 
@@ -79,5 +99,23 @@ function Remove-IsolatedBuildDirectory {
     param([string]$Path)
     if ($Path -and (Test-Path -LiteralPath $Path)) {
         Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($Path) {
+        $componentRoot = Split-Path -Parent ([IO.Path]::GetFullPath($Path))
+        if ((Test-Path -LiteralPath $componentRoot -PathType Container) -and
+            -not (Get-ChildItem -LiteralPath $componentRoot -Force | Select-Object -First 1)) {
+            Remove-Item -LiteralPath $componentRoot -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Assert-StagingDirectoryEmpty {
+    param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
+
+    $stagingRoot = Join-Path $RepositoryRoot "artifacts/staging"
+    if ((Test-Path -LiteralPath $stagingRoot) -and
+        (Get-ChildItem -LiteralPath $stagingRoot -Force -Recurse | Select-Object -First 1)) {
+        throw "Build staging is not empty: $stagingRoot"
     }
 }

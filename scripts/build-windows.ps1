@@ -33,10 +33,12 @@ if ($Clean -and (Test-Path -LiteralPath $output)) {
 $usePublish = $Publish
 $command = if ($usePublish) { "publish" } else { "build" }
 $staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-toolbox"
+$dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $staging
+try {
 
 & $dotnet $command $project `
     -c $Configuration `
-    -o $staging `
+    -o $dotnetOutput `
     --nologo
 
 if ($LASTEXITCODE -ne 0) {
@@ -81,4 +83,8 @@ Write-Host "Windows client $command output: $output"
 Write-Host "Executable: $exe"
 if (-not [string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
     Write-Host "Fowan Core: $(Join-Path $output 'Core/fowan-core.exe')"
+}
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $staging
 }

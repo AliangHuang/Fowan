@@ -13,6 +13,8 @@
 
 目录或程序集名称中的 `Shared` 表示同一工具多个客户端窗口共享的开源代码，不表示 Fowan 的闭源核心。
 
+跨 Windows 应用的平台调用契约集中在 `apps/windows/platform/contracts`。该程序集不引用 WinUI/WPF 控件；进程、剪贴板、文件对话框和 UI 调度由各应用 `Platform/Windows` 下的适配器实现。窗口只持有这些端口，不直接声明 P/Invoke 或 Picker/Clipboard/Process 静态调用。托盘与窗口宿主仍是 Toolbox 专属端口，位于 `toolbox/Application/Ports`；AI Core、AI 应用互启及 Todo/Sticky 生命周期同样使用各自的窄端口，不扩展通用进程接口。更新检查由应用协调器持有并观察任务结果，窗口关闭只触发取消，不同步阻塞退出。
+
 ## 2. FowanCore 职责
 
 以下能力只能在私有 `FowanCore` 仓库实现：
@@ -40,6 +42,8 @@ AI v0.1 已是首个获批的私有能力接入：公开仓库先定义最小、
 2. 它是否包含 AI 策略、用户信息加解密、密钥或敏感商业规则？如果是，进入 FowanCore。
 3. 客户端是否只需要稳定数据契约，而不需要知道实现细节？如果是，在真实用例出现时新增公开协议。
 4. 是否改变现有本地数据格式或位置？如果是，必须提供迁移和兼容测试。
+
+平台边界由 `scripts/verify.ps1` 递归扫描：平台端口只能定义在共享 Contracts 或 `Application/Ports`，受限的进程、Picker、Clipboard、托盘和原生调用只能位于 `Platform/Windows`（应用启动组合根中的单实例事件监听除外）。
 
 ## 5. 分发与许可
 

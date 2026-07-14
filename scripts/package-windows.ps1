@@ -58,6 +58,7 @@ function Publish-FowanProject {
         [string]$Output
     )
 
+    $dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $Output
     & $dotnet publish $Project `
         -c $Configuration `
         -r $RuntimeIdentifier `
@@ -67,7 +68,7 @@ function Publish-FowanProject {
         -p:FowanVersion=$Version `
         -p:FowanAssemblyVersion=$assemblyVersion `
         -p:PublishSingleFile=false `
-        -o $Output `
+        -o $dotnetOutput `
         --nologo
 
     if ($LASTEXITCODE -ne 0) {

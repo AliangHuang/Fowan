@@ -1,6 +1,9 @@
 using Fowan.Ai.Shared.Models;
 using Fowan.Ai.Shared.Services;
+using Fowan.Ai.Shared.Application.Ports;
+using Fowan.Ai.Chat.Windows.Platform.Windows;
 using Fowan.Ai.Chat.Windows.Presentation;
+using Fowan.Windows.Platform.Contracts;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Text;
@@ -17,7 +20,8 @@ namespace Fowan.Ai.Chat.Windows;
 public sealed partial class ChatWindow : Window
 {
     private readonly AiLocalizationService _loc = new();
-    private readonly AiCoreClient _client = new();
+    private readonly AiCoreClient _client;
+    private readonly IAiApplicationLauncher _applicationLauncher;
     private readonly AiChatController _controller;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly IClipboardService _clipboard = new WindowsClipboardService();
@@ -45,6 +49,8 @@ public sealed partial class ChatWindow : Window
 
     public ChatWindow()
     {
+        _client = new AiCoreClient(new WindowsAiCoreProcessLauncher());
+        _applicationLauncher = new WindowsAiApplicationLauncher();
         _controller = new AiChatController(new AiCoreApi(_client), new AiConsentCoordinator(_client));
         _channels = _controller.Channels;
         _credentials = _controller.Credentials;
@@ -342,12 +348,8 @@ public sealed partial class ChatWindow : Window
             presenter.Restore();
         }
         Activate();
-        SetForegroundWindow(hwnd);
+        NativeWindowMethods.SetForegroundWindow(hwnd);
     }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
 
     private void BuildContent()
     {
@@ -375,7 +377,7 @@ public sealed partial class ChatWindow : Window
         NewChatButton.Click += (_, _) => StartNewConversation();
         OpenConfigButton.Click += (_, _) =>
         {
-            try { AiApplicationLauncher.Launch(AiApplication.Config); }
+            try { _applicationLauncher.Launch(AiApplication.Config); }
             catch (Exception exception) { ShowError(exception); }
         };
         _regenerateButton.Click += async (_, _) => await RegenerateAsync();
@@ -451,7 +453,7 @@ public sealed partial class ChatWindow : Window
             var page = hasCredential ? "models" : "credentials";
             configure.Click += (_, _) =>
             {
-                try { AiApplicationLauncher.Launch(AiApplication.Config, $"--page={page}"); }
+                try { _applicationLauncher.Launch(AiApplication.Config, $"--page={page}"); }
                 catch (Exception exception) { ShowError(exception); }
             };
             stack.Children.Add(configure);

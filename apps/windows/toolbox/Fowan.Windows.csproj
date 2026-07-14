@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\assets\brand\windows\fowan-ai-chat-app-icon-256.png" Link="Assets\fowan-ai-chat-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Resources\Strings\*.json" CopyToOutputDirectory="PreserveNewest" />

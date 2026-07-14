@@ -1,10 +1,11 @@
 using Fowan.Todo.Shared.Models;
 using Fowan.Todo.Shared.Services;
-using Fowan.Todo.Sticky.Windows.Platform;
+using Fowan.Todo.Sticky.Windows.AppPorts;
+using Fowan.Todo.Sticky.Windows.Platform.Windows;
+using static Fowan.Todo.Sticky.Windows.Platform.Windows.StickyNativeMethods;
 using Microsoft.Win32;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -37,11 +38,8 @@ public sealed class StickyWindow : Window
     private const double TaskAutoScrollMaximumSpeed = 720;
     private const double TaskAutoScrollSectionOverlap = 50;
     private const string StickyViewId = TodoViewIds.Today;
-    private const string MainActivationEventName = @"Local\Fowan.Todo.Windows.Activate";
-    private const string MainShutdownEventName = @"Local\Fowan.Todo.Windows.Shutdown";
-
     private readonly TodoPersistenceController _store = TodoPersistenceController.CreateDefault();
-    private readonly IProcessLauncher _processLauncher;
+    private readonly IStickyMainProcessCoordinator _mainProcesses;
     private readonly string? _mainExePath;
     private readonly ScaleTransform _scaleTransform = new(1, 1);
     private readonly List<Border> _taskRows = [];
@@ -104,13 +102,13 @@ public sealed class StickyWindow : Window
     private bool _isTaskDragging;
 
     public StickyWindow(string[] args)
-        : this(args, new WindowsProcessLauncher())
+        : this(args, new WindowsStickyMainProcessCoordinator(new WindowsProcessLauncher()))
     {
     }
 
-    internal StickyWindow(string[] args, IProcessLauncher processLauncher)
+    internal StickyWindow(string[] args, IStickyMainProcessCoordinator mainProcesses)
     {
-        _processLauncher = processLauncher;
+        _mainProcesses = mainProcesses;
         _mainExePath = ParseMainExePath(args);
         _data = _store.LoadData();
         _settings = _store.LoadSettings();
@@ -241,7 +239,7 @@ public sealed class StickyWindow : Window
             _store.SaveSettings(_settings);
             if (shouldShutdownMain)
             {
-                SignalMainShutdown();
+                _mainProcesses.TryShutdown();
             }
         };
     }
@@ -2753,7 +2751,7 @@ public sealed class StickyWindow : Window
         Top += dy / scale.Y;
     }
 
-    private bool TryGetDragHandleScreenRect(out Rect rect)
+    private bool TryGetDragHandleScreenRect(out NativeRect rect)
     {
         if (_dragHandle.IsLoaded && _dragHandle.ActualWidth > 0 && _dragHandle.ActualHeight > 0)
         {
@@ -2765,7 +2763,7 @@ public sealed class StickyWindow : Window
         {
             var scale = DeviceScale();
             var topLeft = _root.PointToScreen(new Point(18, 0));
-            rect = new Rect
+            rect = new NativeRect
             {
                 Left = (int)Math.Floor(topLeft.X),
                 Top = (int)Math.Floor(topLeft.Y),
@@ -2779,11 +2777,11 @@ public sealed class StickyWindow : Window
         return false;
     }
 
-    private Rect ScreenRectForElement(FrameworkElement element, double width, double height)
+    private NativeRect ScreenRectForElement(FrameworkElement element, double width, double height)
     {
         var topLeft = element.PointToScreen(new Point(0, 0));
         var bottomRight = element.PointToScreen(new Point(width, height));
-        return new Rect
+        return new NativeRect
         {
             Left = (int)Math.Floor(Math.Min(topLeft.X, bottomRight.X)),
             Top = (int)Math.Floor(Math.Min(topLeft.Y, bottomRight.Y)),
@@ -2820,10 +2818,7 @@ public sealed class StickyWindow : Window
 
     private static bool TryGetMonitorInfo(IntPtr monitor, out MonitorInfo monitorInfo)
     {
-        monitorInfo = new MonitorInfo
-        {
-            Size = Marshal.SizeOf<MonitorInfo>()
-        };
+        monitorInfo = CreateMonitorInfo();
 
         return monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref monitorInfo);
     }
@@ -2866,14 +2861,7 @@ public sealed class StickyWindow : Window
         SaveGeometry();
         _store.SaveSettings(_settings);
 
-        if (!SignalMainActivation())
-        {
-            var mainExe = ResolveMainExePath();
-            if (File.Exists(mainExe))
-            {
-                _processLauncher.TryLaunch(mainExe);
-            }
-        }
+        _mainProcesses.TryActivate(ResolveMainExePath());
 
         CloseStickyChildWindows();
         Hide();
@@ -2945,35 +2933,6 @@ public sealed class StickyWindow : Window
         {
             _store.SaveData(_data);
         }
-    }
-
-    private static bool SignalMainActivation()
-    {
-        return SignalEvent(MainActivationEventName);
-    }
-
-    private static bool SignalMainShutdown()
-    {
-        return SignalEvent(MainShutdownEventName, attempts: 4);
-    }
-
-    private static bool SignalEvent(string eventName, int attempts = 20)
-    {
-        for (var attempt = 0; attempt < attempts; attempt++)
-        {
-            try
-            {
-                using var activationEvent = EventWaitHandle.OpenExisting(eventName);
-                activationEvent.Set();
-                return true;
-            }
-            catch (WaitHandleCannotBeOpenedException)
-            {
-                Thread.Sleep(50);
-            }
-        }
-
-        return false;
     }
 
     private string ResolveMainExePath()
@@ -4403,61 +4362,4 @@ public sealed class StickyWindow : Window
 
     private readonly record struct StickyWindowGeometry(double Left, double Top, double Width, double Height);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Rect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MonitorInfo
-    {
-        public int Size;
-        public Rect Monitor;
-        public Rect WorkArea;
-        public uint Flags;
-    }
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out NativePoint point);
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int virtualKey);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromRect(ref Rect rect, uint flags);
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo monitorInfo);
 }

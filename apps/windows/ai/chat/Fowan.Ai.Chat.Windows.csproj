@@ -18,6 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\shared\Fowan.Ai.Shared.csproj" />
+    <ProjectReference Include="..\..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />

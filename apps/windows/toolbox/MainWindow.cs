@@ -1,5 +1,8 @@
 using Fowan.Windows.Models;
 using Fowan.Windows.Services;
+using Fowan.Windows.Platform.Contracts;
+using Fowan.Windows.Platform.Windows;
+using Fowan.Windows.AppPorts;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -8,8 +11,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Windows.Graphics;
 using Windows.UI;
 using Ellipse = Microsoft.UI.Xaml.Shapes.Ellipse;
@@ -35,12 +36,14 @@ public sealed class MainWindow : Window
 
     private readonly ToolboxSettingsController _settingsStore = ToolboxSettingsController.CreateDefault();
     private readonly UpdateService _updateService = new();
-    private readonly IProcessLauncher _processLauncher = new ToolProcessLauncher();
-    private readonly IFilePickerService _filePicker = new WindowsFilePickerService();
+    private readonly IProcessLauncher _processLauncher = new WindowsProcessLauncher();
+    private readonly IFileDialogService _filePicker;
+    private readonly IUiDispatcher _uiDispatcher;
     private readonly AutoStartService _autoStartService = new();
     private readonly LocalizationService _loc = new();
     private readonly IWindowHost _windowHost;
     private readonly ITrayService _trayService;
+    private readonly UpdateCheckCoordinator _updateCheckCoordinator;
     private readonly List<string> _captures = [];
 
     private ClientSettings _userSettings = null!;
@@ -70,15 +73,22 @@ public sealed class MainWindow : Window
     private bool _isExitRequested;
     private bool _trayCloseHandlingEnabled;
     private bool _isUpdateDialogOpen;
-    private bool _startupUpdateCheckQueued;
 
     public MainWindow(bool startHidden = false)
     {
         StartupTrace.Mark("MainWindow ctor begin");
-        _windowHost = new WindowsWindowHost(WindowHandle(), Activate);
+        var windowHandle = WindowHandle();
+        _windowHost = new WindowsWindowHost(windowHandle, Activate);
+        _filePicker = new WindowsFileDialogService(windowHandle);
+        _uiDispatcher = new DispatcherQueueUiDispatcher(DispatcherQueue);
+        _updateCheckCoordinator = new UpdateCheckCoordinator(
+            _updateService,
+            _uiDispatcher,
+            ShowUpdatePromptAsync,
+            StartupTrace.Mark);
         _trayService = new WindowsTrayService(
-            WindowHandle(),
-            action => DispatcherQueue.TryEnqueue(() => action()),
+            windowHandle,
+            _uiDispatcher,
             () => _trayCloseHandlingEnabled && !_isExitRequested && _userSettings.CloseBehavior != CloseBehaviorIds.Exit,
             () => L("Tray_OpenToolbox"),
             () => L("Tray_Exit"));
@@ -115,39 +125,27 @@ public sealed class MainWindow : Window
         StartupTrace.Mark("Window configured");
         BuildShell();
         StartupTrace.Mark("Shell built");
-        Closed += (_, _) => _trayService.Dispose();
+        Closed += (_, _) =>
+        {
+            _updateCheckCoordinator.Cancel();
+            _trayService.Dispose();
+        };
     }
 
     private string L(string key) => _loc.Get(key);
 
     public void QueueStartupUpdateCheck()
     {
-        if (_startupUpdateCheckQueued || !_userSettings.UpdateCheckEnabled)
+        if (!_userSettings.UpdateCheckEnabled)
         {
-            StartupTrace.Mark(_startupUpdateCheckQueued ? "Update check already queued" : "Update check disabled");
+            StartupTrace.Mark("Update check disabled");
             return;
         }
 
-        _startupUpdateCheckQueued = true;
-
-        _ = Task.Run(async () =>
+        if (!_updateCheckCoordinator.Start())
         {
-            try
-            {
-                await Task.Delay(1200);
-                var update = await _updateService.CheckForUpdateAsync();
-                if (update is null)
-                {
-                    return;
-                }
-
-                DispatcherQueue.TryEnqueue(() => _ = ShowUpdatePromptAsync(update));
-            }
-            catch (Exception exception)
-            {
-                StartupTrace.Mark($"Update check failed: {exception.GetType().Name}");
-            }
-        });
+            StartupTrace.Mark("Update check already queued");
+        }
     }
 
     private void ConfigureWindow()
@@ -159,7 +157,7 @@ public sealed class MainWindow : Window
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
-            var scale = Math.Clamp(GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
+            var scale = Math.Clamp(NativeWindowMethods.GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
             var width = (int)Math.Round(1440 * scale);
             var height = (int)Math.Round(880 * scale);
             appWindow.Resize(new SizeInt32(width, height));
@@ -1491,11 +1489,12 @@ public sealed class MainWindow : Window
             return Task.FromResult(false);
         }
 
-        if (_processLauncher.TryLaunch(executablePath, out var error))
+        var launch = _processLauncher.Launch(new ProcessLaunchRequest(executablePath));
+        if (launch.Succeeded)
         {
             return Task.FromResult(true);
         }
-        ShowInfo(string.Format(L("Tool_LaunchFailed"), L(toolNameKey), error), InfoBarSeverity.Error);
+        ShowInfo(string.Format(L("Tool_LaunchFailed"), L(toolNameKey), launch.Error), InfoBarSeverity.Error);
         return Task.FromResult(false);
     }
 
@@ -1508,11 +1507,12 @@ public sealed class MainWindow : Window
             return Task.FromResult(false);
         }
 
-        if (_processLauncher.TryLaunch(executablePath, out var error))
+        var launch = _processLauncher.Launch(new ProcessLaunchRequest(executablePath));
+        if (launch.Succeeded)
         {
             return Task.FromResult(true);
         }
-        ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Todo"), error), InfoBarSeverity.Error);
+        ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Todo"), launch.Error), InfoBarSeverity.Error);
         return Task.FromResult(false);
     }
 
@@ -1525,11 +1525,12 @@ public sealed class MainWindow : Window
             return Task.FromResult(false);
         }
 
-        if (_processLauncher.TryLaunch(executablePath, out var error))
+        var launch = _processLauncher.Launch(new ProcessLaunchRequest(executablePath));
+        if (launch.Succeeded)
         {
             return Task.FromResult(true);
         }
-        ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Diary"), error), InfoBarSeverity.Error);
+        ShowInfo(string.Format(L("Tool_LaunchFailed"), L("Tool_Diary"), launch.Error), InfoBarSeverity.Error);
         return Task.FromResult(false);
     }
 
@@ -1648,9 +1649,10 @@ public sealed class MainWindow : Window
         try
         {
             var installerPath = await _updateService.DownloadInstallerAsync(update);
-            if (!_processLauncher.TryLaunch(installerPath, out var launchError, elevated: true))
+            var launch = _processLauncher.Launch(new ProcessLaunchRequest(installerPath, Elevated: true));
+            if (!launch.Succeeded)
             {
-                throw new InvalidOperationException(launchError);
+                throw new InvalidOperationException(launch.Error);
             }
 
             _isExitRequested = true;
@@ -1666,7 +1668,7 @@ public sealed class MainWindow : Window
 
     private void OpenExternalUrl(string url)
     {
-        _processLauncher.TryOpenUrl(url);
+        _processLauncher.Launch(new ProcessLaunchRequest(url, WorkingDirectory: AppContext.BaseDirectory));
     }
 
     private static string? ResolveTodoExecutablePath()
@@ -1792,8 +1794,11 @@ public sealed class MainWindow : Window
 
     private void MinimizeToolboxToTray()
     {
-        _trayService.EnsureVisible();
-        _windowHost.Hide();
+        var result = TrayVisibilityCoordinator.TryHide(_trayService.EnsureVisible, _windowHost.Hide);
+        if (!result.Succeeded)
+        {
+            ShowInfo(result.Error ?? "Tray initialization failed.", InfoBarSeverity.Error);
+        }
     }
 
     private void RestoreToolboxFromTray()
@@ -1804,8 +1809,12 @@ public sealed class MainWindow : Window
 
     internal void InitializeHiddenToTray()
     {
-        _trayService.EnsureVisible();
-        _windowHost.Hide();
+        var result = TrayVisibilityCoordinator.TryHide(_trayService.EnsureVisible, _windowHost.Hide);
+        if (!result.Succeeded)
+        {
+            StartupTrace.Mark($"Tray initialization failed: {result.Error}");
+            _windowHost.RestoreAndActivate();
+        }
     }
 
     internal void RestoreFromExternalActivation()
@@ -1909,7 +1918,7 @@ public sealed class MainWindow : Window
 
     private async Task<string?> PickAvatarImagePathAsync()
     {
-        return await _filePicker.PickImageAsync(this, AvatarImageExtensions);
+        return await _filePicker.PickOpenFileAsync(new FileOpenRequest(AvatarImageExtensions));
     }
 
     private async Task ShowQuickCaptureDialogAsync()
@@ -2922,6 +2931,4 @@ public sealed class MainWindow : Window
 
     private IntPtr WindowHandle() => WinRT.Interop.WindowNative.GetWindowHandle(this);
 
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
 }

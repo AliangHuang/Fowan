@@ -1,6 +1,6 @@
 using Fowan.Ai.Shared.Models;
+using Fowan.Ai.Shared.Application.Ports;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,32 +24,12 @@ public sealed class AiCoreNotificationEventArgs(string method, JsonElement param
     public JsonElement Parameters { get; } = parameters;
 }
 
-public interface IAiCoreProcessLauncher
-{
-    void Start(string executablePath);
-}
-
 public interface IAiCoreInvoker
 {
     Task<T> InvokeAsync<T>(
         string method,
         object parameters,
         CancellationToken cancellationToken = default);
-}
-
-internal sealed class AiCoreProcessLauncher : IAiCoreProcessLauncher
-{
-    public void Start(string executablePath)
-    {
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = executablePath,
-            WorkingDirectory = Path.GetDirectoryName(executablePath),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-    }
 }
 
 public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
@@ -68,10 +48,11 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
     private readonly IAiCoreTransportFactory _transportFactory;
 
     public AiCoreClient(
-        IAiCoreProcessLauncher? processLauncher = null,
+        IAiCoreProcessLauncher processLauncher,
         IAiCoreTransportFactory? transportFactory = null)
     {
-        _processLauncher = processLauncher ?? new AiCoreProcessLauncher();
+        ArgumentNullException.ThrowIfNull(processLauncher);
+        _processLauncher = processLauncher;
         _transportFactory = transportFactory ?? new NamedPipeAiCoreTransportFactory();
     }
 

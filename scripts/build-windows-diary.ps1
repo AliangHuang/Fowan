@@ -61,10 +61,12 @@ if ($Clean) {
 
 $command = if ($Publish) { "publish" } else { "build" }
 $staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-diary"
+$dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $staging
+try {
 
 & $dotnet $command $project `
     -c $Configuration `
-    -o $staging `
+    -o $dotnetOutput `
     --nologo
 
 if ($LASTEXITCODE -ne 0) {
@@ -83,3 +85,7 @@ $exe = Join-Path $output "Fowan.Diary.Windows.exe"
 
 Write-Host "Windows diary client $command output: $output"
 Write-Host "Executable: $exe"
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $staging
+}

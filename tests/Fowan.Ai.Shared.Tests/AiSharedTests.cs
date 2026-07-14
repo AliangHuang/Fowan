@@ -1,5 +1,6 @@
 using Fowan.Ai.Shared.Models;
 using Fowan.Ai.Shared.Services;
+using Fowan.Ai.Shared.Application.Ports;
 using Json.Schema;
 using System.Text.Json;
 using System.Text;
@@ -142,7 +143,7 @@ public sealed class AiSharedTests
         try
         {
             Environment.SetEnvironmentVariable("FOWAN_AI_CHAT_PATH", executable);
-            Assert.Equal(Path.GetFullPath(executable), AiApplicationLauncher.ResolveExecutable(AiApplication.Chat));
+            Assert.Equal(Path.GetFullPath(executable), AiApplicationPathResolver.ResolveExecutable(AiApplication.Chat));
         }
         finally
         {
