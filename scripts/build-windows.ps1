@@ -2,7 +2,8 @@ param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
     [switch]$Clean,
-    [switch]$Publish
+    [switch]$Publish,
+    [string]$CoreArtifactPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,5 +48,30 @@ if (-not (Test-Path -LiteralPath $exe)) {
     throw "Build completed, but expected executable was not found: $exe"
 }
 
+$resolvedCoreArtifact = $CoreArtifactPath
+if ([string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
+    $workspaceRoot = Split-Path -Parent $repoRoot
+    $coreConfiguration = if ($Configuration -eq "Release") { "release" } else { "debug" }
+    $candidate = Join-Path $workspaceRoot "FowanCore/target/$coreConfiguration/fowan-core.exe"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $resolvedCoreArtifact = $candidate
+    }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
+    if (-not (Test-Path -LiteralPath $resolvedCoreArtifact -PathType Leaf)) {
+        throw "Fowan Core artifact was not found: $resolvedCoreArtifact"
+    }
+    $coreOutput = Join-Path $output "Core"
+    New-Item -ItemType Directory -Force -Path $coreOutput | Out-Null
+    Copy-Item -LiteralPath $resolvedCoreArtifact -Destination (Join-Path $coreOutput "fowan-core.exe") -Force
+}
+elseif ($Configuration -eq "Release" -or $Publish) {
+    throw "Release builds require -CoreArtifactPath pointing to fowan-core.exe."
+}
+
 Write-Host "Windows client $command output: $output"
 Write-Host "Executable: $exe"
+if (-not [string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
+    Write-Host "Fowan Core: $(Join-Path $output 'Core/fowan-core.exe')"
+}

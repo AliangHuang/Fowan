@@ -1,4 +1,4 @@
 interface:
   display_name: "Publish Fowan Release"
-  short_description: "Package and publish a Fowan GitHub Release."
-  default_prompt: "Use $publish-fowan-release to package and publish a Fowan Windows GitHub Release."
+  short_description: "Publish a confirmed Fowan release."
+  default_prompt: "Use $publish-fowan-release to confirm, package, validate, and publish a Fowan Windows release."

@@ -9,7 +9,10 @@ $allowedNames = @(
     "Fowan.Windows.exe",
     "Fowan.Todo.Windows.exe",
     "Fowan.Todo.Sticky.Windows.exe",
-    "Fowan.Diary.Windows.exe"
+    "Fowan.Diary.Windows.exe",
+    "Fowan.Ai.Chat.Windows.exe",
+    "Fowan.Ai.Config.Windows.exe",
+    "fowan-core.exe"
 )
 
 $normalizedRoot = [System.IO.Path]::GetFullPath($InstallRoot).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar

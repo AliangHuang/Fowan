@@ -11,6 +11,7 @@ public sealed class ClientSettings
     public bool IsSidebarCollapsed { get; set; }
     public bool UpdateCheckEnabled { get; set; } = true;
     public string IgnoredUpdateVersion { get; set; } = string.Empty;
+    public List<string> PinnedToolIds { get; set; } = [];
 }
 
 public static class UserDefaults

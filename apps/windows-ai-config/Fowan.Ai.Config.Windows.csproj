@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>Fowan.Ai.Config.Windows</RootNamespace>
+    <AssemblyName>Fowan.Ai.Config.Windows</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
+    <FowanAiConfigOutputConfiguration Condition="'$(Configuration)' == 'Release'">release</FowanAiConfigOutputConfiguration>
+    <FowanAiConfigOutputConfiguration Condition="'$(Configuration)' != 'Release'">debug</FowanAiConfigOutputConfiguration>
+    <OutputPath>..\..\out\windows-ai-config\$(FowanAiConfigOutputConfiguration)\</OutputPath>
+    <PublishDir>$(OutputPath)</PublishDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\windows-ai-shared\Fowan.Ai.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\brand\windows\fowan-app-icon-256.png" Link="Assets\fowan-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\windows\Resources\Strings\*.json" Link="Resources\Strings\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Page Include="..\windows-ai-ui\AiLightTheme.xaml" Link="Styles\AiLightTheme.xaml" />
+  </ItemGroup>
+  <Target Name="CopyWinUiResourceIndexToPublishDirectory" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUiPublishedResources Include="$(OutputPath)$(AssemblyName).pri" />
+      <_WinUiPublishedResources Include="$(OutputPath)*.xbf" />
+    </ItemGroup>
+    <Error
+      Condition="!Exists('$(OutputPath)$(AssemblyName).pri')"
+      Text="The WinUI application resource index was not generated: $(OutputPath)$(AssemblyName).pri" />
+    <Copy
+      SourceFiles="@(_WinUiPublishedResources)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -1,6 +1,6 @@
 ---
 name: publish-fowan-release
-description: Package and publish a Fowan Windows GitHub Release. Use when preparing or releasing a Fowan version, generating the Inno Setup installer and fowan-update.json, pushing release commits/tags, creating GitHub Releases, uploading release assets, or diagnosing GitHub Release asset upload failures.
+description: Prepare, package, validate, and publish a user-confirmed Fowan Windows GitHub Release. Use only when the user explicitly asks to prepare or publish a release version, generate the Inno Setup installer and fowan-update.json, push release commits/tags, create GitHub Releases, upload release assets, or diagnose GitHub Release asset upload failures. Do not use for routine builds or tests.
 ---
 
 # Publish Fowan Release
@@ -17,18 +17,27 @@ Project defaults:
 - Update manifest asset: `fowan-update.json`
 - Latest manifest URL: `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`
 
+## Release Entry Gate
+
+1. Treat routine development, build, test, and validation work as non-release work. Do not run `scripts/package-windows.ps1`, including `-SkipInstaller`, and do not generate or refresh installer, manifest, archive, or other complete release outputs.
+2. Enter this workflow only after the user explicitly asks to prepare or publish a release version. A request to build, test, validate, or make code commit-ready is not release authorization.
+3. Ask the user to confirm the exact release version before editing any version field or current-version changelog section and before running any packaging command. Never infer, choose, increment, or write the version automatically from the latest tag, existing project version, commit history, or semantic-versioning assumptions. A suggested version is not confirmed until the user explicitly approves it.
+4. Stop and wait when the exact version is not confirmed. Do not partially prepare a release by preemptively changing version numbers or changelogs.
+5. After confirmation, inventory every bundled tool and compare its changes with the previous release. Review the toolbox catalog and every applicable directory under `changelogs/tools/`; do not limit the audit to the tools remembered from a previous release.
+6. Update the toolbox changelog and each affected tool changelog from the inspected diffs, then update every version reference with the same confirmed version. Only after those edits are reviewed may the complete installer package and release outputs be built and validated.
+
 ## Preflight
 
 1. Confirm the repo root is the inner checkout, usually `D:\Dev\FowanWorkSpace\Fowan`.
 2. Confirm `origin` points to `https://github.com/AliangHuang/Fowan.git`.
 3. Confirm the repository is public if the released build is expected to update installed clients without a GitHub token. A private repository can have uploaded release assets, but public `github.com/.../releases/latest/download/...` URLs return 404 to the updater.
-4. Confirm the requested version is reflected in:
+4. Confirm the user-confirmed version is reflected in:
    - `Directory.Build.props`
    - `apps/windows/Models/ToolCatalog.cs`
    - `changelogs/toolbox/CHANGELOG.md`
-   - `changelogs/tools/todo/CHANGELOG.md` when the bundled Todo tool ships with the toolbox
-   - `changelogs/tools/diary/CHANGELOG.md` when the bundled Diary tool ships with the toolbox
-5. Search for stale release repository URLs:
+   - every affected `changelogs/tools/<tool>/CHANGELOG.md` for tools bundled in this release
+5. Enumerate the current bundled tools from the toolbox catalog and relevant app projects, then compare each tool with the previous release tag. Record whether each tool changed and which changelog covers it before running the release-note gate.
+6. Search for stale release repository URLs:
 
 ```powershell
 rg -n "aliang1016|github\.com/.*/Fowan|AliangHuang/Fowan" .

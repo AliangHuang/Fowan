@@ -113,6 +113,17 @@ public sealed class SettingsStore
             changed = true;
         }
 
+        var normalizedPinnedTools = settings.PinnedToolIds
+            .Select(id => string.Equals(id, "ai", StringComparison.Ordinal) ? "ai-chat" : id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (!settings.PinnedToolIds.SequenceEqual(normalizedPinnedTools, StringComparer.Ordinal))
+        {
+            settings.PinnedToolIds = normalizedPinnedTools;
+            changed = true;
+        }
+
         return changed;
     }
 }

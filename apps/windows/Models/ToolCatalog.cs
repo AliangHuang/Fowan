@@ -25,7 +25,8 @@ public static class ToolCatalog
         Planned("files", "Tool_Files", "Tool_Files_Description", "\uE8B7", "knowledge"),
         Planned("global-search", "Tool_GlobalSearch", "Tool_GlobalSearch_Description", "\uE721", "knowledge"),
         Planned("workflows", "Tool_Workflows", "Tool_Workflows_Description", "\uE8F1", "automation"),
-        Planned("ai", "Tool_AI", "Tool_AI_Description", "\uE950", "automation"),
+        AvailableAiChat(),
+        AvailableAiConfig(),
         Planned("plugins", "Tool_Plugins", "Tool_Plugins_Description", "\uECAA", "automation"),
         Available("settings", "Tool_Settings", "Tool_Settings_Description", "\uE713", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
         Available("diagnostics", "Tool_Diagnostics", "Tool_Diagnostics_Description", "\uE9D9", "system", "Action_Open", ProductVersion, CurrentReleaseDate)
@@ -104,5 +105,37 @@ public static class ToolCatalog
             ToolStatus.ComingSoon,
             [],
             new ToolAction("planned", "Action_Planned", Enabled: false, DisabledReasonKey: "Tool_PlannedReason"));
+    }
+
+    private static ToolCard AvailableAiChat()
+    {
+        return new(
+            "ai-chat",
+            "Tool_AIChat",
+            "Tool_AIChat_Description",
+            "\uE950",
+            "automation",
+            ToolStatus.Available,
+            ["ai.chat.v1"],
+            new ToolAction("open", "Action_Open"),
+            [new ToolAction("pin", "Action_Pin")],
+            ProductVersion,
+            CurrentReleaseDate);
+    }
+
+    private static ToolCard AvailableAiConfig()
+    {
+        return new(
+            "ai-config",
+            "Tool_AIConfig",
+            "Tool_AIConfig_Description",
+            "\uE713",
+            "automation",
+            ToolStatus.Available,
+            ["ai.config.v1"],
+            new ToolAction("open", "Action_Open"),
+            [new ToolAction("pin", "Action_Pin")],
+            ProductVersion,
+            CurrentReleaseDate);
     }
 }

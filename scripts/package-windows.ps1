@@ -8,6 +8,8 @@ param(
     [string]$Version,
     [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')]
     [string]$ReleaseRepository = "AliangHuang/Fowan",
+    [Parameter(Mandatory = $true)]
+    [string]$CoreArtifactPath,
     [switch]$SkipInstaller
 )
 
@@ -22,6 +24,8 @@ $windowsProject = Join-Path $repoRoot "apps/windows/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows-todo/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows-todo-sticky/Fowan.Todo.Sticky.Windows.csproj"
 $diaryProject = Join-Path $repoRoot "apps/windows-diary/Fowan.Diary.Windows.csproj"
+$aiChatProject = Join-Path $repoRoot "apps/windows-ai-chat/Fowan.Ai.Chat.Windows.csproj"
+$aiConfigProject = Join-Path $repoRoot "apps/windows-ai-config/Fowan.Ai.Config.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
@@ -270,21 +274,37 @@ if (Test-Path -LiteralPath $appStage) {
 
 New-Item -ItemType Directory -Force -Path $appStage | Out-Null
 
+if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
+    throw "Fowan Core artifact was not found: $CoreArtifactPath"
+}
+
 $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
 New-Item -ItemType Directory -Force -Path $diaryStage | Out-Null
+$aiChatStage = Join-Path $appStage "Tools/AI/Chat"
+New-Item -ItemType Directory -Force -Path $aiChatStage | Out-Null
+$aiConfigStage = Join-Path $appStage "Tools/AI/Config"
+New-Item -ItemType Directory -Force -Path $aiConfigStage | Out-Null
 
 Publish-FowanProject -Project $windowsProject -Output $appStage
 Publish-FowanProject -Project $todoProject -Output $todoStage
 Publish-FowanProject -Project $stickyProject -Output $todoStage
 Publish-FowanProject -Project $diaryProject -Output $diaryStage
+Publish-FowanProject -Project $aiChatProject -Output $aiChatStage
+Publish-FowanProject -Project $aiConfigProject -Output $aiConfigStage
+$coreStage = Join-Path $appStage "Core"
+New-Item -ItemType Directory -Force -Path $coreStage | Out-Null
+Copy-Item -LiteralPath $CoreArtifactPath -Destination (Join-Path $coreStage "fowan-core.exe") -Force
 
 $requiredExecutables = @(
     (Join-Path $appStage "Fowan.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
-    (Join-Path $diaryStage "Fowan.Diary.Windows.exe")
+    (Join-Path $diaryStage "Fowan.Diary.Windows.exe"),
+    (Join-Path $aiChatStage "Fowan.Ai.Chat.Windows.exe"),
+    (Join-Path $aiConfigStage "Fowan.Ai.Config.Windows.exe"),
+    (Join-Path $coreStage "fowan-core.exe")
 )
 
 foreach ($exe in $requiredExecutables) {

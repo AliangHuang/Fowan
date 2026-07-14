@@ -28,6 +28,12 @@ public sealed class TodoStoragePaths
 
     public static TodoStoragePaths Resolve()
     {
+        var overridePath = Environment.GetEnvironmentVariable("FOWAN_TODO_DATA_ROOT");
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            return ForTodoRoot(overridePath);
+        }
+
         var fowanRoot = Path.GetFullPath(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Fowan"));

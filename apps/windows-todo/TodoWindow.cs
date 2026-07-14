@@ -55,6 +55,7 @@ public sealed class TodoWindow : Window
     private Button _stickyModeButton = new();
     private Grid? _onboardingOverlay;
     private bool _isOnboardingModalActive;
+    private bool _isOnboardingShowPending;
     private TextBox _addTaskBox = new();
     private TextBlock _taskTitle = new();
     private TextBlock _taskSummary = new();
@@ -122,7 +123,7 @@ public sealed class TodoWindow : Window
 
         Activate();
         QueueStickyPrewarm();
-        DispatcherQueue.TryEnqueue(ShowMainOnboardingIfNeeded);
+        DispatcherQueue.TryEnqueue(QueueMainOnboardingIfNeeded);
     }
 
     private void ConfigureWindow()
@@ -134,7 +135,7 @@ public sealed class TodoWindow : Window
             QueueVirtualTitleBarRegionUpdate();
             if (!_settings.HasCompletedMainOnboarding && _onboardingOverlay is null)
             {
-                DispatcherQueue.TryEnqueue(() => ShowMainOnboardingIfNeeded());
+                DispatcherQueue.TryEnqueue(QueueMainOnboardingIfNeeded);
             }
         };
 
@@ -3314,7 +3315,6 @@ public sealed class TodoWindow : Window
         var result = await ShowModalDialogAsync(dialog);
         if (restartOnboarding)
         {
-            await WaitForMainLayoutAsync();
             if (_onboardingOverlay is not null)
             {
                 _root.Children.Remove(_onboardingOverlay);
@@ -3328,7 +3328,7 @@ public sealed class TodoWindow : Window
 
             _settings.HasCompletedMainOnboarding = false;
             SaveSettings();
-            ShowMainOnboardingIfNeeded();
+            QueueMainOnboardingIfNeeded();
             return;
         }
 
@@ -3645,22 +3645,81 @@ public sealed class TodoWindow : Window
         await completion.Task;
     }
 
-    private void ShowMainOnboardingIfNeeded()
+    private void QueueMainOnboardingIfNeeded()
     {
-        if (_settings.HasCompletedMainOnboarding || _onboardingOverlay is not null)
+        if (_settings.HasCompletedMainOnboarding ||
+            _settings.IsStickyModeEnabled ||
+            _onboardingOverlay is not null ||
+            _isOnboardingShowPending)
         {
             return;
         }
 
-        if (!_root.IsLoaded)
+        _isOnboardingShowPending = true;
+        _ = ShowMainOnboardingWhenReadyAsync();
+    }
+
+    private async Task ShowMainOnboardingWhenReadyAsync()
+    {
+        try
         {
-            RoutedEventHandler? loadedHandler = null;
-            loadedHandler = (_, _) =>
+            while (true)
             {
-                _root.Loaded -= loadedHandler;
-                ShowMainOnboardingIfNeeded();
-            };
-            _root.Loaded += loadedHandler;
+                var root = _root;
+                await WaitForLoadedAsync(root);
+                await WaitForMainLayoutAsync();
+
+                if (!ReferenceEquals(root, _root))
+                {
+                    continue;
+                }
+
+                if (_settings.HasCompletedMainOnboarding ||
+                    _settings.IsStickyModeEnabled ||
+                    _onboardingOverlay is not null)
+                {
+                    return;
+                }
+
+                ShowMainOnboarding();
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to prepare Todo onboarding: {exception}");
+        }
+        finally
+        {
+            _isOnboardingShowPending = false;
+        }
+    }
+
+    private static Task WaitForLoadedAsync(FrameworkElement element)
+    {
+        if (element.IsLoaded)
+        {
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RoutedEventHandler? loadedHandler = null;
+        loadedHandler = (_, _) =>
+        {
+            element.Loaded -= loadedHandler;
+            completion.TrySetResult(null);
+        };
+        element.Loaded += loadedHandler;
+        return completion.Task;
+    }
+
+    private void ShowMainOnboarding()
+    {
+        if (_settings.HasCompletedMainOnboarding ||
+            _settings.IsStickyModeEnabled ||
+            _onboardingOverlay is not null ||
+            !_root.IsLoaded)
+        {
             return;
         }
 
@@ -4669,7 +4728,7 @@ public sealed class TodoWindow : Window
         return TodoQuery.ViewTitle(_data, viewId);
     }
 
-    private string DefaultListIdForNewTask() => DefaultListId();
+    private string DefaultListIdForNewTask() => TodoQuery.DefaultListIdForNewTask(_data, _currentViewId);
 
     private string DefaultListId()
     {

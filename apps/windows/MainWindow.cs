@@ -22,10 +22,15 @@ public sealed class MainWindow : Window
     private const double SidebarExpandedWidth = 238;
     private const double SidebarCollapsedWidth = 76;
     private const int ToolCardDoubleClickMilliseconds = 500;
+    private const int ToolLaunchDebounceMilliseconds = 700;
     private const string TodoToolId = "todo";
     private const string TodoExecutableName = "Fowan.Todo.Windows.exe";
     private const string DiaryToolId = "diary";
     private const string DiaryExecutableName = "Fowan.Diary.Windows.exe";
+    private const string AiChatToolId = "ai-chat";
+    private const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.exe";
+    private const string AiConfigToolId = "ai-config";
+    private const string AiConfigExecutableName = "Fowan.Ai.Config.Windows.exe";
     private const int ShowWindowHide = 0;
     private const int ShowWindowRestore = 9;
     private const int GwlWndProc = -4;
@@ -75,6 +80,8 @@ public sealed class MainWindow : Window
     private int _toastVersion;
     private string _lastToolCardClickId = string.Empty;
     private DateTimeOffset _lastToolCardClickAt = DateTimeOffset.MinValue;
+    private string _lastToolLaunchId = string.Empty;
+    private DateTimeOffset _lastToolLaunchAt = DateTimeOffset.MinValue;
 
     private string _selectedCategoryId = "all";
     private string _searchText = string.Empty;
@@ -116,6 +123,7 @@ public sealed class MainWindow : Window
         }
 
         _settings = _userSettings;
+        _pinnedToolIds.AddRange(_settings.PinnedToolIds);
         _loc.SetLanguage(_settings.Language);
         StartupTrace.Mark("Localization loaded");
         SelectFirstCurrentTool();
@@ -1045,6 +1053,12 @@ public sealed class MainWindow : Window
         };
         ConfigureToolCardButton(button);
         button.Click += async (_, _) => await HandleToolCardClickAsync(tool);
+        button.DoubleTapped += async (_, args) =>
+        {
+            args.Handled = true;
+            SelectTool(tool);
+            await ExecutePrimaryActionAsync(tool);
+        };
         button.KeyDown += async (_, args) =>
         {
             if (args.Key == global::Windows.System.VirtualKey.Enter && tool.Status == ToolStatus.Available)
@@ -1116,6 +1130,12 @@ public sealed class MainWindow : Window
         };
         ConfigureToolCardButton(button);
         button.Click += async (_, _) => await HandleToolCardClickAsync(tool);
+        button.DoubleTapped += async (_, args) =>
+        {
+            args.Handled = true;
+            SelectTool(tool);
+            await ExecutePrimaryActionAsync(tool);
+        };
         button.KeyDown += async (_, args) =>
         {
             if (args.Key == global::Windows.System.VirtualKey.Enter && tool.Status == ToolStatus.Available)
@@ -1283,6 +1303,9 @@ public sealed class MainWindow : Window
             _pinnedToolIds.Insert(0, tool.Id);
         }
 
+        _settings.PinnedToolIds = _pinnedToolIds.ToList();
+        _settingsStore.Save(_settings);
+
         RefreshToolGrid();
     }
 
@@ -1401,18 +1424,13 @@ public sealed class MainWindow : Window
             string.Equals(_lastToolCardClickId, tool.Id, StringComparison.OrdinalIgnoreCase) &&
             now - _lastToolCardClickAt <= TimeSpan.FromMilliseconds(ToolCardDoubleClickMilliseconds);
 
-        if (isDoubleClick)
-        {
-            _lastToolCardClickId = string.Empty;
-            _lastToolCardClickAt = DateTimeOffset.MinValue;
-            SelectTool(tool);
-            await ExecutePrimaryActionAsync(tool);
-            return;
-        }
-
         _lastToolCardClickId = tool.Id;
         _lastToolCardClickAt = now;
         SelectTool(tool);
+        if (isDoubleClick)
+        {
+            await ExecutePrimaryActionAsync(tool);
+        }
     }
 
     private async Task ExecutePrimaryActionAsync(ToolCard tool)
@@ -1421,6 +1439,15 @@ public sealed class MainWindow : Window
         {
             return;
         }
+
+        var now = DateTimeOffset.UtcNow;
+        if (string.Equals(_lastToolLaunchId, tool.Id, StringComparison.OrdinalIgnoreCase) &&
+            now - _lastToolLaunchAt <= TimeSpan.FromMilliseconds(ToolLaunchDebounceMilliseconds))
+        {
+            return;
+        }
+        _lastToolLaunchId = tool.Id;
+        _lastToolLaunchAt = now;
 
         var openedExternalTool = false;
         switch (tool.Id)
@@ -1433,6 +1460,20 @@ public sealed class MainWindow : Window
                 break;
             case "quick-capture":
                 await ShowQuickCaptureDialogAsync();
+                break;
+            case AiChatToolId:
+                openedExternalTool = await LaunchAiToolAsync(
+                    AiChatExecutableName,
+                    "windows-ai-chat",
+                    "Chat",
+                    "Tool_AIChat");
+                break;
+            case AiConfigToolId:
+                openedExternalTool = await LaunchAiToolAsync(
+                    AiConfigExecutableName,
+                    "windows-ai-config",
+                    "Config",
+                    "Tool_AIConfig");
                 break;
             case "settings":
                 await ShowSettingsDialogAsync();
@@ -1451,6 +1492,36 @@ public sealed class MainWindow : Window
         if (openedExternalTool)
         {
             MinimizeToolboxToTray();
+        }
+    }
+
+    private Task<bool> LaunchAiToolAsync(
+        string executableName,
+        string outputDirectory,
+        string installedDirectory,
+        string toolNameKey)
+    {
+        var executablePath = ResolveAiExecutablePath(executableName, outputDirectory, installedDirectory);
+        if (executablePath is null)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchMissing"), L(toolNameKey)), InfoBarSeverity.Error);
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true
+            });
+            return Task.FromResult(true);
+        }
+        catch (Exception exception)
+        {
+            ShowInfo(string.Format(L("Tool_LaunchFailed"), L(toolNameKey), exception.Message), InfoBarSeverity.Error);
+            return Task.FromResult(false);
         }
     }
 
@@ -1700,6 +1771,37 @@ public sealed class MainWindow : Window
 
         return candidates
             .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(File.Exists);
+    }
+
+    private static string? ResolveAiExecutablePath(
+        string executableName,
+        string outputDirectory,
+        string installedDirectory)
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        var candidates = new List<string>
+        {
+            Path.Combine(baseDirectory, executableName),
+            Path.Combine(baseDirectory, "Tools", "AI", installedDirectory, executableName)
+        };
+
+        var repoRoot = FindRepoRoot(baseDirectory);
+        if (repoRoot is not null)
+        {
+            foreach (var configuration in BuildConfigurationCandidates(baseDirectory))
+            {
+                candidates.Add(Path.Combine(
+                    repoRoot,
+                    "out",
+                    outputDirectory,
+                    configuration.ToLowerInvariant(),
+                    executableName));
+            }
+        }
+
+        return candidates
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(File.Exists);
     }
@@ -2764,6 +2866,28 @@ public sealed class MainWindow : Window
 
     private Border IconTile(ToolCard tool, double size, double glyphSize)
     {
+        UIElement icon = tool.Id == AiChatToolId
+            ? new Image
+            {
+                Width = size - 8,
+                Height = size - 8,
+                Source = new BitmapImage(FileUri(Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Assets",
+                    "fowan-ai-chat-app-icon-256.png"))),
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+            : new FontIcon
+            {
+                Glyph = tool.IconGlyph,
+                FontSize = glyphSize,
+                Foreground = ToolAccentBrush(tool),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
         return new Border
         {
             Width = size,
@@ -2773,14 +2897,7 @@ public sealed class MainWindow : Window
             BorderThickness = new Thickness(1),
             BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
             Background = ThemeBrush("IconTileBackground"),
-            Child = new FontIcon
-            {
-                Glyph = tool.IconGlyph,
-                FontSize = glyphSize,
-                Foreground = ToolAccentBrush(tool),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
+            Child = icon
         };
     }
 

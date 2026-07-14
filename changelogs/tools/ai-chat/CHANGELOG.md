@@ -1,0 +1,7 @@
+# Fowan AI Chat Changelog
+
+## Unreleased - 2026-07-13
+
+- 新增独立 `Fowan.Ai.Chat.Windows.exe`，支持本地加密历史、流式多轮对话、停止、重试和重新生成。
+- 对话仅选择配置中心已经保存的密钥与模型，并可启动或激活独立 AI 配置中心。
+- 使用用户级单实例与共享 Fowan Core，不再嵌入 Toolbox 进程。

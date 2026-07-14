@@ -230,6 +230,20 @@ public static class TodoQuery
             ?? data.Lists.First().Id;
     }
 
+    public static string DefaultListIdForNewTask(TodoData data, string viewId)
+    {
+        if (TodoViewIds.IsList(viewId))
+        {
+            var listId = TodoViewIds.ListId(viewId);
+            if (data.Lists.Any(list => string.Equals(list.Id, listId, StringComparison.Ordinal)))
+            {
+                return listId;
+            }
+        }
+
+        return DefaultListId(data);
+    }
+
     public static int TaskDepth(TodoData data, TodoTask task)
     {
         var byId = data.Tasks.ToDictionary(candidate => candidate.Id, StringComparer.Ordinal);

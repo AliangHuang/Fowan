@@ -28,6 +28,8 @@
 
 当前 Todo、Diary 和 Toolbox 不依赖 FowanCore，公开仓库可以独立构建并完整运行现有功能。
 
+AI 工具是首个真实的私有核心接入能力。其公开、版本化契约位于 `protocol/ai/v0.1`；Windows 客户端只负责配置输入、明确的云端发送确认、流式结果展示和取消。公开仓库中的 `Fowan.Ai.Shared` 只包含 DTO、JSON-RPC 客户端、安全错误摘要、Core 定位和跨应用启动逻辑，AI 对话与 AI 配置中心的 UI 分别位于独立 WinUI 项目。API 密钥、模型策略、渠道调用、对话编排及加密历史由独立的 FowanCore artifact 实现。公开仓库不引用或编译私有源码，Release 打包必须显式提供 Core artifact。
+
 在首个真实的 AI 或加密用例确定之前：
 
 - 不创建空的协议项目、SDK 或占位 RPC 方法。

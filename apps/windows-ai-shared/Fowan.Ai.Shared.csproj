@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Ai.Shared</RootNamespace>
+    <AssemblyName>Fowan.Ai.Shared</AssemblyName>
+  </PropertyGroup>
+</Project>

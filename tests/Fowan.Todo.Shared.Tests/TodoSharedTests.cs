@@ -80,6 +80,61 @@ public sealed class TodoSharedTests : IDisposable
         Assert.Equal(120, normalized.StickyFloatingTop);
     }
 
+    [Fact]
+    public void NewTasksDefaultToTheCurrentListOnlyForValidListViews()
+    {
+        var data = Data();
+        var customList = new TodoList { Id = "list-custom", Name = "Custom" };
+        data.Lists.Add(customList);
+
+        Assert.Equal(
+            customList.Id,
+            TodoQuery.DefaultListIdForNewTask(data, TodoViewIds.List(customList.Id)));
+        Assert.Equal(
+            TodoStore.DefaultListId,
+            TodoQuery.DefaultListIdForNewTask(data, TodoViewIds.List(TodoStore.DefaultListId)));
+
+        foreach (var aggregateViewId in new[]
+                 {
+                     TodoViewIds.Today,
+                     TodoViewIds.Planned,
+                     TodoViewIds.Important,
+                     TodoViewIds.All,
+                     TodoViewIds.Completed,
+                     TodoViewIds.RecycleBin
+                 })
+        {
+            Assert.Equal(
+                TodoStore.DefaultListId,
+                TodoQuery.DefaultListIdForNewTask(data, aggregateViewId));
+        }
+
+        Assert.Equal(
+            TodoStore.DefaultListId,
+            TodoQuery.DefaultListIdForNewTask(data, TodoViewIds.List("missing-list")));
+    }
+
+    [Fact]
+    public void TodoStorageRootCanBeOverriddenForIsolatedRuntimeValidation()
+    {
+        const string variableName = "FOWAN_TODO_DATA_ROOT";
+        var previousValue = Environment.GetEnvironmentVariable(variableName);
+        try
+        {
+            Environment.SetEnvironmentVariable(variableName, _rootPath);
+
+            var paths = TodoStoragePaths.Resolve();
+
+            Assert.Equal(Path.GetFullPath(_rootPath), paths.TodoRoot);
+            Assert.Equal(Path.Combine(_rootPath, TodoStoragePaths.DataFileName), paths.DataPath);
+            Assert.Equal(Path.Combine(_rootPath, TodoStoragePaths.SettingsFileName), paths.SettingsPath);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, previousValue);
+        }
+    }
+
     [Theory]
     [InlineData(0, 1920, 16, 16, TodoStickyFloatingEdges.Left)]
     [InlineData(0, 1920, -200, 16, TodoStickyFloatingEdges.Left)]
