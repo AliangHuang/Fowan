@@ -14,6 +14,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\apps\windows-todo-shared\Fowan.Todo.Shared.csproj" />
+    <ProjectReference Include="..\..\apps\windows\todo\shared\Fowan.Todo.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\fixtures\todo-v5\todo-data.json" Link="fixtures\todo-data.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

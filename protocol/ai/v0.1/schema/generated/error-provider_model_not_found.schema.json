@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "$ref": "#/$defs/errorResponse"
+    },
+    {
+      "properties": {
+        "error": {
+          "properties": {
+            "code": {
+              "const": "provider_model_not_found"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "errorResponse": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_argument",
+                "not_found",
+                "conflict",
+                "protocol_mismatch",
+                "handshake_required",
+                "consent_required",
+                "secret_store_unavailable",
+                "secure_state_inconsistent",
+                "protected_data_unavailable",
+                "storage_unavailable",
+                "provider_auth_failed",
+                "provider_model_not_found",
+                "provider_rate_limited",
+                "provider_content_rejected",
+                "provider_unavailable",
+                "context_limit_exceeded",
+                "timeout",
+                "cancelled",
+                "internal_error"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "const": "consent_required"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "endpoint"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "endpoint": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "\\S"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "const": "protocol_mismatch"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "missingCapabilities"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "missingCapabilities": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "not": {
+                      "enum": [
+                        "consent_required",
+                        "protocol_mismatch"
+                      ]
+                    }
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    }
+  }
+}

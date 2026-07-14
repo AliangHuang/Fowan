@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": "protected_data_unavailable",
+    "message": "Stable protocol error"
+  }
+}

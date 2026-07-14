@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": "provider_model_not_found",
+    "message": "Stable protocol error"
+  }
+}

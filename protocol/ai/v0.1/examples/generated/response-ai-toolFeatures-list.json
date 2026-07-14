@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 15,
+  "result": [
+    {
+      "featureId": "ai.chat",
+      "toolId": "ai-chat",
+      "displayName": "AI Chat",
+      "requiredCapabilities": [
+        "chat"
+      ]
+    }
+  ]
+}

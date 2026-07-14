@@ -7,7 +7,7 @@
 
 ## 1. 产品定位
 
-当前产物为 `apps/windows-ai-chat/Fowan.Ai.Chat.Windows.csproj`，构建输出为 `out/windows-ai-chat/<configuration>/Fowan.Ai.Chat.Windows.exe`，发布目录为 `Tools/AI/Chat`。
+当前产物为 `apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj`，构建输出为 `out/windows-ai-chat/<configuration>/Fowan.Ai.Chat.Windows.exe`，发布目录为 `Tools/AI/Chat`。
 
 `Fowan AI 对话` 是从 Fowan Toolbox 启动的独立 Windows 应用，专门承载多轮文本对话、流式生成和本地加密历史。它不是 Toolbox 内嵌页面，也不负责渠道、密钥、模型目录或工具默认模型的管理。
 

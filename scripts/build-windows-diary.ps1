@@ -6,9 +6,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-output.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repoRoot "apps/windows-diary/Fowan.Diary.Windows.csproj"
+$project = Join-Path $repoRoot "apps/windows/diary/app/Fowan.Diary.Windows.csproj"
 $configurationName = $Configuration.ToLowerInvariant()
 $windowsOutputRoot = Join-Path $repoRoot "out/windows-diary"
 $output = Join-Path $windowsOutputRoot $configurationName
@@ -48,8 +49,8 @@ if ($Clean) {
         -Description "Diary output"
 
     foreach ($legacyBin in @(
-        (Join-Path $repoRoot "apps/windows-diary/bin"),
-        (Join-Path $repoRoot "apps/windows-diary-shared/bin")
+        (Join-Path $repoRoot "apps/windows/diary/app/bin"),
+        (Join-Path $repoRoot "apps/windows/diary/shared/bin")
     )) {
         Remove-DirectoryInside `
             -Path $legacyBin `
@@ -58,22 +59,27 @@ if ($Clean) {
     }
 }
 
-New-Item -ItemType Directory -Force -Path $output | Out-Null
-
-$command = if ($Publish -or $Configuration -eq "Release") { "publish" } else { "build" }
+$command = if ($Publish) { "publish" } else { "build" }
+$staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-diary"
 
 & $dotnet $command $project `
     -c $Configuration `
+    -o $staging `
     --nologo
 
 if ($LASTEXITCODE -ne 0) {
+    Remove-IsolatedBuildDirectory -Path $staging
     exit $LASTEXITCODE
 }
 
-$exe = Join-Path $output "Fowan.Diary.Windows.exe"
+$exe = Join-Path $staging "Fowan.Diary.Windows.exe"
 if (-not (Test-Path -LiteralPath $exe)) {
+    Remove-IsolatedBuildDirectory -Path $staging
     throw "Build completed, but expected executable was not found: $exe"
 }
+
+Install-IsolatedBuildDirectory -StagingDirectory $staging -Destination $output -AllowedOutputRoot $windowsOutputRoot
+$exe = Join-Path $output "Fowan.Diary.Windows.exe"
 
 Write-Host "Windows diary client $command output: $output"
 Write-Host "Executable: $exe"

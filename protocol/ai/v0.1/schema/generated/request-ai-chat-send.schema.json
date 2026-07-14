@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.chat.send"
+    },
+    "params": {
+      "$ref": "#/$defs/chatSendParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "chatSendParams": {
+      "type": "object",
+      "required": [
+        "credentialId",
+        "modelProfileId",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelProfileId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

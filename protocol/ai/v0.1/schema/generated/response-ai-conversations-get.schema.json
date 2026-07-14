@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "result": {
+      "$ref": "#/$defs/conversationDetailResult"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "conversationDetailResult": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "createdAt",
+        "updatedAt",
+        "messages"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chatMessage"
+          }
+        }
+      }
+    },
+    "chatMessage": {
+      "type": "object",
+      "required": [
+        "id",
+        "role",
+        "content",
+        "status",
+        "parentMessageId",
+        "variantIndex",
+        "channelName",
+        "credentialName",
+        "modelId",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "streaming",
+            "completed",
+            "cancelled",
+            "failed"
+          ]
+        },
+        "parentMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "variantIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "channelName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.chat.regenerate"
+    },
+    "params": {
+      "$ref": "#/$defs/chatRegenerateParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "chatRegenerateParams": {
+      "type": "object",
+      "required": [
+        "conversationId",
+        "credentialId",
+        "modelProfileId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "credentialId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "modelProfileId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

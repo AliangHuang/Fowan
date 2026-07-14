@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 20,
+  "result": {
+    "granted": true,
+    "endpoint": "https://api.openai.com/v1"
+  }
+}

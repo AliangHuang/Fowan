@@ -9,6 +9,9 @@
     <AssemblyVersion>$(FowanAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(FowanAssemblyVersion)</FileVersion>
     <InformationalVersion>$(FowanVersion)</InformationalVersion>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <BaseOutputPath>$(RepositoryRoot)artifacts\build\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(RepositoryRoot)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <Product>Fowan</Product>
     <Company>Fowan</Company>
     <Nullable>enable</Nullable>

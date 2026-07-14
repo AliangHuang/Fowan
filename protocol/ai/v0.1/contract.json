@@ -1,0 +1,35 @@
+{
+  "protocolVersion": "0.1",
+  "schemas": {
+    "envelope": "schema/jsonrpc.schema.json",
+    "messages": "schema/methods.schema.json",
+    "handshakeParameters": "schema/handshake.schema.json"
+  },
+  "fixtureManifest": "examples/manifest.json",
+  "capabilities": ["ai.config.v1", "ai.chat.v1"],
+  "methods": [
+    "engine.handshake",
+    "ai.channels.list", "ai.channels.create", "ai.channels.update", "ai.channels.delete",
+    "ai.credentials.list", "ai.credentials.upsert", "ai.credentials.delete", "ai.credentials.test",
+    "ai.models.list", "ai.models.upsert", "ai.models.delete", "ai.models.test", "ai.models.presets",
+    "ai.toolFeatures.list", "ai.bindings.list", "ai.bindings.upsert", "ai.bindings.delete",
+    "ai.consents.check", "ai.consents.grant",
+    "ai.conversations.list", "ai.conversations.create", "ai.conversations.get",
+    "ai.conversations.rename", "ai.conversations.delete",
+    "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate"
+  ],
+  "notifications": [
+    "ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"
+  ],
+  "errors": [
+    "invalid_argument", "not_found", "conflict", "protocol_mismatch", "handshake_required",
+    "consent_required", "secret_store_unavailable", "secure_state_inconsistent",
+    "protected_data_unavailable", "storage_unavailable", "provider_auth_failed",
+    "provider_model_not_found", "provider_rate_limited", "provider_content_rejected",
+    "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"
+  ],
+  "limits": {
+    "maximumFrameBytes": 8388608,
+    "maximumHeaderBytes": 8192
+  }
+}

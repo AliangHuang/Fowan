@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.chat.cancelled",
+  "params": {
+    "invocationId": "invocation-1",
+    "assistantMessageId": "message-2",
+    "errorCode": null
+  }
+}

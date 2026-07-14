@@ -1,0 +1,625 @@
+{
+  "coverage": {
+    "methods": 28,
+    "notifications": 5,
+    "errors": 19
+  },
+  "vectors": [
+    {
+      "kind": "request",
+      "name": "engine.handshake",
+      "path": "examples/generated/request-engine-handshake.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "engine.handshake",
+      "path": "examples/generated/response-engine-handshake.json",
+      "schemaRef": "schema/generated/response-engine-handshake.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.channels.list",
+      "path": "examples/generated/request-ai-channels-list.json",
+      "schemaRef": "schema/generated/request-ai-channels-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.channels.list",
+      "path": "examples/generated/response-ai-channels-list.json",
+      "schemaRef": "schema/generated/response-ai-channels-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.channels.create",
+      "path": "examples/generated/request-ai-channels-create.json",
+      "schemaRef": "schema/generated/request-ai-channels-create.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.channels.create",
+      "path": "examples/generated/response-ai-channels-create.json",
+      "schemaRef": "schema/generated/response-ai-channels-create.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.channels.update",
+      "path": "examples/generated/request-ai-channels-update.json",
+      "schemaRef": "schema/generated/request-ai-channels-update.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.channels.update",
+      "path": "examples/generated/response-ai-channels-update.json",
+      "schemaRef": "schema/generated/response-ai-channels-update.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.channels.delete",
+      "path": "examples/generated/request-ai-channels-delete.json",
+      "schemaRef": "schema/generated/request-ai-channels-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.channels.delete",
+      "path": "examples/generated/response-ai-channels-delete.json",
+      "schemaRef": "schema/generated/response-ai-channels-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.credentials.list",
+      "path": "examples/generated/request-ai-credentials-list.json",
+      "schemaRef": "schema/generated/request-ai-credentials-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.credentials.list",
+      "path": "examples/generated/response-ai-credentials-list.json",
+      "schemaRef": "schema/generated/response-ai-credentials-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.credentials.upsert",
+      "path": "examples/generated/request-ai-credentials-upsert.json",
+      "schemaRef": "schema/generated/request-ai-credentials-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.credentials.upsert",
+      "path": "examples/generated/response-ai-credentials-upsert.json",
+      "schemaRef": "schema/generated/response-ai-credentials-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.credentials.delete",
+      "path": "examples/generated/request-ai-credentials-delete.json",
+      "schemaRef": "schema/generated/request-ai-credentials-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.credentials.delete",
+      "path": "examples/generated/response-ai-credentials-delete.json",
+      "schemaRef": "schema/generated/response-ai-credentials-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.credentials.test",
+      "path": "examples/generated/request-ai-credentials-test.json",
+      "schemaRef": "schema/generated/request-ai-credentials-test.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.credentials.test",
+      "path": "examples/generated/response-ai-credentials-test.json",
+      "schemaRef": "schema/generated/response-ai-credentials-test.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.models.list",
+      "path": "examples/generated/request-ai-models-list.json",
+      "schemaRef": "schema/generated/request-ai-models-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.models.list",
+      "path": "examples/generated/response-ai-models-list.json",
+      "schemaRef": "schema/generated/response-ai-models-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.models.upsert",
+      "path": "examples/generated/request-ai-models-upsert.json",
+      "schemaRef": "schema/generated/request-ai-models-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.models.upsert",
+      "path": "examples/generated/response-ai-models-upsert.json",
+      "schemaRef": "schema/generated/response-ai-models-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.models.delete",
+      "path": "examples/generated/request-ai-models-delete.json",
+      "schemaRef": "schema/generated/request-ai-models-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.models.delete",
+      "path": "examples/generated/response-ai-models-delete.json",
+      "schemaRef": "schema/generated/response-ai-models-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.models.test",
+      "path": "examples/generated/request-ai-models-test.json",
+      "schemaRef": "schema/generated/request-ai-models-test.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.models.test",
+      "path": "examples/generated/response-ai-models-test.json",
+      "schemaRef": "schema/generated/response-ai-models-test.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.models.presets",
+      "path": "examples/generated/request-ai-models-presets.json",
+      "schemaRef": "schema/generated/request-ai-models-presets.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.models.presets",
+      "path": "examples/generated/response-ai-models-presets.json",
+      "schemaRef": "schema/generated/response-ai-models-presets.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.toolFeatures.list",
+      "path": "examples/generated/request-ai-toolFeatures-list.json",
+      "schemaRef": "schema/generated/request-ai-toolFeatures-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.toolFeatures.list",
+      "path": "examples/generated/response-ai-toolFeatures-list.json",
+      "schemaRef": "schema/generated/response-ai-toolFeatures-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.bindings.list",
+      "path": "examples/generated/request-ai-bindings-list.json",
+      "schemaRef": "schema/generated/request-ai-bindings-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.bindings.list",
+      "path": "examples/generated/response-ai-bindings-list.json",
+      "schemaRef": "schema/generated/response-ai-bindings-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.bindings.upsert",
+      "path": "examples/generated/request-ai-bindings-upsert.json",
+      "schemaRef": "schema/generated/request-ai-bindings-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.bindings.upsert",
+      "path": "examples/generated/response-ai-bindings-upsert.json",
+      "schemaRef": "schema/generated/response-ai-bindings-upsert.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.bindings.delete",
+      "path": "examples/generated/request-ai-bindings-delete.json",
+      "schemaRef": "schema/generated/request-ai-bindings-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.bindings.delete",
+      "path": "examples/generated/response-ai-bindings-delete.json",
+      "schemaRef": "schema/generated/response-ai-bindings-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.consents.check",
+      "path": "examples/generated/request-ai-consents-check.json",
+      "schemaRef": "schema/generated/request-ai-consents-check.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.consents.check",
+      "path": "examples/generated/response-ai-consents-check.json",
+      "schemaRef": "schema/generated/response-ai-consents-check.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.consents.grant",
+      "path": "examples/generated/request-ai-consents-grant.json",
+      "schemaRef": "schema/generated/request-ai-consents-grant.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.consents.grant",
+      "path": "examples/generated/response-ai-consents-grant.json",
+      "schemaRef": "schema/generated/response-ai-consents-grant.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.conversations.list",
+      "path": "examples/generated/request-ai-conversations-list.json",
+      "schemaRef": "schema/generated/request-ai-conversations-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.conversations.list",
+      "path": "examples/generated/response-ai-conversations-list.json",
+      "schemaRef": "schema/generated/response-ai-conversations-list.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.conversations.create",
+      "path": "examples/generated/request-ai-conversations-create.json",
+      "schemaRef": "schema/generated/request-ai-conversations-create.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.conversations.create",
+      "path": "examples/generated/response-ai-conversations-create.json",
+      "schemaRef": "schema/generated/response-ai-conversations-create.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.conversations.get",
+      "path": "examples/generated/request-ai-conversations-get.json",
+      "schemaRef": "schema/generated/request-ai-conversations-get.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.conversations.get",
+      "path": "examples/generated/response-ai-conversations-get.json",
+      "schemaRef": "schema/generated/response-ai-conversations-get.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.conversations.rename",
+      "path": "examples/generated/request-ai-conversations-rename.json",
+      "schemaRef": "schema/generated/request-ai-conversations-rename.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.conversations.rename",
+      "path": "examples/generated/response-ai-conversations-rename.json",
+      "schemaRef": "schema/generated/response-ai-conversations-rename.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.conversations.delete",
+      "path": "examples/generated/request-ai-conversations-delete.json",
+      "schemaRef": "schema/generated/request-ai-conversations-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.conversations.delete",
+      "path": "examples/generated/response-ai-conversations-delete.json",
+      "schemaRef": "schema/generated/response-ai-conversations-delete.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.chat.send",
+      "path": "examples/generated/request-ai-chat-send.json",
+      "schemaRef": "schema/generated/request-ai-chat-send.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.chat.send",
+      "path": "examples/generated/response-ai-chat-send.json",
+      "schemaRef": "schema/generated/response-ai-chat-send.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.chat.cancel",
+      "path": "examples/generated/request-ai-chat-cancel.json",
+      "schemaRef": "schema/generated/request-ai-chat-cancel.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.chat.cancel",
+      "path": "examples/generated/response-ai-chat-cancel.json",
+      "schemaRef": "schema/generated/response-ai-chat-cancel.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "request",
+      "name": "ai.chat.regenerate",
+      "path": "examples/generated/request-ai-chat-regenerate.json",
+      "schemaRef": "schema/generated/request-ai-chat-regenerate.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "response",
+      "name": "ai.chat.regenerate",
+      "path": "examples/generated/response-ai-chat-regenerate.json",
+      "schemaRef": "schema/generated/response-ai-chat-regenerate.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "notification",
+      "name": "ai.chat.started",
+      "path": "examples/generated/notification-ai-chat-started.json",
+      "schemaRef": "schema/generated/notification-ai-chat-started.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "notification",
+      "name": "ai.chat.delta",
+      "path": "examples/generated/notification-ai-chat-delta.json",
+      "schemaRef": "schema/generated/notification-ai-chat-delta.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "notification",
+      "name": "ai.chat.completed",
+      "path": "examples/generated/notification-ai-chat-completed.json",
+      "schemaRef": "schema/generated/notification-ai-chat-completed.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "notification",
+      "name": "ai.chat.cancelled",
+      "path": "examples/generated/notification-ai-chat-cancelled.json",
+      "schemaRef": "schema/generated/notification-ai-chat-cancelled.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "notification",
+      "name": "ai.chat.failed",
+      "path": "examples/generated/notification-ai-chat-failed.json",
+      "schemaRef": "schema/generated/notification-ai-chat-failed.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "invalid_argument",
+      "path": "examples/generated/error-invalid_argument.json",
+      "schemaRef": "schema/generated/error-invalid_argument.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "not_found",
+      "path": "examples/generated/error-not_found.json",
+      "schemaRef": "schema/generated/error-not_found.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "conflict",
+      "path": "examples/generated/error-conflict.json",
+      "schemaRef": "schema/generated/error-conflict.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "protocol_mismatch",
+      "path": "examples/generated/error-protocol_mismatch.json",
+      "schemaRef": "schema/generated/error-protocol_mismatch.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "handshake_required",
+      "path": "examples/generated/error-handshake_required.json",
+      "schemaRef": "schema/generated/error-handshake_required.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "consent_required",
+      "path": "examples/generated/error-consent_required.json",
+      "schemaRef": "schema/generated/error-consent_required.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "secret_store_unavailable",
+      "path": "examples/generated/error-secret_store_unavailable.json",
+      "schemaRef": "schema/generated/error-secret_store_unavailable.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "secure_state_inconsistent",
+      "path": "examples/generated/error-secure_state_inconsistent.json",
+      "schemaRef": "schema/generated/error-secure_state_inconsistent.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "protected_data_unavailable",
+      "path": "examples/generated/error-protected_data_unavailable.json",
+      "schemaRef": "schema/generated/error-protected_data_unavailable.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "storage_unavailable",
+      "path": "examples/generated/error-storage_unavailable.json",
+      "schemaRef": "schema/generated/error-storage_unavailable.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "provider_auth_failed",
+      "path": "examples/generated/error-provider_auth_failed.json",
+      "schemaRef": "schema/generated/error-provider_auth_failed.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "provider_model_not_found",
+      "path": "examples/generated/error-provider_model_not_found.json",
+      "schemaRef": "schema/generated/error-provider_model_not_found.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "provider_rate_limited",
+      "path": "examples/generated/error-provider_rate_limited.json",
+      "schemaRef": "schema/generated/error-provider_rate_limited.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "provider_content_rejected",
+      "path": "examples/generated/error-provider_content_rejected.json",
+      "schemaRef": "schema/generated/error-provider_content_rejected.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "provider_unavailable",
+      "path": "examples/generated/error-provider_unavailable.json",
+      "schemaRef": "schema/generated/error-provider_unavailable.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "context_limit_exceeded",
+      "path": "examples/generated/error-context_limit_exceeded.json",
+      "schemaRef": "schema/generated/error-context_limit_exceeded.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "timeout",
+      "path": "examples/generated/error-timeout.json",
+      "schemaRef": "schema/generated/error-timeout.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "cancelled",
+      "path": "examples/generated/error-cancelled.json",
+      "schemaRef": "schema/generated/error-cancelled.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "error",
+      "name": "internal_error",
+      "path": "examples/generated/error-internal_error.json",
+      "schemaRef": "schema/generated/error-internal_error.schema.json",
+      "valid": true
+    },
+    {
+      "kind": "invalid",
+      "name": "handshake-missing-version",
+      "path": "examples/invalid/handshake-missing-version.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "handshake-extra-field",
+      "path": "examples/invalid/handshake-extra-field.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "handshake-duplicate-capability",
+      "path": "examples/invalid/handshake-duplicate-capability.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "chat-send-missing-model",
+      "path": "examples/invalid/chat-send-missing-model.json",
+      "schemaRef": "schema/generated/request-ai-chat-send.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "id-zero",
+      "path": "examples/generated/invalid-id-zero.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "id-negative",
+      "path": "examples/generated/invalid-id-negative.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "id-string",
+      "path": "examples/generated/invalid-id-string.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    },
+    {
+      "kind": "invalid",
+      "name": "id-out-of-range",
+      "path": "examples/generated/invalid-id-out-of-range.json",
+      "schemaRef": "schema/generated/request-engine-handshake.schema.json",
+      "valid": false
+    }
+  ]
+}

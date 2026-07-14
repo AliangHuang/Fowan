@@ -3,6 +3,7 @@ using Fowan.Diary.Shared.Services;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace Fowan.Diary.Shared.Tests;
@@ -10,6 +11,21 @@ namespace Fowan.Diary.Shared.Tests;
 public sealed class DiaryStoreTests : IDisposable
 {
     private readonly string _rootPath = Path.Combine(Path.GetTempPath(), "Fowan.Diary.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void VersionThreeGoldenFixturePreservesEveryExistingFieldAndValue()
+    {
+        Directory.CreateDirectory(_rootPath);
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "fixtures", "diary-data.json");
+        var dataPath = Path.Combine(_rootPath, "diary-data.json");
+        File.Copy(fixturePath, dataPath);
+        var original = File.ReadAllText(dataPath);
+        var store = new DiaryStore(_rootPath);
+
+        store.SaveData(store.LoadData());
+
+        AssertJsonSubset(original, File.ReadAllText(dataPath));
+    }
 
     [Fact]
     public void FirstLoadCreatesAnEmptyLibraryWithTheInboxNotebook()
@@ -306,6 +322,40 @@ public sealed class DiaryStoreTests : IDisposable
         Assert.Contains("accept-language=zh-CN", handler.LastRequest!.RequestUri!.Query);
     }
 
+    [Fact]
+    public void TimelineControllerOwnsRangeNavigationAndInclusiveDateWindows()
+    {
+        var controller = new DiaryTimelineStateController(new DateTime(2026, 7, 14));
+        controller.SelectRange(DiaryTimelineStateController.RangeWeek);
+
+        var firstWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 7, 13), firstWindow.Start);
+        Assert.Equal(new DateTime(2026, 7, 19), firstWindow.End);
+        controller.MoveRange(1);
+        Assert.Equal(new DateTime(2026, 7, 21), controller.AnchorDate);
+        var nextWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 7, 20), nextWindow.Start);
+        Assert.Equal(new DateTime(2026, 7, 26), nextWindow.End);
+    }
+
+    [Fact]
+    public void TimelineControllerNormalizesSessionInputAndConsumesNavigationState()
+    {
+        var controller = new DiaryTimelineStateController(new DateTime(2026, 7, 14));
+        controller.Initialize("invalid", "2026-06-10", "2026-06-12", "2026-05-01");
+
+        Assert.Equal(DiaryTimelineStateController.RangeAll, controller.RangeId);
+        Assert.Equal(new DateTime(2026, 5, 1), controller.NavigatorMonth);
+        var selectedWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 6, 12), selectedWindow.Start);
+        Assert.Equal(new DateTime(2026, 6, 12), selectedWindow.End);
+
+        controller.NavigateToDate(new DateTime(2026, 4, 20), new DateTime(2026, 4, 9));
+        Assert.Equal(new DateTime(2026, 4, 9), controller.PendingScrollDate);
+        controller.ClearPendingScroll();
+        Assert.Null(controller.PendingScrollDate);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
@@ -325,6 +375,56 @@ public sealed class DiaryStoreTests : IDisposable
             {
                 Content = new StringContent(content, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    private static void AssertJsonSubset(string expectedJson, string actualJson)
+    {
+        using var expected = JsonDocument.Parse(expectedJson);
+        using var actual = JsonDocument.Parse(actualJson);
+        AssertJsonSubset(expected.RootElement, actual.RootElement);
+    }
+
+    private static void AssertJsonSubset(JsonElement expected, JsonElement actual)
+    {
+        Assert.Equal(expected.ValueKind, actual.ValueKind);
+        if (expected.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in expected.EnumerateObject())
+            {
+                Assert.True(actual.TryGetProperty(property.Name, out var value), property.Name);
+                AssertJsonSubset(property.Value, value);
+            }
+            return;
+        }
+        if (expected.ValueKind == JsonValueKind.Array)
+        {
+            var expectedItems = expected.EnumerateArray().ToArray();
+            var actualItems = actual.EnumerateArray().ToArray();
+            Assert.True(actualItems.Length >= expectedItems.Length);
+            for (var index = 0; index < expectedItems.Length; index++)
+            {
+                AssertJsonSubset(expectedItems[index], actualItems[index]);
+            }
+            return;
+        }
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.String:
+                Assert.Equal(expected.GetString(), actual.GetString());
+                break;
+            case JsonValueKind.Number:
+                Assert.Equal(expected.GetDecimal(), actual.GetDecimal());
+                break;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                Assert.Equal(expected.GetBoolean(), actual.GetBoolean());
+                break;
+            case JsonValueKind.Null:
+                break;
+            default:
+                Assert.Equal(expected.GetRawText(), actual.GetRawText());
+                break;
         }
     }
 }

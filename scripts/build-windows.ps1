@@ -7,9 +7,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-output.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repoRoot "apps/windows/Fowan.Windows.csproj"
+$project = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
 $configurationName = $Configuration.ToLowerInvariant()
 $windowsOutputRoot = Join-Path $repoRoot "out/windows"
 $output = Join-Path $windowsOutputRoot $configurationName
@@ -29,22 +30,23 @@ if ($Clean -and (Test-Path -LiteralPath $output)) {
     Remove-Item -LiteralPath $output -Recurse -Force
 }
 
-New-Item -ItemType Directory -Force -Path $output | Out-Null
-
-$usePublish = $Publish -or $Configuration -eq "Release"
+$usePublish = $Publish
 $command = if ($usePublish) { "publish" } else { "build" }
+$staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-toolbox"
 
 & $dotnet $command $project `
     -c $Configuration `
-    -o $output `
+    -o $staging `
     --nologo
 
 if ($LASTEXITCODE -ne 0) {
+    Remove-IsolatedBuildDirectory -Path $staging
     exit $LASTEXITCODE
 }
 
-$exe = Join-Path $output "Fowan.Windows.exe"
+$exe = Join-Path $staging "Fowan.Windows.exe"
 if (-not (Test-Path -LiteralPath $exe)) {
+    Remove-IsolatedBuildDirectory -Path $staging
     throw "Build completed, but expected executable was not found: $exe"
 }
 
@@ -52,7 +54,7 @@ $resolvedCoreArtifact = $CoreArtifactPath
 if ([string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
     $workspaceRoot = Split-Path -Parent $repoRoot
     $coreConfiguration = if ($Configuration -eq "Release") { "release" } else { "debug" }
-    $candidate = Join-Path $workspaceRoot "FowanCore/target/$coreConfiguration/fowan-core.exe"
+    $candidate = Join-Path $workspaceRoot "FowanCore/out/core/windows/win-x64/$coreConfiguration/fowan-core.exe"
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         $resolvedCoreArtifact = $candidate
     }
@@ -60,15 +62,20 @@ if ([string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
 
 if (-not [string]::IsNullOrWhiteSpace($resolvedCoreArtifact)) {
     if (-not (Test-Path -LiteralPath $resolvedCoreArtifact -PathType Leaf)) {
+        Remove-IsolatedBuildDirectory -Path $staging
         throw "Fowan Core artifact was not found: $resolvedCoreArtifact"
     }
-    $coreOutput = Join-Path $output "Core"
+    $coreOutput = Join-Path $staging "Core"
     New-Item -ItemType Directory -Force -Path $coreOutput | Out-Null
     Copy-Item -LiteralPath $resolvedCoreArtifact -Destination (Join-Path $coreOutput "fowan-core.exe") -Force
 }
 elseif ($Configuration -eq "Release" -or $Publish) {
+    Remove-IsolatedBuildDirectory -Path $staging
     throw "Release builds require -CoreArtifactPath pointing to fowan-core.exe."
 }
+
+Install-IsolatedBuildDirectory -StagingDirectory $staging -Destination $output -AllowedOutputRoot $windowsOutputRoot
+$exe = Join-Path $output "Fowan.Windows.exe"
 
 Write-Host "Windows client $command output: $output"
 Write-Host "Executable: $exe"

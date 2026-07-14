@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","method":"ai.chat.delta","params":{"invocationId":"invocation-1","delta":"hello"}}

@@ -1,5 +1,6 @@
 using Fowan.Todo.Shared.Models;
 using Fowan.Todo.Shared.Services;
+using System.Text.Json;
 using Xunit;
 
 namespace Fowan.Todo.Shared.Tests;
@@ -7,6 +8,38 @@ namespace Fowan.Todo.Shared.Tests;
 public sealed class TodoSharedTests : IDisposable
 {
     private readonly string _rootPath = Path.Combine(Path.GetTempPath(), "Fowan.Todo.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void PersistenceControllerUsesInjectedRepositoryForBothWindows()
+    {
+        var repository = new MemoryTodoRepository();
+        var controller = new TodoPersistenceController(repository);
+        var data = controller.LoadData();
+        var settings = controller.LoadSettings();
+
+        controller.SaveData(data);
+        controller.SaveSettings(settings);
+        var updated = controller.UpdateData((_, _) => true);
+
+        Assert.Same(data, repository.SavedData);
+        Assert.Same(settings, repository.SavedSettings);
+        Assert.True(updated);
+    }
+
+    [Fact]
+    public void VersionFiveGoldenFixturePreservesEveryExistingFieldAndValue()
+    {
+        Directory.CreateDirectory(_rootPath);
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "fixtures", "todo-data.json");
+        var dataPath = Path.Combine(_rootPath, TodoStoragePaths.DataFileName);
+        File.Copy(fixturePath, dataPath);
+        var original = File.ReadAllText(dataPath);
+        var store = new TodoStore(_rootPath);
+
+        store.SaveData(store.LoadData());
+
+        AssertJsonSubset(original, File.ReadAllText(dataPath));
+    }
 
     [Fact]
     public void OldJsonDataIsMigratedAndRecycleBinSettingsDefaultOn()
@@ -410,6 +443,71 @@ public sealed class TodoSharedTests : IDisposable
                 .Select(task => task.Id));
     }
 
+    [Fact]
+    public void SharedTaskCommandsCompleteTheSameTreeForMainAndStickyShells()
+    {
+        var data = Data(Task("root"), Task("child", "root"), Task("grand", "child"));
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.True(TodoTaskCommands.HasIncompleteDescendants(data, "root"));
+        Assert.Equal(3, TodoTaskCommands.SetCompleted(data, "root", true, includeDescendants: true, now));
+        Assert.All(data.Tasks, task =>
+        {
+            Assert.True(task.IsCompleted);
+            Assert.Equal(now, task.CompletedAt);
+            Assert.Equal(now, task.UpdatedAt);
+        });
+        Assert.False(TodoTaskCommands.HasIncompleteDescendants(data, "root"));
+    }
+
+    [Fact]
+    public void SharedTaskCommandsDoNotChangeUnrelatedTasks()
+    {
+        var root = Task("root");
+        var sibling = Task("sibling");
+        var data = Data(root, sibling);
+        var originalSiblingUpdate = sibling.UpdatedAt;
+
+        Assert.Equal(1, TodoTaskCommands.SetCompleted(
+            data,
+            "root",
+            completed: true,
+            includeDescendants: false,
+            now: new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero)));
+        Assert.False(sibling.IsCompleted);
+        Assert.Equal(originalSiblingUpdate, sibling.UpdatedAt);
+    }
+
+    [Fact]
+    public void SharedDropControllerRejectsCyclesAndReordersForBothShells()
+    {
+        var root = Task("root");
+        var child = Task("child", "root");
+        var grand = Task("grand", "child");
+        var sibling = Task("sibling");
+        var data = Data(root, child, grand, sibling);
+        var settings = new TodoSettings { CollapsedTaskIds = ["root"] };
+
+        Assert.False(TodoTaskDropController.CanApply(
+            data,
+            "root",
+            "grand",
+            TodoTaskDropPlacement.Child));
+        Assert.True(TodoTaskDropController.TryApply(
+            data,
+            settings,
+            "sibling",
+            "root",
+            TodoTaskDropPlacement.Child,
+            new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero)));
+        Assert.Equal("root", sibling.ParentTaskId);
+        Assert.Equal(sibling.Id, data.Tasks
+            .Where(task => task.ParentTaskId == "root")
+            .OrderBy(task => task.SortOrder)
+            .First().Id);
+        Assert.DoesNotContain("root", settings.CollapsedTaskIds);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
@@ -458,5 +556,70 @@ public sealed class TodoSharedTests : IDisposable
             CreatedAt = createdAt,
             UpdatedAt = completedAt ?? deletedAt ?? createdAt
         };
+    }
+
+    private static void AssertJsonSubset(string expectedJson, string actualJson)
+    {
+        using var expected = JsonDocument.Parse(expectedJson);
+        using var actual = JsonDocument.Parse(actualJson);
+        AssertJsonSubset(expected.RootElement, actual.RootElement);
+    }
+
+    private sealed class MemoryTodoRepository : ITodoRepository
+    {
+        private readonly TodoData _data = new();
+        private readonly TodoSettings _settings = new();
+
+        public TodoData? SavedData { get; private set; }
+        public TodoSettings? SavedSettings { get; private set; }
+
+        public TodoData LoadData() => _data;
+        public TodoSettings LoadSettings() => _settings;
+        public void SaveData(TodoData data) => SavedData = data;
+        public void SaveSettings(TodoSettings settings) => SavedSettings = settings;
+        public bool UpdateData(Func<TodoData, TodoSettings, bool> update) => update(_data, _settings);
+    }
+
+    private static void AssertJsonSubset(JsonElement expected, JsonElement actual)
+    {
+        Assert.Equal(expected.ValueKind, actual.ValueKind);
+        if (expected.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in expected.EnumerateObject())
+            {
+                Assert.True(actual.TryGetProperty(property.Name, out var value), property.Name);
+                AssertJsonSubset(property.Value, value);
+            }
+            return;
+        }
+        if (expected.ValueKind == JsonValueKind.Array)
+        {
+            var expectedItems = expected.EnumerateArray().ToArray();
+            var actualItems = actual.EnumerateArray().ToArray();
+            Assert.True(actualItems.Length >= expectedItems.Length);
+            for (var index = 0; index < expectedItems.Length; index++)
+            {
+                AssertJsonSubset(expectedItems[index], actualItems[index]);
+            }
+            return;
+        }
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.String:
+                Assert.Equal(expected.GetString(), actual.GetString());
+                break;
+            case JsonValueKind.Number:
+                Assert.Equal(expected.GetDecimal(), actual.GetDecimal());
+                break;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                Assert.Equal(expected.GetBoolean(), actual.GetBoolean());
+                break;
+            case JsonValueKind.Null:
+                break;
+            default:
+                Assert.Equal(expected.GetRawText(), actual.GetRawText());
+                break;
+        }
     }
 }

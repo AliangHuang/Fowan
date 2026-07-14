@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "$ref": "#/$defs/notification"
+    },
+    {
+      "properties": {
+        "method": {
+          "const": "ai.chat.cancelled"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "notification": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "enum": [
+            "ai.chat.started",
+            "ai.chat.delta",
+            "ai.chat.completed",
+            "ai.chat.cancelled",
+            "ai.chat.failed"
+          ]
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "conversationId",
+                  "assistantMessageId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "assistantMessageId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.delta"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "delta"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "delta": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "ai.chat.completed",
+                  "ai.chat.cancelled",
+                  "ai.chat.failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "assistantMessageId",
+                  "errorCode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "assistantMessageId": {
+                    "type": "string"
+                  },
+                  "errorCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

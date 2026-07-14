@@ -14,18 +14,19 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-output.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $installerRoot = Join-Path $repoRoot "out/installer/windows/$RuntimeIdentifier"
 $appStage = Join-Path $installerRoot "app"
 $prereqRoot = Join-Path $installerRoot "prerequisites"
 $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
-$windowsProject = Join-Path $repoRoot "apps/windows/Fowan.Windows.csproj"
-$todoProject = Join-Path $repoRoot "apps/windows-todo/Fowan.Todo.Windows.csproj"
-$stickyProject = Join-Path $repoRoot "apps/windows-todo-sticky/Fowan.Todo.Sticky.Windows.csproj"
-$diaryProject = Join-Path $repoRoot "apps/windows-diary/Fowan.Diary.Windows.csproj"
-$aiChatProject = Join-Path $repoRoot "apps/windows-ai-chat/Fowan.Ai.Chat.Windows.csproj"
-$aiConfigProject = Join-Path $repoRoot "apps/windows-ai-config/Fowan.Ai.Config.Windows.csproj"
+$windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
+$todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
+$stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
+$diaryProject = Join-Path $repoRoot "apps/windows/diary/app/Fowan.Diary.Windows.csproj"
+$aiChatProject = Join-Path $repoRoot "apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj"
+$aiConfigProject = Join-Path $repoRoot "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
@@ -267,17 +268,14 @@ Assert-PathInside -Path $installerRoot -Root $outRoot
 New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
 Ensure-VcRedist
 
-if (Test-Path -LiteralPath $appStage) {
-    Assert-PathInside -Path $appStage -Root $installerRoot
-    Remove-Item -LiteralPath $appStage -Recurse -Force
-}
-
-New-Item -ItemType Directory -Force -Path $appStage | Out-Null
-
 if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
 }
 
+$finalAppStage = $appStage
+$appStage = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "installer-app"
+$isolatedAppStage = $appStage
+try {
 $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
@@ -287,12 +285,24 @@ New-Item -ItemType Directory -Force -Path $aiChatStage | Out-Null
 $aiConfigStage = Join-Path $appStage "Tools/AI/Config"
 New-Item -ItemType Directory -Force -Path $aiConfigStage | Out-Null
 
-Publish-FowanProject -Project $windowsProject -Output $appStage
-Publish-FowanProject -Project $todoProject -Output $todoStage
-Publish-FowanProject -Project $stickyProject -Output $todoStage
-Publish-FowanProject -Project $diaryProject -Output $diaryStage
-Publish-FowanProject -Project $aiChatProject -Output $aiChatStage
-Publish-FowanProject -Project $aiConfigProject -Output $aiConfigStage
+$publishTargets = @(
+    @{ Project = $windowsProject; Destination = $appStage; Component = "publish-toolbox" },
+    @{ Project = $todoProject; Destination = $todoStage; Component = "publish-todo" },
+    @{ Project = $stickyProject; Destination = $todoStage; Component = "publish-sticky" },
+    @{ Project = $diaryProject; Destination = $diaryStage; Component = "publish-diary" },
+    @{ Project = $aiChatProject; Destination = $aiChatStage; Component = "publish-ai-chat" },
+    @{ Project = $aiConfigProject; Destination = $aiConfigStage; Component = "publish-ai-config" }
+)
+foreach ($target in $publishTargets) {
+    $projectStage = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component $target.Component
+    try {
+        Publish-FowanProject -Project $target.Project -Output $projectStage
+        Copy-BuildDirectoryContent -Source $projectStage -Destination $target.Destination
+    }
+    finally {
+        Remove-IsolatedBuildDirectory -Path $projectStage
+    }
+}
 $coreStage = Join-Path $appStage "Core"
 New-Item -ItemType Directory -Force -Path $coreStage | Out-Null
 Copy-Item -LiteralPath $CoreArtifactPath -Destination (Join-Path $coreStage "fowan-core.exe") -Force
@@ -314,6 +324,14 @@ foreach ($exe in $requiredExecutables) {
 }
 
 $releaseNotesPath = Write-ReleaseNotes -OutputRoot $appStage
+
+Install-IsolatedBuildDirectory -StagingDirectory $appStage -Destination $finalAppStage -AllowedOutputRoot $installerRoot
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $isolatedAppStage
+}
+$appStage = $finalAppStage
+$releaseNotesPath = Join-Path $appStage "ReleaseNotes/release-notes.txt"
 
 $fileCount = (Get-ChildItem -LiteralPath $appStage -Recurse -File | Measure-Object).Count
 $sizeBytes = (Get-ChildItem -LiteralPath $appStage -Recurse -File | Measure-Object Length -Sum).Sum

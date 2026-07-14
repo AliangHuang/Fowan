@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fowan.example/protocol/ai/v0.1/methods.schema.json",
+  "title": "Fowan AI v0.1 method messages",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/notification" },
+    { "$ref": "#/$defs/resultResponse" },
+    { "$ref": "#/$defs/errorResponse" }
+  ],
+  "$defs": {
+    "id": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "empty": { "type": "object", "additionalProperties": false },
+    "idParams": {
+      "type": "object", "required": ["id"], "additionalProperties": false,
+      "properties": { "id": { "type": "string", "minLength": 1, "pattern": "\\S" } }
+    },
+    "featureIdParams": {
+      "type": "object", "required": ["featureId"], "additionalProperties": false,
+      "properties": { "featureId": { "const": "ai.chat" } }
+    },
+    "endpointParams": {
+      "type": "object", "required": ["endpoint"], "additionalProperties": false,
+      "properties": { "endpoint": { "type": "string", "minLength": 1, "pattern": "\\S" } }
+    },
+    "handshakeParams": {
+      "type": "object", "required": ["protocolVersion", "requiredCapabilities"], "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "const": "0.1" },
+        "requiredCapabilities": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["ai.config.v1", "ai.chat.v1"] }
+        }
+      }
+    },
+    "channelCreateParams": {
+      "type": "object", "required": ["displayName", "defaultBaseUrl"], "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 },
+        "defaultBaseUrl": { "type": "string", "minLength": 1 }, "enabled": { "type": "boolean" }
+      }
+    },
+    "channelUpdateParams": {
+      "type": "object", "required": ["id", "displayName", "defaultBaseUrl"], "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 },
+        "defaultBaseUrl": { "type": "string", "minLength": 1 }, "enabled": { "type": "boolean" }
+      }
+    },
+    "credentialUpsertParams": {
+      "type": "object", "required": ["channelId", "label"], "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }, "channelId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }, "baseUrl": { "type": ["string", "null"] },
+        "secret": { "type": ["string", "null"] }, "enabled": { "type": "boolean" }
+      }
+    },
+    "credentialTestParams": {
+      "type": "object", "required": ["credentialId"], "additionalProperties": false,
+      "properties": { "credentialId": { "type": "string", "minLength": 1 } }
+    },
+    "modelUpsertParams": {
+      "type": "object", "required": ["credentialId", "modelId", "displayName"], "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }, "credentialId": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 },
+        "source": { "type": "string" }, "enabled": { "type": "boolean" }
+      }
+    },
+    "modelTestParams": {
+      "type": "object", "required": ["modelProfileId"], "additionalProperties": false,
+      "properties": { "modelProfileId": { "type": "string", "minLength": 1 } }
+    },
+    "bindingUpsertParams": {
+      "type": "object", "required": ["featureId", "modelProfileId"], "additionalProperties": false,
+      "properties": {
+        "featureId": { "const": "ai.chat" }, "modelProfileId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "conversationCreateParams": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "title": { "type": ["string", "null"] } }
+    },
+    "conversationRenameParams": {
+      "type": "object", "required": ["id", "title"], "additionalProperties": false,
+      "properties": { "id": { "type": "string", "minLength": 1 }, "title": { "type": "string", "minLength": 1 } }
+    },
+    "chatSendParams": {
+      "type": "object", "required": ["credentialId", "modelProfileId", "text"], "additionalProperties": false,
+      "properties": {
+        "conversationId": { "type": ["string", "null"] }, "credentialId": { "type": "string", "minLength": 1 },
+        "modelProfileId": { "type": "string", "minLength": 1 }, "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "chatRegenerateParams": {
+      "type": "object", "required": ["conversationId", "credentialId", "modelProfileId"], "additionalProperties": false,
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1 }, "credentialId": { "type": "string", "minLength": 1 },
+        "modelProfileId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "chatCancelParams": {
+      "type": "object", "required": ["invocationId"], "additionalProperties": false,
+      "properties": { "invocationId": { "type": "string", "minLength": 1 } }
+    },
+    "request": {
+      "type": "object", "required": ["jsonrpc", "id", "method", "params"], "additionalProperties": false,
+      "properties": {
+        "jsonrpc": { "const": "2.0" }, "id": { "$ref": "#/$defs/id" },
+        "method": {
+          "enum": [
+            "engine.handshake", "ai.channels.list", "ai.channels.create", "ai.channels.update", "ai.channels.delete",
+            "ai.credentials.list", "ai.credentials.upsert", "ai.credentials.delete", "ai.credentials.test",
+            "ai.models.list", "ai.models.upsert", "ai.models.delete", "ai.models.test", "ai.models.presets",
+            "ai.toolFeatures.list", "ai.bindings.list", "ai.bindings.upsert", "ai.bindings.delete",
+            "ai.consents.check", "ai.consents.grant", "ai.conversations.list", "ai.conversations.create",
+            "ai.conversations.get", "ai.conversations.rename", "ai.conversations.delete",
+            "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate"
+          ]
+        },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "engine.handshake" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/handshakeParams" } } } },
+        { "if": { "properties": { "method": { "enum": ["ai.channels.list", "ai.credentials.list", "ai.models.list", "ai.models.presets", "ai.toolFeatures.list", "ai.bindings.list", "ai.conversations.list"] } } }, "then": { "properties": { "params": { "$ref": "#/$defs/empty" } } } },
+        { "if": { "properties": { "method": { "const": "ai.channels.create" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/channelCreateParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.channels.update" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/channelUpdateParams" } } } },
+        { "if": { "properties": { "method": { "enum": ["ai.channels.delete", "ai.credentials.delete", "ai.models.delete", "ai.conversations.get", "ai.conversations.delete"] } } }, "then": { "properties": { "params": { "$ref": "#/$defs/idParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.credentials.upsert" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/credentialUpsertParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.credentials.test" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/credentialTestParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.models.upsert" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/modelUpsertParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.models.test" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/modelTestParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.bindings.upsert" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/bindingUpsertParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.bindings.delete" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/featureIdParams" } } } },
+        { "if": { "properties": { "method": { "enum": ["ai.consents.check", "ai.consents.grant"] } } }, "then": { "properties": { "params": { "$ref": "#/$defs/endpointParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.conversations.create" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/conversationCreateParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.conversations.rename" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/conversationRenameParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.send" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatSendParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.regenerate" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatRegenerateParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.cancel" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatCancelParams" } } } }
+      ]
+    },
+    "notification": {
+      "type": "object", "required": ["jsonrpc", "method", "params"], "additionalProperties": false,
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "enum": ["ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"] },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "ai.chat.started" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "conversationId", "assistantMessageId"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" }, "assistantMessageId": { "type": "string" } } } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.delta" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "delta"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "delta": { "type": "string" } } } } } },
+        { "if": { "properties": { "method": { "enum": ["ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"] } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "assistantMessageId", "errorCode"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "assistantMessageId": { "type": "string" }, "errorCode": { "type": ["string", "null"] } } } } } }
+      ]
+    },
+    "channel": {
+      "type": "object", "required": ["id", "kind", "displayName", "defaultBaseUrl", "builtIn", "enabled"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "kind": { "type": "string" }, "displayName": { "type": "string" }, "defaultBaseUrl": { "type": "string" }, "builtIn": { "type": "boolean" }, "enabled": { "type": "boolean" } }
+    },
+    "credential": {
+      "type": "object", "required": ["id", "channelId", "label", "baseUrl", "secretHint", "enabled", "lastTestStatus", "lastTestAt", "createdAt", "updatedAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "channelId": { "type": "string" }, "label": { "type": "string" }, "baseUrl": { "type": "string" }, "secretHint": { "type": "string" }, "enabled": { "type": "boolean" }, "lastTestStatus": { "type": ["string", "null"] }, "lastTestAt": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
+    },
+    "model": {
+      "type": "object", "required": ["id", "credentialId", "modelId", "displayName", "source", "enabled", "lastTestStatus", "lastTestAt", "createdAt", "updatedAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "credentialId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" }, "source": { "type": "string" }, "enabled": { "type": "boolean" }, "lastTestStatus": { "type": ["string", "null"] }, "lastTestAt": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
+    },
+    "binding": {
+      "type": "object", "required": ["featureId", "credentialId", "modelProfileId", "updatedAt"], "additionalProperties": false,
+      "properties": { "featureId": { "const": "ai.chat" }, "credentialId": { "type": "string" }, "modelProfileId": { "type": "string" }, "updatedAt": { "type": "string" } }
+    },
+    "presetModel": {
+      "type": "object", "required": ["channelId", "modelId", "displayName"], "additionalProperties": false,
+      "properties": { "channelId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" } }
+    },
+    "toolFeature": {
+      "type": "object", "required": ["featureId", "toolId", "displayName", "requiredCapabilities"], "additionalProperties": false,
+      "properties": { "featureId": { "type": "string" }, "toolId": { "type": "string" }, "displayName": { "type": "string" }, "requiredCapabilities": { "type": "array", "items": { "type": "string" } } }
+    },
+    "conversationSummary": {
+      "type": "object", "required": ["id", "title", "createdAt", "updatedAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
+    },
+    "chatMessage": {
+      "type": "object", "required": ["id", "role", "content", "status", "parentMessageId", "variantIndex", "channelName", "credentialName", "modelId", "createdAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "role": { "enum": ["user", "assistant"] }, "content": { "type": "string" }, "status": { "enum": ["streaming", "completed", "cancelled", "failed"] }, "parentMessageId": { "type": ["string", "null"] }, "variantIndex": { "type": "integer", "minimum": 0 }, "channelName": { "type": ["string", "null"] }, "credentialName": { "type": ["string", "null"] }, "modelId": { "type": ["string", "null"] }, "createdAt": { "type": "string" } }
+    },
+    "channelsResult": { "type": "array", "items": { "$ref": "#/$defs/channel" } },
+    "credentialsResult": { "type": "array", "items": { "$ref": "#/$defs/credential" } },
+    "modelsResult": { "type": "array", "items": { "$ref": "#/$defs/model" } },
+    "bindingsResult": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+    "conversationsResult": { "type": "array", "items": { "$ref": "#/$defs/conversationSummary" } },
+    "presetsResult": { "type": "array", "items": { "$ref": "#/$defs/presetModel" } },
+    "toolFeaturesResult": { "type": "array", "items": { "$ref": "#/$defs/toolFeature" } },
+    "handshakeResult": {
+      "type": "object", "required": ["engineVersion", "protocolVersion", "capabilities"], "additionalProperties": false,
+      "properties": { "engineVersion": { "type": "string" }, "protocolVersion": { "const": "0.1" }, "capabilities": { "type": "array", "uniqueItems": true, "items": { "enum": ["ai.config.v1", "ai.chat.v1"] } } }
+    },
+    "idResult": {
+      "type": "object", "required": ["id"], "additionalProperties": false,
+      "properties": { "id": { "type": "string", "minLength": 1 } }
+    },
+    "deletedResult": {
+      "type": "object", "required": ["deleted"], "additionalProperties": false,
+      "properties": { "deleted": { "type": "boolean" } }
+    },
+    "renamedResult": {
+      "type": "object", "required": ["renamed"], "additionalProperties": false,
+      "properties": { "renamed": { "type": "boolean" } }
+    },
+    "statusResult": {
+      "type": "object", "required": ["status"], "additionalProperties": false,
+      "properties": { "status": { "enum": ["success"] } }
+    },
+    "cancelledResult": {
+      "type": "object", "required": ["cancelled"], "additionalProperties": false,
+      "properties": { "cancelled": { "type": "boolean" } }
+    },
+    "consentResult": {
+      "type": "object", "required": ["granted", "endpoint"], "additionalProperties": false,
+      "properties": { "granted": { "type": "boolean" }, "endpoint": { "type": "string", "minLength": 1, "pattern": "\\S" } }
+    },
+    "invocationResult": {
+      "type": "object", "required": ["invocationId", "conversationId", "assistantMessageId"], "additionalProperties": false,
+      "properties": { "invocationId": { "type": "string", "minLength": 1 }, "conversationId": { "type": "string", "minLength": 1 }, "assistantMessageId": { "type": "string", "minLength": 1 } }
+    },
+    "conversationDetailResult": {
+      "type": "object", "required": ["id", "title", "createdAt", "updatedAt", "messages"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" }, "messages": { "type": "array", "items": { "$ref": "#/$defs/chatMessage" } } }
+    },
+    "resultResponse": {
+      "type": "object", "required": ["jsonrpc", "id", "result"], "additionalProperties": false,
+      "properties": {
+        "jsonrpc": { "const": "2.0" }, "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "anyOf": [
+            { "$ref": "#/$defs/channelsResult" },
+            { "$ref": "#/$defs/credentialsResult" },
+            { "$ref": "#/$defs/modelsResult" },
+            { "$ref": "#/$defs/bindingsResult" },
+            { "$ref": "#/$defs/conversationsResult" },
+            { "$ref": "#/$defs/presetsResult" },
+            { "$ref": "#/$defs/toolFeaturesResult" },
+            { "$ref": "#/$defs/handshakeResult" },
+            { "$ref": "#/$defs/idResult" },
+            { "$ref": "#/$defs/deletedResult" },
+            { "$ref": "#/$defs/renamedResult" },
+            { "$ref": "#/$defs/statusResult" },
+            { "$ref": "#/$defs/cancelledResult" },
+            { "$ref": "#/$defs/consentResult" },
+            { "$ref": "#/$defs/invocationResult" },
+            { "$ref": "#/$defs/conversationDetailResult" }
+          ]
+        }
+      }
+    },
+    "errorResponse": {
+      "type": "object", "required": ["jsonrpc", "id", "error"], "additionalProperties": false,
+      "properties": {
+        "jsonrpc": { "const": "2.0" }, "id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "error": {
+          "type": "object", "required": ["code", "message"], "additionalProperties": false,
+          "properties": {
+            "code": { "enum": ["invalid_argument", "not_found", "conflict", "protocol_mismatch", "handshake_required", "consent_required", "secret_store_unavailable", "secure_state_inconsistent", "protected_data_unavailable", "storage_unavailable", "provider_auth_failed", "provider_model_not_found", "provider_rate_limited", "provider_content_rejected", "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"] },
+            "message": { "type": "string" }, "data": { "type": "object" }
+          },
+          "allOf": [
+            {
+              "if": { "required": ["code"], "properties": { "code": { "const": "consent_required" } } },
+              "then": {
+                "required": ["data"],
+                "properties": { "data": { "type": "object", "required": ["endpoint"], "additionalProperties": false, "properties": { "endpoint": { "type": "string", "minLength": 1, "pattern": "\\S" } } } }
+              }
+            },
+            {
+              "if": { "required": ["code"], "properties": { "code": { "const": "protocol_mismatch" } } },
+              "then": {
+                "properties": { "data": { "type": "object", "required": ["missingCapabilities"], "additionalProperties": false, "properties": { "missingCapabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "pattern": "\\S" } } } } }
+              }
+            },
+            {
+              "if": { "required": ["code"], "properties": { "code": { "not": { "enum": ["consent_required", "protocol_mismatch"] } } } },
+              "then": { "not": { "required": ["data"] } }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

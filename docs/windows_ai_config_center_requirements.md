@@ -7,7 +7,7 @@
 
 ## 1. 产品定位
 
-当前产物为 `apps/windows-ai-config/Fowan.Ai.Config.Windows.csproj`，构建输出为 `out/windows-ai-config/<configuration>/Fowan.Ai.Config.Windows.exe`，发布目录为 `Tools/AI/Config`。
+当前产物为 `apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj`，构建输出为 `out/windows-ai-config/<configuration>/Fowan.Ai.Config.Windows.exe`，发布目录为 `Tools/AI/Config`。
 
 `Fowan AI 配置中心` 是从 Fowan Toolbox 启动的独立 Windows 管理应用，负责渠道、密钥、模型和工具 AI 默认模型配置。它不属于 Toolbox 全局设置，也不承载对话历史、消息时间线或聊天输入。
 

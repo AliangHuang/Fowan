@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.bindings.upsert"
+    },
+    "params": {
+      "$ref": "#/$defs/bindingUpsertParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "bindingUpsertParams": {
+      "type": "object",
+      "required": [
+        "featureId",
+        "modelProfileId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "featureId": {
+          "const": "ai.chat"
+        },
+        "modelProfileId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

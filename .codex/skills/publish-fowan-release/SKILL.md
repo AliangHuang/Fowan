@@ -33,7 +33,7 @@ Project defaults:
 3. Confirm the repository is public if the released build is expected to update installed clients without a GitHub token. A private repository can have uploaded release assets, but public `github.com/.../releases/latest/download/...` URLs return 404 to the updater.
 4. Confirm the user-confirmed version is reflected in:
    - `Directory.Build.props`
-   - `apps/windows/Models/ToolCatalog.cs`
+   - `apps/windows/toolbox/Models/ToolCatalog.cs`
    - `changelogs/toolbox/CHANGELOG.md`
    - every affected `changelogs/tools/<tool>/CHANGELOG.md` for tools bundled in this release
 5. Enumerate the current bundled tools from the toolbox catalog and relevant app projects, then compare each tool with the previous release tag. Record whether each tool changed and which changelog covers it before running the release-note gate.
@@ -59,8 +59,8 @@ The gate compares the working tree with the most recent earlier version tag, map
 
 ```powershell
 $previousTag = git describe --tags --abbrev=0
-git diff --stat $previousTag -- apps/windows apps/windows-todo apps/windows-todo-sticky apps/windows-todo-shared
-git diff --stat $previousTag -- apps/windows-diary apps/windows-diary-shared
+git diff --stat $previousTag -- apps/windows/toolbox apps/windows/todo apps/windows/ai
+git diff --stat $previousTag -- apps/windows/diary
 git diff --stat $previousTag -- installer scripts
 ```
 
@@ -73,9 +73,9 @@ Get-Content changelogs/tools/diary/CHANGELOG.md -Encoding UTF8 | Select-Object -
 ```
 
 3. Map component changes to their changelog:
-   - `apps/windows-todo*`, `apps/windows-todo-shared`, Todo tests, and Todo requirements/design docs require review of the Todo section.
-   - `apps/windows-diary*`, `apps/windows-diary-shared`, Diary tests, and Diary requirements/design docs require review of the Diary section.
-   - `apps/windows`, installer behavior, update behavior, and bundled-tool changes require review of the toolbox section.
+   - `apps/windows/todo`, Todo tests, and Todo requirements/design docs require review of the Todo section.
+   - `apps/windows/diary`, Diary tests, and Diary requirements/design docs require review of the Diary section.
+   - `apps/windows/toolbox`, `apps/windows/ai`, installer behavior, update behavior, and bundled-tool changes require review of the toolbox section.
 4. Treat phrases such as “no user-visible changes”, “随发布包更新”, “maintenance release”, or equivalent placeholder wording as a release blocker whenever that component has UI, interaction, workflow, settings, storage-format, lifecycle, installer, or other observable behavior changes.
 5. “No user-visible changes” is allowed only after the component diff has been inspected and is limited to packaging/version metadata, internal refactoring with equivalent behavior, tests, or documentation-only maintenance. Record that conclusion in the release handoff.
 6. Before proceeding, summarize the concrete user-visible changes from each affected component. The GitHub Release notes must be generated from these validated current-version changelog sections, not from memory or a previous release.

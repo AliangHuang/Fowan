@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "method": "ai.bindings.upsert",
+  "params": {
+    "featureId": "ai.chat",
+    "modelProfileId": "model-1"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 20,
+  "method": "ai.consents.grant",
+  "params": {
+    "endpoint": "https://api.openai.com/v1"
+  }
+}

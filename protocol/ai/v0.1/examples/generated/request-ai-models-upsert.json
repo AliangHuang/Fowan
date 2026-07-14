@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "ai.models.upsert",
+  "params": {
+    "credentialId": "credential-1",
+    "modelId": "gpt-4.1-mini",
+    "displayName": "GPT 4.1 mini",
+    "source": "custom",
+    "enabled": true
+  }
+}

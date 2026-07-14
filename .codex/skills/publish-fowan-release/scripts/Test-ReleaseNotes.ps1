@@ -63,17 +63,17 @@ $components = @(
     @{
         Name = "Toolbox"
         Changelog = "changelogs/toolbox/CHANGELOG.md"
-        PathPattern = '^(apps/windows/|installer/windows/|scripts/(?:package-windows|build-windows)\.ps1|docs/windows_installer_spec\.md)'
+        PathPattern = '^(apps/windows/(?:toolbox|ai)/|installer/windows/|scripts/(?:package-windows|build-windows)\.ps1|docs/windows_installer_spec\.md)'
     },
     @{
         Name = "Todo"
         Changelog = "changelogs/tools/todo/CHANGELOG.md"
-        PathPattern = '^(apps/windows-todo(?:-sticky|-shared)?/|tests/Fowan\.Todo\.|docs/windows_todo_)'
+        PathPattern = '^(apps/windows/todo/|tests/Fowan\.Todo\.|docs/windows_todo_)'
     },
     @{
         Name = "Diary"
         Changelog = "changelogs/tools/diary/CHANGELOG.md"
-        PathPattern = '^(apps/windows-diary(?:-shared)?/|tests/Fowan\.Diary\.|docs/windows_diary_)'
+        PathPattern = '^(apps/windows/diary/|tests/Fowan\.Diary\.|docs/windows_diary_)'
     }
 )
 
