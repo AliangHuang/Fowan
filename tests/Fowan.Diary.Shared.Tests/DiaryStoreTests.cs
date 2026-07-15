@@ -1,4 +1,5 @@
 using Fowan.Diary.Shared.Models;
+using Fowan.Diary.Shared.Application;
 using Fowan.Diary.Shared.Services;
 using System.Net;
 using System.Net.Http;
@@ -11,6 +12,57 @@ namespace Fowan.Diary.Shared.Tests;
 public sealed class DiaryStoreTests : IDisposable
 {
     private readonly string _rootPath = Path.Combine(Path.GetTempPath(), "Fowan.Diary.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void WorkspaceOwnsDataAndSettingsAndPublishesPersistedChanges()
+    {
+        var workspace = new DiaryWorkspace(
+            new DiaryStore(_rootPath),
+            new DiarySettingsStore(_rootPath));
+        var changes = new List<DiaryChangeSet>();
+        workspace.Changed += (_, change) => changes.Add(change);
+        var data = workspace.QueryData();
+        data.Entries.Add(new DiaryEntry
+        {
+            Id = "entry-1",
+            NotebookId = DiaryStore.DefaultNotebookId,
+            Title = "Synthetic",
+            Body = "Synthetic content",
+            CreatedAt = DateTimeOffset.Parse("2026-07-14T08:00:00+08:00"),
+            UpdatedAt = DateTimeOffset.Parse("2026-07-14T08:00:00+08:00")
+        });
+        var settings = workspace.QuerySettings();
+        settings.Theme = "dark";
+
+        var dataResult = workspace.SaveData(data);
+        var settingsResult = workspace.SaveSettings(settings);
+
+        Assert.True(dataResult.Succeeded);
+        Assert.True(settingsResult.Succeeded);
+        Assert.Contains(DiaryChangeSet.Entries | DiaryChangeSet.Metadata | DiaryChangeSet.Attachments, changes);
+        Assert.Contains(DiaryChangeSet.Settings, changes);
+        Assert.Single(new DiaryStore(_rootPath).LoadData().Entries);
+        Assert.Equal("dark", new DiarySettingsStore(_rootPath).Load().Theme);
+    }
+
+    [Fact]
+    public void FailedPersistenceKeepsTheOldSnapshotAndDoesNotPublish()
+    {
+        var repository = new MemoryDiaryRepository { FailSaves = true };
+        var workspace = new DiaryWorkspace(repository, new MemoryDiarySettingsRepository());
+        var before = workspace.State;
+        var published = 0;
+        workspace.Changed += (_, _) => published++;
+        var candidate = workspace.QueryData();
+        candidate.Entries.Add(new DiaryEntry { Id = "failed-entry", NotebookId = DiaryStore.DefaultNotebookId });
+
+        var result = workspace.SaveData(candidate);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(before, workspace.State);
+        Assert.Empty(workspace.State.Entries);
+        Assert.Equal(0, published);
+    }
 
     [Fact]
     public void VersionThreeGoldenFixturePreservesEveryExistingFieldAndValue()
@@ -376,6 +428,23 @@ public sealed class DiaryStoreTests : IDisposable
                 Content = new StringContent(content, Encoding.UTF8, "application/json")
             });
         }
+    }
+
+    private sealed class MemoryDiaryRepository : IDiaryRepository
+    {
+        public bool FailSaves { get; set; }
+        public DiaryData LoadData() => new() { Notebooks = [new DiaryNotebook { Id = DiaryStore.DefaultNotebookId }] };
+        public void SaveData(DiaryData data) { if (FailSaves) throw new IOException("synthetic failure"); }
+        public DiaryAttachment ImportAttachment(string entryId, string sourcePath) => new();
+        public void DeleteAttachment(DiaryAttachment attachment) { }
+        public void DeleteAttachmentDirectory(string entryId) { }
+        public string ResolveAttachmentPath(string relativePath) => relativePath;
+    }
+
+    private sealed class MemoryDiarySettingsRepository : IDiarySettingsRepository
+    {
+        public DiarySettings Load() => new();
+        public void Save(DiarySettings settings) { }
     }
 
     private static void AssertJsonSubset(string expectedJson, string actualJson)

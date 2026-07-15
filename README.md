@@ -42,8 +42,12 @@ reorganization.
 The public repository owns the Windows UI, local Todo/Diary behavior, and the
 versioned AI client contract. The private sibling `FowanCore` repository owns
 provider traffic, endpoint consent enforcement, credentials, protected chat
-history, migrations, and orchestration. Read [repository boundaries](docs/repository_boundaries.md)
+history, migrations, and orchestration. Read [repository boundaries](docs/repository_boundaries.md),
+the [Windows application architecture](docs/windows_application_architecture.md),
 and the [AI v0.1 protocol](protocol/ai/v0.1/README.md) before changing this boundary.
+All contributions also follow [CONTRIBUTING.md](CONTRIBUTING.md). New tools and modules require
+an accepted [design proposal](docs/design-proposals/README.md) and component-manifest entry
+before implementation.
 
 Every Core connection must complete `engine.handshake` before other methods.
 Only normalized HTTPS endpoints, or loopback HTTP endpoints, are accepted.

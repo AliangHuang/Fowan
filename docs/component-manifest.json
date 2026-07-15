@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 2,
+  "policyVersion": "2026-07-14",
+  "repository": "Fowan",
+  "components": [
+    {
+      "id": "architecture-tests",
+      "path": "tests/Fowan.Architecture.Tests",
+      "kind": "test",
+      "stateOwner": null,
+      "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+      "adrs": ["docs/adr/0002-semantic-architecture-gate.md"],
+      "modules": {}
+    },
+    {
+      "id": "windows-platform-contracts",
+      "path": "apps/windows/platform/contracts",
+      "kind": "contracts",
+      "stateOwner": null,
+      "proposal": "baseline",
+      "modules": {}
+    },
+    {
+      "id": "windows-toolbox",
+      "path": "apps/windows/toolbox",
+      "kind": "tool",
+      "stateOwner": "ToolboxSession",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Windows.Platform.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Assets": "baseline",
+        "Coordination": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+        "Models": "baseline",
+        "Platform": "baseline",
+        "Presentation": "baseline",
+        "Properties": "baseline",
+        "Resources": "baseline",
+        "Services": "baseline"
+      }
+    },
+    {
+      "id": "todo-contracts",
+      "path": "apps/windows/todo/contracts",
+      "kind": "contracts",
+      "stateOwner": null,
+      "proposal": "baseline",
+      "modules": { "Models": "baseline" }
+    },
+    {
+      "id": "todo-shared",
+      "path": "apps/windows/todo/shared",
+      "kind": "shared",
+      "stateOwner": "TodoWorkspace",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Todo.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Models": "baseline",
+        "Properties": "baseline",
+        "Services": "baseline"
+      }
+    },
+    {
+      "id": "todo-windows",
+      "path": "apps/windows/todo/app",
+      "kind": "tool",
+      "stateOwner": "TodoWorkspace",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Todo.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Assets": "baseline",
+        "Platform": "baseline",
+        "Presentation": "baseline"
+      }
+    },
+    {
+      "id": "todo-sticky-windows",
+      "path": "apps/windows/todo/sticky",
+      "kind": "tool",
+      "stateOwner": "TodoWorkspace",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Todo.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Coordination": "baseline",
+        "Platform": "baseline",
+        "Presentation": "baseline"
+      }
+    },
+    {
+      "id": "diary-shared",
+      "path": "apps/windows/diary/shared",
+      "kind": "shared",
+      "stateOwner": "DiaryWorkspace",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Diary.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Models": "baseline",
+        "Services": "baseline"
+      }
+    },
+    {
+      "id": "diary-windows",
+      "path": "apps/windows/diary/app",
+      "kind": "tool",
+      "stateOwner": "DiaryWorkspace",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Diary.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Coordination": "baseline",
+        "Platform": "baseline",
+        "Presentation": "baseline"
+      }
+    },
+    {
+      "id": "ai-shared",
+      "path": "apps/windows/ai/shared",
+      "kind": "shared",
+      "stateOwner": null,
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Ai.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Models": "baseline",
+        "Properties": "baseline",
+        "Services": "baseline"
+      }
+    },
+    {
+      "id": "ai-chat-windows",
+      "path": "apps/windows/ai/chat",
+      "kind": "tool",
+      "stateOwner": "AiChatSession",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Ai.Shared.Tests"],
+      "modules": {
+        "Application": "baseline",
+        "Coordination": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+        "Platform": "baseline",
+        "Presentation": "baseline"
+      }
+    },
+    {
+      "id": "ai-config-windows",
+      "path": "apps/windows/ai/config",
+      "kind": "tool",
+      "stateOwner": "AiConfigSession",
+      "proposal": "baseline",
+      "tests": ["tests/Fowan.Ai.Shared.Tests"],
+      "modules": {
+        "Platform": "baseline",
+        "Presentation": "baseline"
+      }
+    },
+    {
+      "id": "ai-ui-resources",
+      "path": "apps/windows/ai/ui",
+      "kind": "resources",
+      "stateOwner": null,
+      "proposal": "baseline",
+      "modules": {}
+    },
+    {
+      "id": "ai-protocol-v0.1",
+      "path": "protocol/ai/v0.1",
+      "kind": "protocol",
+      "stateOwner": null,
+      "proposal": "baseline",
+      "adrs": ["docs/adr/0001-windows-ai-v0.1-contract.md"],
+      "modules": {
+        "examples": "baseline",
+        "schema": "baseline"
+      }
+    }
+  ]
+}

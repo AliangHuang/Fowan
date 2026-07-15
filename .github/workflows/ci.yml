@@ -5,7 +5,8 @@ on:
   pull_request:
 
 jobs:
-  windows:
+  verify:
+    name: Architecture and governance
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

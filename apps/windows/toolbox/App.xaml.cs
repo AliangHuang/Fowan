@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml;
 
 namespace Fowan.Windows;
 
-public partial class App : Application
+public partial class App : global::Microsoft.UI.Xaml.Application
 {
     private const string SingleInstanceMutexName = @"Local\Fowan.Windows.SingleInstance";
     private const string ActivationEventName = @"Local\Fowan.Windows.Activate";

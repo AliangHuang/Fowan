@@ -32,7 +32,7 @@ internal static class Program
         try
         {
             var startHidden = HasArgument(args, StartHiddenArgument);
-            var app = new Application
+            var app = new global::System.Windows.Application
             {
                 ShutdownMode = ShutdownMode.OnMainWindowClose
             };

@@ -1,4 +1,5 @@
 using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Shared.Application;
 using Fowan.Todo.Shared.Services;
 using System.Text.Json;
 using Xunit;
@@ -24,6 +25,42 @@ public sealed class TodoSharedTests : IDisposable
         Assert.Same(data, repository.SavedData);
         Assert.Same(settings, repository.SavedSettings);
         Assert.True(updated);
+    }
+
+    [Fact]
+    public void WorkspaceOwnsStateAndPersistsTaskCommandsBeforePublishingChanges()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Tasks.Add(Task("root"));
+        var workspace = new TodoWorkspace(repository);
+        var changes = new List<TodoChangeSet>();
+        workspace.Changed += (_, change) => changes.Add(change);
+
+        var changed = workspace.SetTaskCompleted("root", completed: true, includeDescendants: false);
+
+        Assert.Equal(1, changed);
+        Assert.True(workspace.Data.Tasks[0].IsCompleted);
+        Assert.Same(workspace.Data, repository.SavedData);
+        Assert.Contains(TodoChangeSet.Tasks | TodoChangeSet.Lists, changes);
+    }
+
+    [Fact]
+    public void WorkspaceDropCommandPersistsDataAndSettingsAsOneUseCase()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Tasks.Add(Task("root"));
+        repository.Data.Tasks.Add(Task("sibling"));
+        var workspace = new TodoWorkspace(repository);
+
+        var changed = workspace.TryApplyTaskDrop(
+            "sibling",
+            "root",
+            TodoTaskDropPlacement.Child);
+
+        Assert.True(changed);
+        Assert.Equal("root", workspace.Data.Tasks.Single(task => task.Id == "sibling").ParentTaskId);
+        Assert.Same(workspace.Data, repository.SavedData);
+        Assert.Same(workspace.Settings, repository.SavedSettings);
     }
 
     [Fact]
@@ -508,6 +545,22 @@ public sealed class TodoSharedTests : IDisposable
         Assert.DoesNotContain("root", settings.CollapsedTaskIds);
     }
 
+    [Fact]
+    public void WorkspaceSnapshotIsImmutableAndSaveFailureRestoresCommittedState()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Lists.Add(new TodoList { Id = TodoStore.DefaultListId, Name = "Inbox" });
+        var workspace = new TodoWorkspace(repository);
+        var before = workspace.State;
+        repository.FailNextDataSave = true;
+
+        Assert.Throws<IOException>(() => workspace.AddTask(
+            "will fail", TodoStore.DefaultListId, false, DateTime.Today, null));
+
+        Assert.Empty(before.Tasks);
+        Assert.Empty(workspace.State.Tasks);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
@@ -570,12 +623,23 @@ public sealed class TodoSharedTests : IDisposable
         private readonly TodoData _data = new();
         private readonly TodoSettings _settings = new();
 
+        public TodoData Data => _data;
+
         public TodoData? SavedData { get; private set; }
         public TodoSettings? SavedSettings { get; private set; }
+        public bool FailNextDataSave { get; set; }
 
         public TodoData LoadData() => _data;
         public TodoSettings LoadSettings() => _settings;
-        public void SaveData(TodoData data) => SavedData = data;
+        public void SaveData(TodoData data)
+        {
+            if (FailNextDataSave)
+            {
+                FailNextDataSave = false;
+                throw new IOException("synthetic data save failure");
+            }
+            SavedData = data;
+        }
         public void SaveSettings(TodoSettings settings) => SavedSettings = settings;
         public bool UpdateData(Func<TodoData, TodoSettings, bool> update) => update(_data, _settings);
     }

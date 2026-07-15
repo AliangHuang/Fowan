@@ -1,8 +1,10 @@
 using Fowan.Ai.Shared.Models;
+using Fowan.Ai.Shared.Application;
 using Fowan.Ai.Shared.Services;
 using Fowan.Ai.Shared.Application.Ports;
 using Fowan.Ai.Chat.Windows.Platform.Windows;
 using Fowan.Ai.Chat.Windows.Presentation;
+using Fowan.Ai.Chat.Windows.Coordination;
 using Fowan.Windows.Platform.Contracts;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
@@ -20,15 +22,14 @@ namespace Fowan.Ai.Chat.Windows;
 public sealed partial class ChatWindow : Window
 {
     private readonly AiLocalizationService _loc = new();
-    private readonly AiCoreClient _client;
     private readonly IAiApplicationLauncher _applicationLauncher;
-    private readonly AiChatController _controller;
+    private readonly AiChatSession _controller;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly IClipboardService _clipboard = new WindowsClipboardService();
-    private readonly List<AiChannel> _channels;
-    private readonly List<AiCredential> _credentials;
-    private readonly List<AiModelProfile> _models;
-    private readonly List<AiConversationSummary> _conversations;
+    private readonly ChatMessageView _messageView;
+    private readonly ChatDialogPresenter _dialogs;
+    private readonly ChatStatusPresenter _statusPresenter;
+    private readonly ChatConversationCoordinator _conversationCoordinator;
     private Grid _root = new();
     private ListView _conversationList = new();
     private TextBox _conversationSearch = new();
@@ -42,29 +43,27 @@ public sealed partial class ChatWindow : Window
     private Button _regenerateButton = new();
     private Border _statusBar = new();
     private TextBlock _statusText = new();
-    private string? _currentConversationId;
-    private string? _activeInvocationId;
     private TextBlock? _streamingText;
-    private string _streamingContent = string.Empty;
 
     public ChatWindow()
     {
-        _client = new AiCoreClient(new WindowsAiCoreProcessLauncher());
         _applicationLauncher = new WindowsAiApplicationLauncher();
-        _controller = new AiChatController(new AiCoreApi(_client), new AiConsentCoordinator(_client));
-        _channels = _controller.Channels;
-        _credentials = _controller.Credentials;
-        _models = _controller.Models;
-        _conversations = _controller.Conversations;
+        _controller = AiChatCompositionRoot.CreateSession();
+        _messageView = new ChatMessageView(L, _clipboard);
         _uiDispatcher = new DispatcherQueueUiDispatcher(DispatcherQueue);
+        _dialogs = new ChatDialogPresenter(L, () => _root.XamlRoot);
+        _statusPresenter = new ChatStatusPresenter(L, () => _controller.State.Channels, () => _statusBar, () => _statusText);
+        _conversationCoordinator = new ChatConversationCoordinator(
+            _controller, _dialogs, () => _conversationList.SelectedItem as AiConversationSummary,
+            RefreshConversationsAsync, StartNewConversation, ShowError, L);
         Title = L("AI_ChatAppTitle");
         BuildContent();
         ConfigureWindow();
-        _client.NotificationAsync = HandleNotificationDispatchedAsync;
+        _controller.NotificationAsync = HandleNotificationDispatchedAsync;
         Closed += async (_, _) =>
         {
-            _client.NotificationAsync = null;
-            await _client.DisposeAsync();
+            _controller.NotificationAsync = null;
+            await _controller.DisposeAsync();
         };
         _ = InitializeAsync();
     }
@@ -87,183 +86,27 @@ public sealed partial class ChatWindow : Window
         await DeleteConversationAsync();
     }
 
-    private async Task RenameConversationAsync()
-    {
-        if (_conversationList.SelectedItem is not AiConversationSummary selected)
-        {
-            return;
-        }
-        var title = new TextBox { Text = selected.Title, Header = L("AI_ConversationTitle"), MinWidth = 380 };
-        if (await DialogAsync(L("AI_RenameChat"), title) != ContentDialogResult.Primary)
-        {
-            return;
-        }
-        try
-        {
-            await _controller.RenameConversationAsync(selected.Id, title.Text);
-            await RefreshConversationsAsync();
-        }
-        catch (Exception exception) { ShowError(exception); }
-    }
+    private Task RenameConversationAsync() => _conversationCoordinator.RenameAsync();
 
-    private async Task DeleteConversationAsync()
-    {
-        if (_conversationList.SelectedItem is not AiConversationSummary selected)
-        {
-            return;
-        }
-        try
-        {
-            await _controller.DeleteConversationAsync(selected.Id);
-            StartNewConversation();
-            await RefreshConversationsAsync();
-        }
-        catch (Exception exception) { ShowError(exception); }
-    }
-
-    private StackPanel BuildMarkdownContent(string content)
-    {
-        var root = new StackPanel { Spacing = 7 };
-        var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var paragraph = new List<string>();
-        var code = new List<string>();
-        var inCode = false;
-
-        void FlushParagraph()
-        {
-            if (paragraph.Count == 0)
-            {
-                return;
-            }
-            root.Children.Add(new TextBlock
-            {
-                Text = string.Join(Environment.NewLine, paragraph),
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true,
-                LineHeight = 22
-            });
-            paragraph.Clear();
-        }
-
-        void FlushCode()
-        {
-            var value = string.Join(Environment.NewLine, code);
-            var codeBox = new TextBox
-            {
-                Text = value,
-                IsReadOnly = true,
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.NoWrap,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 14,
-                Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 226, 232, 240)),
-                Background = new SolidColorBrush(ColorHelper.FromArgb(255, 28, 35, 43)),
-                BorderThickness = new Thickness(0),
-                MinHeight = 42,
-                HorizontalAlignment = HorizontalAlignment.Stretch
-            };
-            var copyCode = new Button
-            {
-                Content = L("AI_CopyCode"),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Padding = new Thickness(8, 3, 8, 3)
-            };
-            copyCode.Click += (_, _) =>
-            {
-                _clipboard.SetText(value);
-            };
-            root.Children.Add(new Border
-            {
-                Background = new SolidColorBrush(ColorHelper.FromArgb(255, 28, 35, 43)),
-                CornerRadius = new CornerRadius(7),
-                Padding = new Thickness(10),
-                Child = new StackPanel { Spacing = 6, Children = { codeBox, copyCode } }
-            });
-            code.Clear();
-        }
-
-        foreach (var line in lines)
-        {
-            if (line.StartsWith("```", StringComparison.Ordinal))
-            {
-                if (inCode)
-                {
-                    FlushCode();
-                }
-                else
-                {
-                    FlushParagraph();
-                }
-                inCode = !inCode;
-                continue;
-            }
-            if (inCode)
-            {
-                code.Add(line);
-                continue;
-            }
-            if (line.StartsWith("# ", StringComparison.Ordinal))
-            {
-                FlushParagraph();
-                root.Children.Add(new TextBlock
-                {
-                    Text = line[2..],
-                    FontSize = 21,
-                    FontWeight = FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true
-                });
-            }
-            else if (line.StartsWith("## ", StringComparison.Ordinal))
-            {
-                FlushParagraph();
-                root.Children.Add(new TextBlock
-                {
-                    Text = line[3..],
-                    FontSize = 18,
-                    FontWeight = FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true
-                });
-            }
-            else if (line.StartsWith("- ", StringComparison.Ordinal))
-            {
-                paragraph.Add($"• {line[2..]}");
-            }
-            else if (string.IsNullOrWhiteSpace(line))
-            {
-                FlushParagraph();
-            }
-            else
-            {
-                paragraph.Add(line);
-            }
-        }
-        if (inCode)
-        {
-            FlushCode();
-        }
-        FlushParagraph();
-        return root;
-    }
+    private Task DeleteConversationAsync() => _conversationCoordinator.DeleteAsync();
 
     private async Task RegenerateAsync()
     {
-        if (_currentConversationId is null ||
+        if (_controller.State.CurrentConversationId is null ||
             _credentialBox.SelectedItem is not AiCredential credential ||
             _modelBox.SelectedItem is not AiModelProfile model)
         {
-            ShowMessage(L("AI_SelectConversation"), AiMessageSeverity.Warning);
+            _statusPresenter.ShowMessage(L("AI_SelectConversation"), ChatMessageSeverity.Warning);
             return;
         }
 
-        if (!await EnsureConsentAsync(credential))
+        if (!await _controller.EnsureConsentAsync(credential.BaseUrl, ConfirmConsentAsync))
         {
             return;
         }
 
-        _streamingContent = string.Empty;
-        var assistant = MessageBubble("assistant", string.Empty, $"{ChannelName(credential.ChannelId)} · {model.ModelId}");
+        _controller.BeginGeneration();
+        var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
         _streamingText = assistant.Tag as TextBlock;
         _messagePanel.Children.Add(assistant);
         SetGenerating(true);
@@ -272,7 +115,7 @@ public sealed partial class ChatWindow : Window
             var execution = await _controller.RegenerateAsync(
                 credential,
                 model,
-                _currentConversationId,
+                _controller.State.CurrentConversationId,
                 ConfirmConsentAsync);
             if (!execution.Executed)
             {
@@ -280,7 +123,7 @@ public sealed partial class ChatWindow : Window
                 return;
             }
             var result = execution.Value!;
-            _activeInvocationId = result.InvocationId;
+            _controller.AcceptInvocation(result);
         }
         catch (Exception exception)
         {
@@ -289,35 +132,7 @@ public sealed partial class ChatWindow : Window
         }
     }
 
-    private async Task<bool> EnsureConsentAsync(AiCredential credential)
-    {
-        return await _controller.EnsureConsentAsync(credential.BaseUrl, ConfirmConsentAsync);
-    }
-
-    private async Task<bool> ConfirmConsentAsync(string endpoint)
-    {
-        var content = new TextBlock
-        {
-            Text = string.Format(L("AI_CloudConsentDescription"), endpoint),
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 520
-        };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = _root.XamlRoot,
-            Title = L("AI_CloudConsentTitle"),
-            Content = content,
-            PrimaryButtonText = L("AI_CloudConsentAllow"),
-            CloseButtonText = L("Action_Cancel"),
-            DefaultButton = ContentDialogButton.Close
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return false;
-        }
-
-        return true;
-    }
+    private Task<bool> ConfirmConsentAsync(string endpoint) => _dialogs.ConfirmCloudConsentAsync(endpoint);
 
     private string L(string key) => _loc.Get(key);
 
@@ -390,7 +205,7 @@ public sealed partial class ChatWindow : Window
     {
         try
         {
-            await _client.ConnectAsync(["ai.chat.v1"]);
+            await _controller.ConnectAsync();
             await RefreshAllAsync();
         }
         catch (Exception exception)
@@ -403,9 +218,9 @@ public sealed partial class ChatWindow : Window
     {
         await _controller.RefreshAsync();
         FilterConversations();
-        _credentialBox.ItemsSource = _credentials.Where(item => item.Enabled).ToList();
+        _credentialBox.ItemsSource = _controller.State.Credentials.Where(item => item.Enabled).ToList();
         await ApplyBindingAsync();
-        if (_conversations.Count == 0)
+        if (_controller.State.Conversations.Length == 0)
         {
             ShowChatEmptyState();
         }
@@ -413,9 +228,9 @@ public sealed partial class ChatWindow : Window
 
     private void ShowChatEmptyState()
     {
-        var hasCredential = _credentials.Any(item => item.Enabled);
-        var hasModel = _models.Any(item => item.Enabled &&
-            _credentials.Any(credential => credential.Enabled && credential.Id == item.CredentialId));
+        var hasCredential = _controller.State.Credentials.Any(item => item.Enabled);
+        var hasModel = _controller.State.Models.Any(item => item.Enabled &&
+            _controller.State.Credentials.Any(credential => credential.Enabled && credential.Id == item.CredentialId));
         var title = hasCredential && hasModel ? L("AI_ChatWelcome") : L("AI_ConfigurationRequired");
         var description = !hasCredential
             ? L("AI_AddCredentialGuide")
@@ -477,9 +292,9 @@ public sealed partial class ChatWindow : Window
             return;
         }
 
-        _credentialBox.SelectedItem = _credentials.FirstOrDefault(item => item.Id == binding.CredentialId);
+        _credentialBox.SelectedItem = _controller.State.Credentials.FirstOrDefault(item => item.Id == binding.CredentialId);
         RefreshChatModels();
-        _modelBox.SelectedItem = _models.FirstOrDefault(item => item.Id == binding.ModelProfileId);
+        _modelBox.SelectedItem = _controller.State.Models.FirstOrDefault(item => item.Id == binding.ModelProfileId);
     }
 
     private void RefreshChatModels()
@@ -487,7 +302,7 @@ public sealed partial class ChatWindow : Window
         var credential = _credentialBox.SelectedItem as AiCredential;
         _modelBox.ItemsSource = credential is null
             ? Array.Empty<AiModelProfile>()
-            : _models.Where(item => item.Enabled && item.CredentialId == credential.Id).ToList();
+            : _controller.State.Models.Where(item => item.Enabled && item.CredentialId == credential.Id).ToList();
         if (_modelBox.Items.Count == 1)
         {
             _modelBox.SelectedIndex = 0;
@@ -496,7 +311,7 @@ public sealed partial class ChatWindow : Window
 
     private void StartNewConversation()
     {
-        _currentConversationId = null;
+        _controller.StartNewConversation();
         _conversationList.SelectedItem = null;
         _messagePanel.Children.Clear();
         _inputBox.Focus(FocusState.Programmatic);
@@ -512,7 +327,7 @@ public sealed partial class ChatWindow : Window
         try
         {
             var conversation = await _controller.GetConversationAsync(selected.Id);
-            _currentConversationId = conversation.Id;
+            _controller.SelectConversation(conversation.Id);
             RenderMessages(conversation.Messages);
         }
         catch (Exception exception)
@@ -539,67 +354,12 @@ public sealed partial class ChatWindow : Window
                     .Where(item => item.Role == "assistant" && item.ParentMessageId == message.ParentMessageId)
                     .OrderBy(item => item.VariantIndex)
                     .ToList();
-                _messagePanel.Children.Add(VariantGroup(variants));
+                _messagePanel.Children.Add(_messageView.VariantGroup(variants));
                 continue;
             }
-            _messagePanel.Children.Add(BubbleForMessage(message));
+            _messagePanel.Children.Add(_messageView.Bubble(message));
         }
         ScrollToEnd();
-    }
-
-    private UIElement VariantGroup(IReadOnlyList<AiChatMessage> variants)
-    {
-        if (variants.Count == 1)
-        {
-            return BubbleForMessage(variants[0]);
-        }
-
-        var host = new Grid();
-        foreach (var variant in variants)
-        {
-            host.Children.Add(BubbleForMessage(variant));
-        }
-        var selectedIndex = variants.Count - 1;
-        void SelectVariant(int index)
-        {
-            selectedIndex = Math.Clamp(index, 0, variants.Count - 1);
-            for (var itemIndex = 0; itemIndex < host.Children.Count; itemIndex++)
-            {
-                host.Children[itemIndex].Visibility = itemIndex == selectedIndex
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-            }
-        }
-
-        var previous = new Button { Content = "‹", Padding = new Thickness(8, 2, 8, 2) };
-        var indicator = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-        var next = new Button { Content = "›", Padding = new Thickness(8, 2, 8, 2) };
-        void RefreshNavigation()
-        {
-            indicator.Text = $"{selectedIndex + 1} / {variants.Count}";
-            previous.IsEnabled = selectedIndex > 0;
-            next.IsEnabled = selectedIndex + 1 < variants.Count;
-            SelectVariant(selectedIndex);
-        }
-        previous.Click += (_, _) => { selectedIndex--; RefreshNavigation(); };
-        next.Click += (_, _) => { selectedIndex++; RefreshNavigation(); };
-        var navigation = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { previous, indicator, next }
-        };
-        RefreshNavigation();
-        return new StackPanel { Spacing = 5, Children = { host, navigation } };
-    }
-
-    private Border BubbleForMessage(AiChatMessage message)
-    {
-        var metadata = message.ModelId is null
-            ? null
-            : $"{message.ChannelName} · {message.CredentialName} · {message.ModelId} · {message.Status}";
-        return MessageBubble(message.Role, message.Content, metadata);
     }
 
     private async Task SendAsync()
@@ -608,20 +368,20 @@ public sealed partial class ChatWindow : Window
             _credentialBox.SelectedItem is not AiCredential credential ||
             _modelBox.SelectedItem is not AiModelProfile model)
         {
-            ShowMessage(L("AI_SelectConfiguration"), AiMessageSeverity.Warning);
+            _statusPresenter.ShowMessage(L("AI_SelectConfiguration"), ChatMessageSeverity.Warning);
             return;
         }
 
         var text = _inputBox.Text.Trim();
-        if (!await EnsureConsentAsync(credential))
+        if (!await _controller.EnsureConsentAsync(credential.BaseUrl, ConfirmConsentAsync))
         {
             return;
         }
         _inputBox.Text = string.Empty;
         ChatEmptyState.Visibility = Visibility.Collapsed;
-        _messagePanel.Children.Add(MessageBubble("user", text, null));
-        _streamingContent = string.Empty;
-        var assistant = MessageBubble("assistant", string.Empty, $"{ChannelName(credential.ChannelId)} · {model.ModelId}");
+        _messagePanel.Children.Add(_messageView.Bubble("user", text, null));
+        _controller.BeginGeneration();
+        var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
         _streamingText = assistant.Tag as TextBlock;
         _messagePanel.Children.Add(assistant);
         ScrollToEnd();
@@ -631,7 +391,7 @@ public sealed partial class ChatWindow : Window
             var execution = await _controller.SendAsync(
                 credential,
                 model,
-                _currentConversationId,
+                _controller.State.CurrentConversationId,
                 text,
                 ConfirmConsentAsync);
             if (!execution.Executed)
@@ -640,8 +400,7 @@ public sealed partial class ChatWindow : Window
                 return;
             }
             var result = execution.Value!;
-            _activeInvocationId = result.InvocationId;
-            _currentConversationId = result.ConversationId;
+            _controller.AcceptInvocation(result);
         }
         catch (Exception exception)
         {
@@ -652,13 +411,13 @@ public sealed partial class ChatWindow : Window
 
     private async Task StopAsync()
     {
-        if (_activeInvocationId is null)
+        if (_controller.State.ActiveInvocationId is null)
         {
             return;
         }
         try
         {
-            await _controller.CancelAsync(_activeInvocationId);
+            await _controller.CancelAsync(_controller.State.ActiveInvocationId);
         }
         catch (Exception exception)
         {
@@ -679,14 +438,13 @@ public sealed partial class ChatWindow : Window
             {
                 case AiProtocolNotifications.ChatDelta:
                     var delta = args.Parameters.Deserialize<AiChatDelta>();
-                    if (_activeInvocationId is null && _sendButton.IsEnabled == false && delta is not null)
+                    if (_controller.State.ActiveInvocationId is null && _sendButton.IsEnabled == false && delta is not null)
                     {
-                        _activeInvocationId = delta.InvocationId;
+                        _controller.AdoptInvocation(delta.InvocationId);
                     }
-                    if (delta is not null && delta.InvocationId == _activeInvocationId && _streamingText is not null)
+                    if (delta is not null && delta.InvocationId == _controller.State.ActiveInvocationId && _streamingText is not null)
                     {
-                        _streamingContent += delta.Delta;
-                        _streamingText.Text = _streamingContent;
+                        _streamingText.Text = _controller.AppendDelta(delta.Delta);
                         ScrollToEnd();
                     }
                     break;
@@ -694,17 +452,17 @@ public sealed partial class ChatWindow : Window
                 case AiProtocolNotifications.ChatCancelled:
                 case AiProtocolNotifications.ChatFailed:
                     var finished = args.Parameters.Deserialize<AiChatFinished>();
-                    if (finished is not null && finished.InvocationId == _activeInvocationId)
+                    if (finished is not null && finished.InvocationId == _controller.State.ActiveInvocationId)
                     {
                         SetGenerating(false);
                         if (args.Method == AiProtocolNotifications.ChatFailed)
                         {
-                            ShowMessage(ErrorText(finished.ErrorCode), AiMessageSeverity.Error);
+                            _statusPresenter.ShowMessage(_statusPresenter.ErrorText(finished.ErrorCode), ChatMessageSeverity.Error);
                         }
                         await RefreshConversationsAsync();
-                        if (_currentConversationId is not null)
+                        if (_controller.State.CurrentConversationId is not null)
                         {
-                            var conversation = await _controller.GetConversationAsync(_currentConversationId);
+                            var conversation = await _controller.GetConversationAsync(_controller.State.CurrentConversationId);
                             RenderMessages(conversation.Messages);
                         }
                     }
@@ -728,87 +486,11 @@ public sealed partial class ChatWindow : Window
     {
         var query = _conversationSearch.Text.Trim();
         _conversationList.ItemsSource = string.IsNullOrEmpty(query)
-            ? _conversations.ToList()
-            : _conversations
+            ? _controller.State.Conversations.ToList()
+            : _controller.State.Conversations
                 .Where(item => item.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
     }
-
-    private Border MessageBubble(string role, string content, string? metadata)
-    {
-        var isUser = role == "user";
-        var stack = new StackPanel { Spacing = 10 };
-        if (!string.IsNullOrWhiteSpace(metadata))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = metadata,
-                FontSize = 13,
-                Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 105, 115, 134))
-            });
-        }
-        var text = new TextBlock
-        {
-            Text = content,
-            TextWrapping = TextWrapping.Wrap,
-            IsTextSelectionEnabled = true,
-            FontSize = 15,
-            LineHeight = 24
-        };
-        if (string.IsNullOrEmpty(content))
-        {
-            stack.Children.Add(text);
-        }
-        else
-        {
-            stack.Children.Add(BuildMarkdownContent(content));
-        }
-        var copy = new Button
-        {
-            Content = L("AI_Copy"),
-            Padding = new Thickness(8, 3, 8, 3),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            FontSize = 12,
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0)
-        };
-        copy.Click += (_, _) =>
-        {
-            _clipboard.SetText(text.Text);
-        };
-        stack.Children.Add(copy);
-        return new Border
-        {
-            Tag = text,
-            Child = stack,
-            Background = isUser
-                ? new SolidColorBrush(ColorHelper.FromArgb(255, 244, 249, 255))
-                : new SolidColorBrush(Colors.White),
-            BorderBrush = isUser
-                ? new SolidColorBrush(ColorHelper.FromArgb(255, 186, 214, 255))
-                : new SolidColorBrush(ColorHelper.FromArgb(255, 217, 225, 236)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(16, 13, 16, 12),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-    }
-
-    private async Task<ContentDialogResult> DialogAsync(string title, UIElement content)
-    {
-        var dialog = new ContentDialog
-        {
-            XamlRoot = _root.XamlRoot,
-            Title = title,
-            Content = content,
-            PrimaryButtonText = L("Action_Save"),
-            CloseButtonText = L("Action_Cancel"),
-            DefaultButton = ContentDialogButton.Primary
-        };
-        return await dialog.ShowAsync();
-    }
-
-    private string ChannelName(string id) => _channels.FirstOrDefault(item => item.Id == id)?.DisplayName ?? id;
 
     private void SetGenerating(bool generating)
     {
@@ -817,7 +499,7 @@ public sealed partial class ChatWindow : Window
         _stopButton.IsEnabled = generating;
         if (!generating)
         {
-            _activeInvocationId = null;
+            _controller.CompleteInvocation();
             _streamingText = null;
         }
     }
@@ -828,43 +510,8 @@ public sealed partial class ChatWindow : Window
         _messageScroll.ChangeView(null, _messageScroll.ScrollableHeight, null, true);
     }
 
-    private void ShowError(Exception exception)
-    {
-        var message = exception is AiCoreException core ? ErrorText(core.Code) : exception.Message;
-        ShowMessage(message, AiMessageSeverity.Error);
-    }
+    private void ShowError(Exception exception) => _statusPresenter.ShowError(exception);
 
-    private string ErrorText(string? code) => code switch
-    {
-        "provider_auth_failed" => L("AI_Error_Auth"),
-        "provider_model_not_found" => L("AI_Error_Model"),
-        "provider_rate_limited" => L("AI_Error_RateLimit"),
-        "provider_content_rejected" => L("AI_Error_Content"),
-        "context_limit_exceeded" => L("AI_Error_Context"),
-        "timeout" => L("AI_Error_Timeout"),
-        "conflict" => L("AI_Error_Conflict"),
-        "secret_store_unavailable" => L("AI_Error_SecretStore"),
-        _ => L("AI_Error_Unavailable")
-    };
-
-    private void ShowMessage(string message, AiMessageSeverity severity)
-    {
-        _statusText.Text = message;
-        _statusBar.Background = severity switch
-        {
-            AiMessageSeverity.Success => new SolidColorBrush(Color.FromArgb(255, 220, 252, 231)),
-            AiMessageSeverity.Warning => new SolidColorBrush(Color.FromArgb(255, 254, 243, 199)),
-            _ => new SolidColorBrush(Color.FromArgb(255, 254, 226, 226))
-        };
-        _statusBar.Visibility = Visibility.Visible;
-    }
-
-    private enum AiMessageSeverity
-    {
-        Success,
-        Warning,
-        Error
-    }
 
     private static SolidColorBrush Brush(string key, Color fallback)
     {

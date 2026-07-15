@@ -1,8 +1,9 @@
 using Fowan.Ai.Shared.Models;
+using Fowan.Ai.Shared.Application;
 using Fowan.Ai.Shared.Services;
 using Fowan.Ai.Shared.Application.Ports;
-using Fowan.Ai.Config.Windows.Presentation;
 using Fowan.Ai.Config.Windows.Platform.Windows;
+using Fowan.Ai.Config.Windows.Presentation;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Text;
@@ -18,13 +19,8 @@ namespace Fowan.Ai.Config.Windows;
 public sealed partial class ConfigWindow : Window
 {
     private readonly AiLocalizationService _loc = new();
-    private readonly AiCoreClient _client;
     private readonly IAiApplicationLauncher _applicationLauncher;
-    private readonly AiConfigController _controller;
-    private readonly List<AiChannel> _channels;
-    private readonly List<AiCredential> _credentials;
-    private readonly List<AiModelProfile> _models;
-    private readonly List<AiPresetModel> _presets;
+    private readonly AiConfigSession _controller;
     private Grid _root = new();
     private Border _statusBar = new();
     private TextBlock _statusText = new();
@@ -39,18 +35,13 @@ public sealed partial class ConfigWindow : Window
 
     public ConfigWindow(string initialPage)
     {
-        _client = new AiCoreClient(new WindowsAiCoreProcessLauncher());
         _applicationLauncher = new WindowsAiApplicationLauncher();
-        _controller = new AiConfigController(new AiCoreApi(_client), new AiConsentCoordinator(_client));
-        _channels = _controller.Channels;
-        _credentials = _controller.Credentials;
-        _models = _controller.Models;
-        _presets = _controller.Presets;
+        _controller = AiConfigCompositionRoot.CreateSession();
         Title = L("AI_ConfigAppTitle");
         BuildContent();
         ConfigureWindow();
         SelectConfigPage(PageIndex(initialPage));
-        Closed += async (_, _) => await _client.DisposeAsync();
+        Closed += async (_, _) => await _controller.DisposeAsync();
         _ = InitializeAsync();
     }
 
@@ -111,19 +102,9 @@ public sealed partial class ConfigWindow : Window
         {
             return;
         }
-        var credential = new ComboBox
-        {
-            Header = L("AI_Credential"),
-            ItemsSource = _credentials.Where(item => item.Enabled).ToList(),
-            DisplayMemberPath = nameof(AiCredential.DisplayLabel),
-            MinWidth = 420,
-            SelectedItem = _credentials.FirstOrDefault(item => item.Id == selectedModel.CredentialId)
-        };
-        var modelId = new TextBox { Header = L("AI_ModelId"), Text = selectedModel.ModelId };
-        var displayName = new TextBox { Header = L("AI_ModelName"), Text = selectedModel.DisplayName };
-        var stack = new StackPanel { Spacing = 12, Children = { credential, modelId, displayName } };
-        if (await DialogAsync(L("AI_EditModel"), stack) != ContentDialogResult.Primary ||
-            credential.SelectedItem is not AiCredential selectedCredential)
+        var form = ConfigDialogForms.Model(L, _controller.State.Credentials, _controller.State.Presets, selectedModel);
+        if (await DialogAsync(L("AI_EditModel"), form.Content) != ContentDialogResult.Primary ||
+            form.Credential.SelectedItem is not AiCredential selectedCredential)
         {
             return;
         }
@@ -132,8 +113,8 @@ public sealed partial class ConfigWindow : Window
             await _controller.UpsertModelAsync(
                 selectedModel.Id,
                 selectedCredential.Id,
-                modelId.Text,
-                displayName.Text,
+                form.ModelId.Text,
+                form.DisplayName.Text,
                 selectedModel.Source);
             await RefreshAllAsync();
         }
@@ -146,20 +127,9 @@ public sealed partial class ConfigWindow : Window
         {
             return;
         }
-        var channel = new ComboBox
-        {
-            Header = L("AI_Channel"),
-            ItemsSource = _channels.Where(item => item.Enabled).ToList(),
-            DisplayMemberPath = nameof(AiChannel.DisplayName),
-            MinWidth = 420,
-            SelectedItem = _channels.FirstOrDefault(item => item.Id == selectedCredential.ChannelId)
-        };
-        var label = new TextBox { Header = L("AI_CredentialName"), Text = selectedCredential.Label };
-        var endpoint = new TextBox { Header = L("AI_BaseUrl"), Text = selectedCredential.BaseUrl };
-        var secret = new PasswordBox { Header = L("AI_ReplaceApiKey") };
-        var stack = new StackPanel { Spacing = 12, Children = { channel, label, endpoint, secret } };
-        if (await DialogAsync(L("AI_EditCredential"), stack) != ContentDialogResult.Primary ||
-            channel.SelectedItem is not AiChannel selectedChannel)
+        var form = ConfigDialogForms.Credential(L, _controller.State.Channels, selectedCredential);
+        if (await DialogAsync(L("AI_EditCredential"), form.Content) != ContentDialogResult.Primary ||
+            form.Channel.SelectedItem is not AiChannel selectedChannel)
         {
             return;
         }
@@ -168,10 +138,10 @@ public sealed partial class ConfigWindow : Window
             await _controller.UpsertCredentialAsync(
                 selectedCredential.Id,
                 selectedChannel.Id,
-                label.Text,
-                endpoint.Text,
-                string.IsNullOrWhiteSpace(secret.Password) ? null : secret.Password);
-            secret.Password = string.Empty;
+                form.Label.Text,
+                form.Endpoint.Text,
+                string.IsNullOrWhiteSpace(form.Secret.Password) ? null : form.Secret.Password);
+            form.Secret.Password = string.Empty;
             await RefreshAllAsync();
         }
         catch (Exception exception) { ShowError(exception); }
@@ -179,7 +149,7 @@ public sealed partial class ConfigWindow : Window
 
     private async Task DeleteChannelAsync()
     {
-        var customChannels = _channels.Where(item => !item.BuiltIn).ToList();
+        var customChannels = _controller.State.Channels.Where(item => !item.BuiltIn).ToList();
         var channel = new ComboBox
         {
             Header = L("AI_Channel"),
@@ -323,7 +293,7 @@ public sealed partial class ConfigWindow : Window
     {
         try
         {
-            await _client.ConnectAsync(["ai.config.v1"]);
+            await _controller.ConnectAsync();
             await RefreshAllAsync();
         }
         catch (Exception exception)
@@ -335,11 +305,12 @@ public sealed partial class ConfigWindow : Window
     private async Task RefreshAllAsync()
     {
         await _controller.RefreshAsync();
-        _credentialList.ItemsSource = _credentials.ToList();
-        _modelList.ItemsSource = _models.ToList();
-        _credentialEmptyState.Visibility = _credentials.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        _modelEmptyState.Visibility = _models.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        _bindingCredentialBox.ItemsSource = _credentials.Where(item => item.Enabled).ToList();
+        var snapshot = _controller.State;
+        _credentialList.ItemsSource = snapshot.Credentials.ToList();
+        _modelList.ItemsSource = snapshot.Models.ToList();
+        _credentialEmptyState.Visibility = snapshot.Credentials.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _modelEmptyState.Visibility = snapshot.Models.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _bindingCredentialBox.ItemsSource = snapshot.Credentials.Where(item => item.Enabled).ToList();
         await ApplyBindingAsync();
     }
 
@@ -352,9 +323,9 @@ public sealed partial class ConfigWindow : Window
             return;
         }
 
-        _bindingCredentialBox.SelectedItem = _credentials.FirstOrDefault(item => item.Id == binding.CredentialId);
+        _bindingCredentialBox.SelectedItem = _controller.State.Credentials.FirstOrDefault(item => item.Id == binding.CredentialId);
         RefreshBindingModels();
-        _bindingModelBox.SelectedItem = _models.FirstOrDefault(item => item.Id == binding.ModelProfileId);
+        _bindingModelBox.SelectedItem = _controller.State.Models.FirstOrDefault(item => item.Id == binding.ModelProfileId);
     }
 
     private void RefreshBindingModels()
@@ -362,7 +333,7 @@ public sealed partial class ConfigWindow : Window
         var credential = _bindingCredentialBox.SelectedItem as AiCredential;
         _bindingModelBox.ItemsSource = credential is null
             ? Array.Empty<AiModelProfile>()
-            : _models.Where(item => item.Enabled && item.CredentialId == credential.Id).ToList();
+            : _controller.State.Models.Where(item => item.Enabled && item.CredentialId == credential.Id).ToList();
         if (_bindingModelBox.Items.Count == 1)
         {
             _bindingModelBox.SelectedIndex = 0;
@@ -371,16 +342,14 @@ public sealed partial class ConfigWindow : Window
 
     private async Task AddChannelAsync()
     {
-        var name = new TextBox { Header = L("AI_ChannelName"), MinWidth = 420 };
-        var endpoint = new TextBox { Header = L("AI_BaseUrl"), PlaceholderText = "https://example.com/v1" };
-        var stack = new StackPanel { Spacing = 12, Children = { name, endpoint } };
-        if (await DialogAsync(L("AI_AddChannel"), stack) != ContentDialogResult.Primary)
+        var form = ConfigDialogForms.Channel(L);
+        if (await DialogAsync(L("AI_AddChannel"), form.Content) != ContentDialogResult.Primary)
         {
             return;
         }
         try
         {
-            await _controller.CreateChannelAsync(name.Text, endpoint.Text);
+            await _controller.CreateChannelAsync(form.Name.Text, form.Endpoint.Text);
             await RefreshAllAsync();
         }
         catch (Exception exception) { ShowError(exception); }
@@ -388,19 +357,9 @@ public sealed partial class ConfigWindow : Window
 
     private async Task AddCredentialAsync()
     {
-        var channel = new ComboBox
-        {
-            Header = L("AI_Channel"),
-            ItemsSource = _channels.Where(item => item.Enabled).ToList(),
-            DisplayMemberPath = nameof(AiChannel.DisplayName),
-            MinWidth = 420
-        };
-        var label = new TextBox { Header = L("AI_CredentialName") };
-        var endpoint = new TextBox { Header = L("AI_BaseUrl"), PlaceholderText = L("AI_BaseUrlDefault") };
-        var secret = new PasswordBox { Header = L("AI_ApiKey") };
-        var stack = new StackPanel { Spacing = 12, Children = { channel, label, endpoint, secret } };
-        if (await DialogAsync(L("AI_AddCredential"), stack) != ContentDialogResult.Primary ||
-            channel.SelectedItem is not AiChannel selected)
+        var form = ConfigDialogForms.Credential(L, _controller.State.Channels);
+        if (await DialogAsync(L("AI_AddCredential"), form.Content) != ContentDialogResult.Primary ||
+            form.Channel.SelectedItem is not AiChannel selected)
         {
             return;
         }
@@ -409,10 +368,10 @@ public sealed partial class ConfigWindow : Window
             await _controller.UpsertCredentialAsync(
                 null,
                 selected.Id,
-                label.Text,
-                endpoint.Text,
-                secret.Password);
-            secret.Password = string.Empty;
+                form.Label.Text,
+                form.Endpoint.Text,
+                form.Secret.Password);
+            form.Secret.Password = string.Empty;
             await RefreshAllAsync();
         }
         catch (Exception exception) { ShowError(exception); }
@@ -431,39 +390,9 @@ public sealed partial class ConfigWindow : Window
 
     private async Task AddModelAsync()
     {
-        var credential = new ComboBox
-        {
-            Header = L("AI_Credential"),
-            ItemsSource = _credentials.Where(item => item.Enabled).ToList(),
-            DisplayMemberPath = nameof(AiCredential.DisplayLabel),
-            MinWidth = 420
-        };
-        var modelId = new TextBox { Header = L("AI_ModelId") };
-        var displayName = new TextBox { Header = L("AI_ModelName") };
-        var preset = new ComboBox
-        {
-            Header = L("AI_PresetModel"),
-            DisplayMemberPath = nameof(AiPresetModel.DisplayName),
-            PlaceholderText = L("AI_PresetOptional")
-        };
-        credential.SelectionChanged += (_, _) =>
-        {
-            if (credential.SelectedItem is AiCredential selectedCredential)
-            {
-                preset.ItemsSource = _presets.Where(item => item.ChannelId == selectedCredential.ChannelId).ToList();
-            }
-        };
-        preset.SelectionChanged += (_, _) =>
-        {
-            if (preset.SelectedItem is AiPresetModel selectedPreset)
-            {
-                modelId.Text = selectedPreset.ModelId;
-                displayName.Text = selectedPreset.DisplayName;
-            }
-        };
-        var stack = new StackPanel { Spacing = 12, Children = { credential, preset, modelId, displayName } };
-        if (await DialogAsync(L("AI_AddModel"), stack) != ContentDialogResult.Primary ||
-            credential.SelectedItem is not AiCredential selected)
+        var form = ConfigDialogForms.Model(L, _controller.State.Credentials, _controller.State.Presets);
+        if (await DialogAsync(L("AI_AddModel"), form.Content) != ContentDialogResult.Primary ||
+            form.Credential.SelectedItem is not AiCredential selected)
         {
             return;
         }
@@ -472,9 +401,9 @@ public sealed partial class ConfigWindow : Window
             await _controller.UpsertModelAsync(
                 null,
                 selected.Id,
-                modelId.Text,
-                string.IsNullOrWhiteSpace(displayName.Text) ? modelId.Text : displayName.Text,
-                preset.SelectedItem is AiPresetModel ? "preset" : "custom");
+                form.ModelId.Text,
+                string.IsNullOrWhiteSpace(form.DisplayName.Text) ? form.ModelId.Text : form.DisplayName.Text,
+                form.Preset?.SelectedItem is AiPresetModel ? "preset" : "custom");
             await RefreshAllAsync();
         }
         catch (Exception exception) { ShowError(exception); }
@@ -483,7 +412,7 @@ public sealed partial class ConfigWindow : Window
     private async Task TestModelAsync()
     {
         if (_modelList.SelectedItem is not AiModelProfile selected) return;
-        var credential = _credentials.FirstOrDefault(item => item.Id == selected.CredentialId);
+        var credential = _controller.State.Credentials.FirstOrDefault(item => item.Id == selected.CredentialId);
         if (credential is null)
         {
             ShowMessage(L("AI_SelectConfiguration"), AiMessageSeverity.Warning);

@@ -1,5 +1,9 @@
 # Fowan repository instructions
 
+- Before changing code, read `CONTRIBUTING.md`, `docs/development_guide.zh-CN.md`, `docs/repository_boundaries.md`, and the manifest/proposal/ADR for the affected component.
+- Do not implement a new executable, project, top-level feature module, shared service, or independent platform adapter until an accepted design proposal is registered in `docs/component-manifest.json`.
+- Architecture is governed by state ownership and dependency direction, not source line counts. Keep Window and Presentation code behind immutable snapshots and typed commands, and keep business mutation in the registered Workspace/Session.
+
 - Keep the repository buildable with zero warnings and zero errors.
 - Never revert or delete code without the user's explicit confirmation for that specific action. This includes restoring older revisions, discarding changes, removing files or implementations, and using Git rollback commands; a general request to fix, simplify, clean up, or make the project buildable is not authorization to revert or delete code.
 - Do not solve problems by degrading visual quality, product performance, functionality, user experience, correctness, maintainability, test coverage, or overall code quality. Fix the root cause while preserving existing quality bars; if a genuine tradeoff cannot be avoided, stop and ask the user to choose before implementing it.

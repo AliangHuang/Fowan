@@ -1,5 +1,6 @@
 using Fowan.Ai.Shared.Models;
 using Fowan.Ai.Shared.Services;
+using Fowan.Ai.Shared.Application;
 using Fowan.Ai.Shared.Application.Ports;
 using Json.Schema;
 using System.Text.Json;
@@ -117,6 +118,30 @@ public sealed class AiSharedTests
         }
     }
 
+    private sealed class SessionInvoker : IAiCoreInvoker
+    {
+        public List<string> Methods { get; } = [];
+
+        public Task<T> InvokeAsync<T>(
+            string method,
+            object parameters,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Methods.Add(method);
+            object result = method switch
+            {
+                AiProtocolMethods.ChannelsList => new List<AiChannel>(),
+                AiProtocolMethods.CredentialsList => new List<AiCredential>(),
+                AiProtocolMethods.ModelsList => new List<AiModelProfile>(),
+                AiProtocolMethods.ModelsPresets => new List<AiPresetModel>(),
+                AiProtocolMethods.ConversationsList => new List<AiConversationSummary>(),
+                _ => JsonSerializer.SerializeToElement(new { })
+            };
+            return Task.FromResult((T)result);
+        }
+    }
+
     [Fact]
     public void Credential_display_label_contains_only_name_and_masked_hint()
     {
@@ -171,6 +196,46 @@ public sealed class AiSharedTests
         var error = Assert.Throws<AiCoreException>(() =>
             AiCoreClient.ValidateHandshake(document.RootElement, ["ai.config.v1"]));
         Assert.Equal("protocol_mismatch", error.Code);
+    }
+
+    [Fact]
+    public void Chat_session_publishes_immutable_lifecycle_snapshots()
+    {
+        var invoker = new SessionInvoker();
+        var session = new AiChatSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+        var states = new List<AiChatSnapshot>();
+        session.StateChanged += (_, state) => states.Add(state);
+
+        session.BeginGeneration();
+        session.AdoptInvocation("invocation-1");
+        Assert.Equal("hello", session.AppendDelta("hello"));
+        var snapshot = session.State;
+        session.CompleteInvocation();
+
+        Assert.True(states.Count >= 4);
+        Assert.True(snapshot.IsGenerating);
+        Assert.Equal("invocation-1", snapshot.ActiveInvocationId);
+        Assert.Equal("hello", snapshot.StreamingContent);
+        Assert.False(session.State.IsGenerating);
+    }
+
+    [Fact]
+    public async Task Config_session_publishes_refresh_state_and_successful_crud_results()
+    {
+        var invoker = new SessionInvoker();
+        var session = new AiConfigSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+        AiConfigSnapshot? state = null;
+        AiConfigMutation? mutation = null;
+        session.StateChanged += (_, value) => state = value;
+        session.MutationCompleted += (_, value) => mutation = value;
+
+        await session.RefreshAsync();
+        await session.CreateChannelAsync("Custom", "https://api.example.com/v1");
+
+        Assert.NotNull(state);
+        Assert.Empty(state.Channels);
+        Assert.Equal(new AiConfigMutation("channel", "create", null), mutation);
+        Assert.Contains(AiProtocolMethods.ChannelsCreate, invoker.Methods);
     }
 
     [Theory]
