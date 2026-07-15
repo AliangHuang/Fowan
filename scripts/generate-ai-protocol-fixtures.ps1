@@ -26,7 +26,8 @@ function Write-Json([string]$Path, $Value) {
         New-Item -ItemType Directory -Path $directory | Out-Null
     }
     $json = ConvertTo-Json -InputObject $Value -Depth 40
-    [IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+    $normalizedJson = $json.Replace("`r`n", "`n").Replace("`r", "`n")
+    [IO.File]::WriteAllText($Path, $normalizedJson + "`n", [Text.UTF8Encoding]::new($false))
 }
 
 function Operation([string]$Name, $Params, [string]$ResultDefinition, $Result) {
