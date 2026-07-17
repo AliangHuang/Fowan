@@ -7,8 +7,13 @@ public enum AiApplication
 }
 public static class AiApplicationPathResolver
 {
+#if FOWAN_DEVELOPMENT_RUNTIME
+    public const string ChatExecutableName = "Fowan.Ai.Chat.Windows.Dev.exe";
+    public const string ConfigExecutableName = "Fowan.Ai.Config.Windows.Dev.exe";
+#else
     public const string ChatExecutableName = "Fowan.Ai.Chat.Windows.exe";
     public const string ConfigExecutableName = "Fowan.Ai.Config.Windows.exe";
+#endif
 
     public static string? ResolveExecutable(AiApplication application)
     {
@@ -21,7 +26,6 @@ public static class AiApplicationPathResolver
 
         var executableName = ExecutableName(application);
         var toolDirectory = application == AiApplication.Chat ? "Chat" : "Config";
-        var outputDirectory = application == AiApplication.Chat ? "windows-ai-chat" : "windows-ai-config";
         var baseDirectory = AppContext.BaseDirectory;
         var candidates = new List<string>
         {
@@ -32,8 +36,8 @@ public static class AiApplicationPathResolver
         var directory = new DirectoryInfo(baseDirectory);
         for (var level = 0; level < 8 && directory is not null; level++, directory = directory.Parent)
         {
-            candidates.Add(Path.Combine(directory.FullName, "out", outputDirectory, "debug", executableName));
-            candidates.Add(Path.Combine(directory.FullName, "out", outputDirectory, "release", executableName));
+            candidates.Add(Path.Combine(
+                directory.FullName, "build", "windows", "win-x64", "app", "Tools", "AI", toolDirectory, executableName));
             candidates.Add(Path.Combine(directory.FullName, "Tools", "AI", toolDirectory, executableName));
         }
         return candidates.FirstOrDefault(File.Exists);

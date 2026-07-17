@@ -4,7 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Windows</RootNamespace>
-    <AssemblyName>Fowan.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\fowan.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

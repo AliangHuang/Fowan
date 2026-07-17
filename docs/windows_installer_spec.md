@@ -161,21 +161,25 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 .\scripts\package-windows.ps1 -Version 0.1.4
 ```
 
-输出安装包：
+成功发布后，版本目录只保留安装包、免安装压缩包、更新清单和 SHA-256 校验清单：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.4-win-x64.exe
-out\installer\windows\win-x64\fowan-update.json
+publish\windows\win-x64\0.1.4\FowanSetup-0.1.4-win-x64.exe
+publish\windows\win-x64\0.1.4\Fowan-0.1.4-portable.zip
+publish\windows\win-x64\0.1.4\fowan-update.json
+publish\windows\win-x64\0.1.4\SHA256SUMS.txt
 ```
 
-如果当前机器没有安装 Inno Setup 编译器，脚本仍应生成安装 staging 目录，并提示安装 Inno Setup 后重新运行。
+如果当前机器没有安装 Inno Setup 编译器，正式发布整体失败；脚本清理隔离 staging，且不创建不完整的版本目录。
 
-打包脚本必须同时生成当前版本的更新日志 staging 输出：
+发布前脚本按版本号检查 `publish\windows\win-x64\`，最多保留最新四个版本。为新版本腾出位置时，最旧版本会先移入隔离 staging；只有新版本原子写入成功后才永久清理，失败会自动恢复旧版本。
+
+打包脚本在 `build/staging/` 中生成应用树和更新日志，再将更新日志同时放入安装包和免安装压缩包。发布目录不保留应用树、运行库或安装器 staging。
 
 ```text
-out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt
-out\installer\windows\win-x64\app\ReleaseNotes\toolbox.md
-out\installer\windows\win-x64\app\ReleaseNotes\todo.md
+Fowan-0.1.4-portable\app\ReleaseNotes\release-notes.txt
+Fowan-0.1.4-portable\app\ReleaseNotes\toolbox.md
+Fowan-0.1.4-portable\app\ReleaseNotes\todo.md
 ```
 
 GitHub Release 自动更新发布要求：
@@ -186,10 +190,10 @@ GitHub Release 自动更新发布要求：
 - 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
 - 客户端必须校验 `installerSha256` 后才能启动安装器。
 
-打包脚本会从 Microsoft 官方固定链接下载 Visual C++ Redistributable x64 到：
+打包脚本会从 Microsoft 官方固定链接下载 Visual C++ Redistributable x64 到隔离 staging；免安装压缩包保留该运行库和安装说明：
 
 ```text
-out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe
+Fowan-0.1.4-portable\prerequisites\vc_redist.x64.exe
 ```
 
 下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation。安装器会把该运行库打入最终 setup exe。

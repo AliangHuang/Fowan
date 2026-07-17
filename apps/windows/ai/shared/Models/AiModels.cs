@@ -1,4 +1,5 @@
 
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace Fowan.Ai.Shared.Models;
@@ -44,7 +45,14 @@ public sealed record AiModelProfile(
 
 public sealed record AiBinding(string FeatureId, string CredentialId, string ModelProfileId, string UpdatedAt);
 
-public sealed record AiConversationSummary(string Id, string Title, string CreatedAt, string UpdatedAt);
+public sealed record AiConversationSummary(string Id, string Title, string CreatedAt, string UpdatedAt)
+{
+    [JsonIgnore]
+    public string DisplayUpdatedAt =>
+        DateTimeOffset.TryParse(UpdatedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var value)
+            ? value.LocalDateTime.ToString("HH:mm", CultureInfo.CurrentCulture)
+            : UpdatedAt;
+}
 
 public sealed record AiChatMessage(
     string Id,

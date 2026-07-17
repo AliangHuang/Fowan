@@ -4,7 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Todo.Windows</RootNamespace>
-    <AssemblyName>Fowan.Todo.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Todo.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Todo.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\fowan-todo.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

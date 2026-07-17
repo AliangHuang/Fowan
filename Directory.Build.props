@@ -10,13 +10,15 @@
     <FileVersion>$(FowanAssemblyVersion)</FileVersion>
     <InformationalVersion>$(FowanVersion)</InformationalVersion>
     <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
-    <BaseOutputPath>$(RepositoryRoot)artifacts\build\$(MSBuildProjectName)\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(RepositoryRoot)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(RepositoryRoot)build\msbuild\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(RepositoryRoot)build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <Product>Fowan</Product>
     <Company>Fowan</Company>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <FowanDevelopmentRuntime Condition="'$(FowanDevelopmentRuntime)' == ''">false</FowanDevelopmentRuntime>
+    <DefineConstants Condition="'$(FowanDevelopmentRuntime)' == 'true'">$(DefineConstants);FOWAN_DEVELOPMENT_RUNTIME</DefineConstants>
   </PropertyGroup>
 </Project>

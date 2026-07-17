@@ -121,6 +121,8 @@ public sealed class AiSharedTests
     private sealed class SessionInvoker : IAiCoreInvoker
     {
         public List<string> Methods { get; } = [];
+        public List<AiCredential> Credentials { get; } = [];
+        public List<AiModelProfile> Models { get; } = [];
 
         public Task<T> InvokeAsync<T>(
             string method,
@@ -132,8 +134,8 @@ public sealed class AiSharedTests
             object result = method switch
             {
                 AiProtocolMethods.ChannelsList => new List<AiChannel>(),
-                AiProtocolMethods.CredentialsList => new List<AiCredential>(),
-                AiProtocolMethods.ModelsList => new List<AiModelProfile>(),
+                AiProtocolMethods.CredentialsList => Credentials,
+                AiProtocolMethods.ModelsList => Models,
                 AiProtocolMethods.ModelsPresets => new List<AiPresetModel>(),
                 AiProtocolMethods.ConversationsList => new List<AiConversationSummary>(),
                 _ => JsonSerializer.SerializeToElement(new { })
@@ -220,6 +222,39 @@ public sealed class AiSharedTests
     }
 
     [Fact]
+    public void Chat_session_keeps_a_completion_that_arrives_before_the_send_response()
+    {
+        var invoker = new SessionInvoker();
+        var session = new AiChatSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+
+        session.BeginGeneration();
+        session.AdoptInvocation("invocation-1");
+        Assert.True(session.FinishInvocation("invocation-1"));
+
+        var completedBeforeResponse = session.AcceptInvocation(new AiChatStarted(
+            "invocation-1", "conversation-1", "assistant-message-1"));
+
+        Assert.True(completedBeforeResponse);
+        Assert.Equal("conversation-1", session.State.CurrentConversationId);
+        Assert.Null(session.State.ActiveInvocationId);
+        Assert.False(session.State.IsGenerating);
+    }
+
+    [Fact]
+    public void Chat_session_adopts_the_conversation_from_a_started_notification()
+    {
+        var invoker = new SessionInvoker();
+        var session = new AiChatSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+
+        session.BeginGeneration();
+        session.AdoptInvocation(new AiChatStarted("invocation-1", "conversation-1", "assistant-message-1"));
+
+        Assert.Equal("conversation-1", session.State.CurrentConversationId);
+        Assert.Equal("invocation-1", session.State.ActiveInvocationId);
+        Assert.True(session.State.IsGenerating);
+    }
+
+    [Fact]
     public async Task Config_session_publishes_refresh_state_and_successful_crud_results()
     {
         var invoker = new SessionInvoker();
@@ -236,6 +271,25 @@ public sealed class AiSharedTests
         Assert.Empty(state.Channels);
         Assert.Equal(new AiConfigMutation("channel", "create", null), mutation);
         Assert.Contains(AiProtocolMethods.ChannelsCreate, invoker.Methods);
+    }
+
+    [Fact]
+    public async Task Config_session_requires_an_enabled_model_to_test_a_credential()
+    {
+        var invoker = new SessionInvoker();
+        invoker.Models.Add(new AiModelProfile(
+            "model-1", "credential-1", "test-model", "Test model", "custom", false,
+            null, null, "2026-07-16T00:00:00Z", "2026-07-16T00:00:00Z"));
+        var session = new AiConfigSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+
+        await session.RefreshAsync();
+
+        Assert.False(session.HasEnabledModelForCredential("credential-1"));
+
+        invoker.Models[0] = invoker.Models[0] with { Enabled = true };
+        await session.RefreshAsync();
+
+        Assert.True(session.HasEnabledModelForCredential("credential-1"));
     }
 
     [Theory]

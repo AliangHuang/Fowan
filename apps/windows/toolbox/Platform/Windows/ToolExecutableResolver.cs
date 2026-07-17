@@ -2,16 +2,28 @@ namespace Fowan.Windows.Platform.Windows;
 
 internal static class ToolExecutableResolver
 {
+#if FOWAN_DEVELOPMENT_RUNTIME
+    internal const string TodoExecutableName = "Fowan.Todo.Windows.Dev.exe";
+    internal const string DiaryExecutableName = "Fowan.Diary.Windows.Dev.exe";
+    internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.Dev.exe";
+    internal const string AiConfigExecutableName = "Fowan.Ai.Config.Windows.Dev.exe";
+#else
+    internal const string TodoExecutableName = "Fowan.Todo.Windows.exe";
+    internal const string DiaryExecutableName = "Fowan.Diary.Windows.exe";
+    internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.exe";
+    internal const string AiConfigExecutableName = "Fowan.Ai.Config.Windows.exe";
+#endif
+
     public static string? ResolveTodo() => Resolve(
-        "Fowan.Todo.Windows.exe", "Todo", "windows-todo");
+        TodoExecutableName, "Todo");
 
     public static string? ResolveDiary() => Resolve(
-        "Fowan.Diary.Windows.exe", "Diary", "windows-diary");
+        DiaryExecutableName, "Diary");
 
-    public static string? ResolveAi(string executableName, string outputDirectory, string installedDirectory) =>
-        Resolve(executableName, Path.Combine("AI", installedDirectory), outputDirectory);
+    public static string? ResolveAi(string executableName, string installedDirectory) =>
+        Resolve(executableName, Path.Combine("AI", installedDirectory));
 
-    private static string? Resolve(string executableName, string installedDirectory, string outputDirectory)
+    private static string? Resolve(string executableName, string installedDirectory)
     {
         var baseDirectory = AppContext.BaseDirectory;
         var candidates = new List<string>
@@ -22,11 +34,8 @@ internal static class ToolExecutableResolver
         var repoRoot = FindRepoRoot(baseDirectory);
         if (repoRoot is not null)
         {
-            foreach (var configuration in BuildConfigurationCandidates(baseDirectory))
-            {
-                candidates.Add(Path.Combine(
-                    repoRoot, "out", outputDirectory, configuration.ToLowerInvariant(), executableName));
-            }
+            candidates.Add(Path.Combine(
+                repoRoot, "build", "windows", "win-x64", "app", "Tools", installedDirectory, executableName));
         }
         return candidates.Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault(File.Exists);
     }
@@ -40,25 +49,5 @@ internal static class ToolExecutableResolver
             directory = directory.Parent;
         }
         return null;
-    }
-
-    private static IReadOnlyList<string> BuildConfigurationCandidates(string baseDirectory)
-    {
-        var configurations = new List<string>();
-        var directory = new DirectoryInfo(baseDirectory);
-        while (directory is not null)
-        {
-            if (directory.Name.Equals("Debug", StringComparison.OrdinalIgnoreCase) ||
-                directory.Name.Equals("Release", StringComparison.OrdinalIgnoreCase))
-            {
-                configurations.Add(directory.Name.Equals("Release", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug");
-                break;
-            }
-            directory = directory.Parent;
-        }
-        if (configurations.Count == 0) configurations.Add("Debug");
-        configurations.Add("Release");
-        configurations.Add("Debug");
-        return configurations.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

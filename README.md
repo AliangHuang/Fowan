@@ -22,8 +22,8 @@ apps/windows/
     config/            # AI configuration executable
     ui/                # Shared AI visual resources
 protocol/ai/v0.1/      # Public JSON-RPC contract, schema, and fixtures
-artifacts/             # Ignored ordinary build/intermediate output
-out/                   # Explicit runnable/publish output only
+build/                 # Ignored development build, test and staging output
+publish/               # Ignored versioned delivery packages
 ```
 
 Shared platform contracts stay intentionally small. Application-specific process
@@ -57,8 +57,8 @@ content is stored in SQLite only after current-user DPAPI protection.
 
 ## Build and verification
 
-Ordinary builds write to ignored `artifacts/build/<project>/<configuration>` and
-never create a release package:
+Ordinary MSBuild output is written under ignored `build/msbuild/` and never
+creates a release package:
 
 ```powershell
 dotnet build .\Fowan.sln -c Debug
@@ -74,8 +74,10 @@ deterministic protocol regeneration, staging/backup residue checks, platform
 boundary scans, and a before/after worktree cleanliness check. It never installs
 or changes a toolchain.
 
-Runnable outputs are created only by explicit build scripts. Release is still a
-normal build unless `-Publish` is supplied:
+Runnable outputs are created only by explicit build scripts. The compatibility
+entry points below all compose the same complete application tree at
+`build/windows/win-x64/app/`; no tool gets a separate runnable output directory.
+Release is still a normal build unless `-Publish` is supplied:
 
 ```powershell
 .\scripts\build-windows.ps1 -Configuration Debug
@@ -84,12 +86,20 @@ normal build unless `-Publish` is supplied:
 .\scripts\build-windows-ai.ps1 -Configuration Debug
 ```
 
+Development executables in this tree use a `.Dev.exe` suffix, including
+`Fowan.Windows.Dev.exe` and `Core/fowan-core.Dev.exe`. Release packaging builds
+the production executable names independently. Before replacing the development
+tree, the build stops only matching `.Dev` processes whose executable paths are
+inside that tree, then restarts the applications that were running. The first
+build after this naming migration also recognizes legacy unsuffixed executables
+inside the development tree; installed production processes are never selected.
+
 Fowan consumes Core only from
 `..\FowanCore\out\core\windows\win-x64\<configuration>\fowan-core.exe`, or from
 an explicit `-CoreArtifactPath`. It does not search Cargo `target` directories.
 Build scripts do not stop running applications; a locked output produces an
 explicit error so the corresponding stop/run workflow remains a separate step.
-All temporary output is created below `artifacts/staging/<component>/<guid>/`;
+All temporary output is created below `build/staging/<component>/<guid>/`;
 the scripts pass an absolute, trailing-separator directory to MSBuild and remove
 the isolated staging directory on every exit path. Output installation uses a
 tested backup/replace/rollback exchange; if both replacement and restoration
@@ -109,6 +119,13 @@ Installer creation is an explicit release-only workflow and is not run by CI:
 .\scripts\package-windows.ps1 -Version 0.1.4 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
 .\scripts\package-windows.ps1 -Version 0.1.4 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
+
+The first command is a preflight only: it cleans its isolated staging directory
+and never creates a `publish/` version. A successful release atomically writes
+only these deliverables to `publish/windows/win-x64/<version>/`: the installer,
+portable ZIP, update manifest, and SHA-256 manifest. Before that atomic write,
+the script checks version retention and keeps only the newest four published
+versions; expired versions are restored automatically if publication fails.
 
 See [Windows installer specification](docs/windows_installer_spec.md) for the
 stable installation layout and update behavior.

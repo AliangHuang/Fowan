@@ -19,6 +19,11 @@ namespace Fowan.Todo.Sticky.Windows;
 
 public sealed class StickyWindow : Window
 {
+#if FOWAN_DEVELOPMENT_RUNTIME
+    private const string MainExecutableName = "Fowan.Todo.Windows.Dev.exe";
+#else
+    private const string MainExecutableName = "Fowan.Todo.Windows.exe";
+#endif
     internal TodoSettingsSnapshot Settings => _workspace.State.Settings;
     private const double BaseWidth = 408;
     private const double BaseHeight = 568;
@@ -522,7 +527,7 @@ public sealed class StickyWindow : Window
             return _mainExePath;
         }
 
-        return Path.Combine(AppContext.BaseDirectory, "Fowan.Todo.Windows.exe");
+        return Path.Combine(AppContext.BaseDirectory, MainExecutableName);
     }
 
     private static string? ParseMainExePath(string[] args)

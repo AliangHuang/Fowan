@@ -3,7 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $repoRoot "protocol/ai/v0.1"
-$temporaryRoot = Join-Path $repoRoot "artifacts/verification/protocol-$([guid]::NewGuid().ToString('N'))"
+$temporaryRoot = Join-Path $repoRoot "build/test/protocol-$([guid]::NewGuid().ToString('N'))"
 
 function Get-ProtocolGeneratedFiles([string]$Root) {
     $paths = @(

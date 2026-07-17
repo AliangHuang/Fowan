@@ -86,12 +86,21 @@ public sealed partial class ConfigWindow : Window
     private async Task TestCredentialAsync()
     {
         if (_credentialList.SelectedItem is not AiCredential selected) return;
+        if (!_controller.HasEnabledModelForCredential(selected.Id))
+        {
+            ShowMessage(L("AI_CredentialTestRequiresModel"), AiMessageSeverity.Warning);
+            return;
+        }
         try
         {
             var execution = await _controller.TestCredentialAsync(selected, ConfirmConsentAsync);
             if (!execution.Executed) return;
             ShowMessage(L("AI_TestSuccess"), AiMessageSeverity.Success);
             await RefreshAllAsync();
+        }
+        catch (AiCoreException exception) when (exception.Code == "conflict")
+        {
+            ShowMessage(L("AI_CredentialTestRequiresModel"), AiMessageSeverity.Warning);
         }
         catch (Exception exception) { ShowError(exception); }
     }

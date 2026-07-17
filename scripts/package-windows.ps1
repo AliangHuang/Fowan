@@ -17,7 +17,11 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "build-output.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$installerRoot = Join-Path $repoRoot "out/installer/windows/$RuntimeIdentifier"
+$publishRuntimeRoot = Join-Path $repoRoot "publish/windows/$RuntimeIdentifier"
+$publishVersionRoot = Join-Path $publishRuntimeRoot $Version
+$installerRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-delivery"
+$retentionRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-retention"
+$retentionPending = $false
 $appStage = Join-Path $installerRoot "app"
 $prereqRoot = Join-Path $installerRoot "prerequisites"
 $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
@@ -264,19 +268,34 @@ function Ensure-VcRedist {
     }
 }
 
-$outRoot = Join-Path $repoRoot "out"
-Assert-PathInside -Path $installerRoot -Root $outRoot
-New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
+function Write-ChecksumManifest {
+    param([Parameter(Mandatory = $true)][string]$OutputRoot)
+
+    $files = @(
+        "FowanSetup-$Version-$RuntimeIdentifier.exe",
+        "Fowan-$Version-portable.zip",
+        "fowan-update.json"
+    )
+    $lines = foreach ($file in $files) {
+        $path = Join-Path $OutputRoot $file
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Release delivery is missing required file: $path"
+        }
+        "{0} *{1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant(), $file
+    }
+    $path = Join-Path $OutputRoot "SHA256SUMS.txt"
+    [IO.File]::WriteAllLines($path, $lines, [Text.UTF8Encoding]::new($false))
+    return $path
+}
+
+try {
+$deliveryStage = $installerRoot
 Ensure-VcRedist
 
 if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
 }
 
-$finalAppStage = $appStage
-$appStage = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "installer-app"
-$isolatedAppStage = $appStage
-try {
 $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
@@ -326,14 +345,6 @@ foreach ($exe in $requiredExecutables) {
 
 $releaseNotesPath = Write-ReleaseNotes -OutputRoot $appStage
 
-Install-IsolatedBuildDirectory -StagingDirectory $appStage -Destination $finalAppStage -AllowedOutputRoot $installerRoot
-}
-finally {
-    Remove-IsolatedBuildDirectory -Path $isolatedAppStage
-}
-$appStage = $finalAppStage
-$releaseNotesPath = Join-Path $appStage "ReleaseNotes/release-notes.txt"
-
 $fileCount = (Get-ChildItem -LiteralPath $appStage -Recurse -File | Measure-Object).Count
 $sizeBytes = (Get-ChildItem -LiteralPath $appStage -Recurse -File | Measure-Object Length -Sum).Sum
 $sizeMb = [Math]::Round($sizeBytes / 1MB, 1)
@@ -344,7 +355,7 @@ Write-Host "Files: $fileCount"
 Write-Host "Size: $sizeMb MB"
 
 if ($SkipInstaller) {
-    Write-Host "Skipping installer compilation because -SkipInstaller was specified."
+    Write-Host "Package preflight completed; -SkipInstaller does not create an incomplete publish directory."
     exit 0
 }
 
@@ -354,9 +365,7 @@ if (-not (Test-Path -LiteralPath $issPath -PathType Leaf)) {
 
 $iscc = Resolve-Iscc
 if (-not $iscc) {
-    Write-Warning "Inno Setup compiler ISCC.exe was not found. Install Inno Setup 6, then rerun this script to build the setup .exe."
-    Write-Host "Staging output is ready: $appStage"
-    exit 0
+    throw "Inno Setup compiler ISCC.exe was not found. A publish directory is created only when both installer and portable zip succeed."
 }
 
 & $iscc `
@@ -382,5 +391,55 @@ $updateManifestPath = Write-UpdateManifest `
     -ReleaseRepository $ReleaseRepository `
     -OutputRoot $installerRoot
 
-Write-Host "Fowan Windows installer: $setupExe"
-Write-Host "Update manifest: $updateManifestPath"
+$portableRoot = Join-Path $installerRoot "Fowan-$Version-portable"
+Copy-BuildDirectoryContent -Source $appStage -Destination (Join-Path $portableRoot "app")
+Copy-BuildDirectoryContent -Source $prereqRoot -Destination (Join-Path $portableRoot "prerequisites")
+[IO.File]::WriteAllText(
+    (Join-Path $portableRoot "README.txt"),
+    "解压后运行 app\\Fowan.Windows.exe。若系统提示缺少 VC++ 运行库，请运行 prerequisites\\vc_redist.x64.exe。`r`n",
+    [Text.UTF8Encoding]::new($false))
+$portableZip = Join-Path $installerRoot "Fowan-$Version-portable.zip"
+Compress-Archive -Path $portableRoot -DestinationPath $portableZip -CompressionLevel Optimal -Force
+if (-not (Test-Path -LiteralPath $portableZip -PathType Leaf)) {
+    throw "Portable archive was not created: $portableZip"
+}
+
+Remove-Item -LiteralPath $appStage -Recurse -Force
+Remove-Item -LiteralPath $prereqRoot -Recurse -Force
+Remove-Item -LiteralPath $portableRoot -Recurse -Force
+$checksumPath = Write-ChecksumManifest -OutputRoot $installerRoot
+$retentionPending = $true
+$expiredVersions = @(Move-ExpiredPublishDirectories `
+    -PublishRoot $publishRuntimeRoot `
+    -ReleaseVersion $Version `
+    -RetentionRoot $retentionRoot `
+    -MaximumVersionCount 4)
+if ($expiredVersions.Count -gt 0) {
+    Write-Host "Publish retention removed before release: $($expiredVersions.Name -join ', ')"
+}
+Install-IsolatedBuildDirectory -StagingDirectory $deliveryStage -Destination $publishVersionRoot -AllowedOutputRoot $publishRuntimeRoot
+$retentionPending = $false
+Remove-IsolatedBuildDirectory -Path $retentionRoot
+
+Write-Host "Fowan Windows installer: $(Join-Path $publishVersionRoot (Split-Path -Leaf $setupExe))"
+Write-Host "Portable archive: $(Join-Path $publishVersionRoot (Split-Path -Leaf $portableZip))"
+Write-Host "Update manifest: $(Join-Path $publishVersionRoot (Split-Path -Leaf $updateManifestPath))"
+Write-Host "Checksums: $(Join-Path $publishVersionRoot (Split-Path -Leaf $checksumPath))"
+}
+catch {
+    $publishError = $_
+    if ($retentionPending) {
+        try {
+            Restore-ExpiredPublishDirectories -PublishRoot $publishRuntimeRoot -RetentionRoot $retentionRoot
+            $retentionPending = $false
+        }
+        catch {
+            throw "Publishing failed and retained versions could not be restored. Publish error: $($publishError.Exception.Message) Restore error: $($_.Exception.Message)"
+        }
+    }
+    throw $publishError
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $retentionRoot
+    Remove-IsolatedBuildDirectory -Path $installerRoot
+}

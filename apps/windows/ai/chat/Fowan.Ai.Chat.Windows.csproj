@@ -4,7 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Ai.Chat.Windows</RootNamespace>
-    <AssemblyName>Fowan.Ai.Chat.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Ai.Chat.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Ai.Chat.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan-ai-chat.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

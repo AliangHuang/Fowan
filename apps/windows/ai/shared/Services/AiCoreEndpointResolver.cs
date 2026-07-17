@@ -2,6 +2,12 @@ namespace Fowan.Ai.Shared.Services;
 
 internal static class AiCoreEndpointResolver
 {
+#if FOWAN_DEVELOPMENT_RUNTIME
+    internal const string ExecutableName = "fowan-core.Dev.exe";
+#else
+    internal const string ExecutableName = "fowan-core.exe";
+#endif
+
     public static string? ResolveExecutablePath()
     {
         var explicitPath = Environment.GetEnvironmentVariable("FOWAN_CORE_PATH");
@@ -13,9 +19,9 @@ internal static class AiCoreEndpointResolver
         var baseDirectory = AppContext.BaseDirectory;
         var candidates = new List<string>
         {
-            Path.Combine(baseDirectory, "Core", "fowan-core.exe"),
-            Path.Combine(baseDirectory, "fowan-core.exe"),
-            Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "Core", "fowan-core.exe"))
+            Path.Combine(baseDirectory, "Core", ExecutableName),
+            Path.Combine(baseDirectory, ExecutableName),
+            Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "Core", ExecutableName))
         };
         var directory = new DirectoryInfo(baseDirectory);
         for (var level = 0; level < 7 && directory is not null; level++, directory = directory.Parent)

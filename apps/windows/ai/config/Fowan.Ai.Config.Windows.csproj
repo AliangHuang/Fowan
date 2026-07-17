@@ -4,7 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Ai.Config.Windows</RootNamespace>
-    <AssemblyName>Fowan.Ai.Config.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Ai.Config.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Ai.Config.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

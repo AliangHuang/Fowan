@@ -134,6 +134,7 @@ public sealed class RepositoryArchitectureTests
             MSBuildLocator.RegisterMSBuildPath(sdkPath);
         }
         using var workspace = MSBuildWorkspace.Create();
+        workspace.LoadMetadataForReferencedProjects = false;
         workspace.WorkspaceFailed += (_, args) =>
         {
             if (args.Diagnostic.Kind == WorkspaceDiagnosticKind.Failure)

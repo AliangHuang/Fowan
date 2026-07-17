@@ -19,7 +19,7 @@ try {
     $before = @(git status --porcelain=v1 --untracked-files=all)
     Assert-StagingDirectoryEmpty -RepositoryRoot $repoRoot
     $backupBefore = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -Directory -Filter '*.backup-*' -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '[\\/](?:artifacts|out)[\\/]' })
+        Where-Object { $_.FullName -match '[\\/](?:build|publish)[\\/]' })
     if ($backupBefore) {
         throw "Backup residue was found before verification:`n$($backupBefore.FullName -join [Environment]::NewLine)"
     }
@@ -46,14 +46,14 @@ try {
     }
 
     Get-ChildItem -Recurse -Filter *.json | Where-Object {
-        $_.FullName -notmatch '[\\/](?:\.git|artifacts|out)[\\/]'
+        $_.FullName -notmatch '[\\/](?:\.git|build|publish)[\\/]'
     } | ForEach-Object {
         Get-Content -Raw -Encoding UTF8 -LiteralPath $_.FullName | ConvertFrom-Json | Out-Null
     }
 
     $linkPattern = [regex]'\[[^\]]+\]\((?<target>[^)]+)\)'
     Get-ChildItem -Recurse -Filter *.md | Where-Object {
-        $_.FullName -notmatch '[\\/](artifacts|out)[\\/]'
+        $_.FullName -notmatch '[\\/](build|publish)[\\/]'
     } | ForEach-Object {
         $document = $_
         foreach ($match in $linkPattern.Matches((Get-Content -Raw -Encoding UTF8 -LiteralPath $document.FullName))) {
@@ -68,7 +68,7 @@ try {
         }
     }
 
-    $trackedArtifacts = git ls-files | Select-String -Pattern '(^|/)(bin|obj|out|artifacts|target)/|\.(exe|dll|pdb|msi|nupkg|log)$'
+    $trackedArtifacts = git ls-files | Select-String -Pattern '(^|/)(bin|obj|build|publish|target)/|\.(exe|dll|pdb|msi|nupkg|log)$'
     if ($trackedArtifacts) {
         throw "Tracked build artifacts were found:`n$($trackedArtifacts -join [Environment]::NewLine)"
     }
@@ -77,7 +77,7 @@ try {
     $textExtensions = @('.cs', '.csproj', '.iss', '.json', '.md', '.props', '.ps1', '.sln', '.targets', '.toml', '.xaml', '.yaml', '.yml')
     $currentSources = Get-ChildItem -LiteralPath $repoRoot -Recurse -File | Where-Object {
         $textExtensions -contains $_.Extension -and
-        $_.FullName -notmatch '[\\/](?:\.git|artifacts|out)[\\/]' -and
+        $_.FullName -notmatch '[\\/](?:\.git|build|publish)[\\/]'
         $_.FullName -notmatch '[\\/]docs[\\/]history[\\/]'
     }
     foreach ($source in $currentSources) {
@@ -87,12 +87,21 @@ try {
         }
     }
 
+    $legacyOutputPattern = '(?i)(?:^|["''`(=\s])(?:out|artifacts)[\\/]'
+    foreach ($source in $currentSources) {
+        $matches = @(Select-String -LiteralPath $source.FullName -Pattern $legacyOutputPattern)
+        $legacyMatches = @($matches | Where-Object { $_.Line -notmatch '(?i)FowanCore[\\/]out[\\/]' })
+        if ($legacyMatches) {
+            throw "Current source contains a retired Fowan output path: $($source.FullName)"
+        }
+    }
+
     & git diff --check
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Assert-StagingDirectoryEmpty -RepositoryRoot $repoRoot
     $backupAfter = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -Directory -Filter '*.backup-*' -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '[\\/](?:artifacts|out)[\\/]' })
+        Where-Object { $_.FullName -match '[\\/](?:build|publish)[\\/]' })
     if ($backupAfter) {
         throw "Backup residue was found after verification:`n$($backupAfter.FullName -join [Environment]::NewLine)"
     }

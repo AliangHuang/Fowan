@@ -11,9 +11,10 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Data;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Globalization;
 using Windows.Graphics;
 using Windows.UI;
 
@@ -30,6 +31,8 @@ public sealed partial class ChatWindow : Window
     private readonly ChatDialogPresenter _dialogs;
     private readonly ChatStatusPresenter _statusPresenter;
     private readonly ChatConversationCoordinator _conversationCoordinator;
+    private readonly bool _visualFixture;
+    private readonly CollectionViewSource _conversationGroups = new() { IsSourceGrouped = true };
     private Grid _root = new();
     private ListView _conversationList = new();
     private TextBox _conversationSearch = new();
@@ -44,9 +47,14 @@ public sealed partial class ChatWindow : Window
     private Border _statusBar = new();
     private TextBlock _statusText = new();
     private TextBlock? _streamingText;
+    private ChatVisualFixture? _visualFixtureData = null;
+    private int _conversationSelectionVersion;
+    private int _notificationRefreshQueued;
+    private bool _suppressConversationSelection;
 
-    public ChatWindow()
+    internal ChatWindow(bool visualFixture = false)
     {
+        _visualFixture = visualFixture;
         _applicationLauncher = new WindowsAiApplicationLauncher();
         _controller = AiChatCompositionRoot.CreateSession();
         _messageView = new ChatMessageView(L, _clipboard);
@@ -59,13 +67,26 @@ public sealed partial class ChatWindow : Window
         Title = L("AI_ChatAppTitle");
         BuildContent();
         ConfigureWindow();
-        _controller.NotificationAsync = HandleNotificationDispatchedAsync;
+        if (!_visualFixture)
+        {
+            _controller.NotificationAsync = HandleNotificationDispatchedAsync;
+        }
         Closed += async (_, _) =>
         {
-            _controller.NotificationAsync = null;
+            if (!_visualFixture)
+            {
+                _controller.NotificationAsync = null;
+            }
             await _controller.DisposeAsync();
         };
-        _ = InitializeAsync();
+        if (_visualFixture)
+        {
+            InitializeVisualFixture();
+        }
+        else
+        {
+            _ = InitializeAsync();
+        }
     }
 
     private async void RenameConversationMenuItem_Click(object sender, RoutedEventArgs e)
@@ -92,6 +113,7 @@ public sealed partial class ChatWindow : Window
 
     private async Task RegenerateAsync()
     {
+        if (_visualFixture) return;
         if (_controller.State.CurrentConversationId is null ||
             _credentialBox.SelectedItem is not AiCredential credential ||
             _modelBox.SelectedItem is not AiModelProfile model)
@@ -106,6 +128,7 @@ public sealed partial class ChatWindow : Window
         }
 
         _controller.BeginGeneration();
+        HideChatEmptyState();
         var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
         _streamingText = assistant.Tag as TextBlock;
         _messagePanel.Children.Add(assistant);
@@ -119,15 +142,18 @@ public sealed partial class ChatWindow : Window
                 ConfirmConsentAsync);
             if (!execution.Executed)
             {
-                SetGenerating(false);
+                StopGenerationAfterLocalFailure();
                 return;
             }
             var result = execution.Value!;
-            _controller.AcceptInvocation(result);
+            if (_controller.AcceptInvocation(result))
+            {
+                await RefreshAndRenderCurrentConversationAsync();
+            }
         }
         catch (Exception exception)
         {
-            SetGenerating(false);
+            StopGenerationAfterLocalFailure();
             ShowError(exception);
         }
     }
@@ -142,6 +168,10 @@ public sealed partial class ChatWindow : Window
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
         appWindow.Resize(new SizeInt32(1600, 900));
+        if (_visualFixture)
+        {
+            appWindow.Move(new PointInt32(0, 0));
+        }
         if (TitleBarDragRegion is not null)
         {
             ExtendsContentIntoTitleBar = true;
@@ -182,12 +212,14 @@ public sealed partial class ChatWindow : Window
         _regenerateButton = RegenerateButton;
         _statusBar = StatusBorder;
         _statusText = StatusTextBlock;
+        _root.Loaded += (_, _) => UpdateToolbarLayout(_root.ActualWidth);
+        _root.SizeChanged += (_, args) => UpdateToolbarLayout(args.NewSize.Width);
 
         NewChatButton.Content = L("AI_NewChat");
         ConversationSearchBox.PlaceholderText = L("AI_SearchConversations");
         InputTextBox.PlaceholderText = L("AI_InputPlaceholder");
         _conversationSearch.TextChanged += (_, _) => FilterConversations();
-        _conversationList.SelectionChanged += async (_, _) => await SelectConversationAsync();
+        _conversationList.SelectionChanged += async (_, args) => await SelectConversationAsync(args);
         _credentialBox.SelectionChanged += (_, _) => RefreshChatModels();
         NewChatButton.Click += (_, _) => StartNewConversation();
         OpenConfigButton.Click += (_, _) =>
@@ -198,7 +230,38 @@ public sealed partial class ChatWindow : Window
         _regenerateButton.Click += async (_, _) => await RegenerateAsync();
         _stopButton.Click += async (_, _) => await StopAsync();
         _sendButton.Click += async (_, _) => await SendAsync();
+        ChatEmptyStateConfigButton.Click += (_, _) => OpenConfigurationForEmptyState();
         CloseStatusButton.Click += (_, _) => _statusBar.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateToolbarLayout(double windowWidth)
+    {
+        var isWide = windowWidth >= 1540;
+        var isCompact = !isWide && windowWidth >= 1180;
+        var unit = GridUnitType.Pixel;
+
+        CredentialLabelColumn.Width = new GridLength(isCompact || isWide ? 42 : 0, unit);
+        CredentialColumn.Width = isCompact || isWide
+            ? new GridLength(isWide ? 236 : 168, unit)
+            : new GridLength(1, GridUnitType.Star);
+        LinkColumn.Width = new GridLength(isCompact || isWide ? (isWide ? 32 : 28) : 0, unit);
+        ModelLabelColumn.Width = new GridLength(isCompact || isWide ? 42 : 0, unit);
+        ModelColumn.Width = isCompact || isWide
+            ? new GridLength(isWide ? 202 : 160, unit)
+            : new GridLength(1, GridUnitType.Star);
+        ToolbarSpacerColumn.Width = isCompact || isWide
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0, unit);
+        OpenConfigColumn.Width = new GridLength(isWide ? 230 : isCompact ? 172 : 48, unit);
+        PrivacyColumn.Width = new GridLength(isWide ? 200 : 0, unit);
+
+        var showLabels = isCompact || isWide;
+        CredentialLabel.Visibility = showLabels ? Visibility.Visible : Visibility.Collapsed;
+        CredentialLinkIcon.Visibility = showLabels ? Visibility.Visible : Visibility.Collapsed;
+        ModelLabel.Visibility = showLabels ? Visibility.Visible : Visibility.Collapsed;
+        OpenConfigText.Visibility = showLabels ? Visibility.Visible : Visibility.Collapsed;
+        OpenConfigExternalIcon.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
+        PrivacyNotice.Visibility = isWide ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task InitializeAsync()
@@ -210,6 +273,7 @@ public sealed partial class ChatWindow : Window
         }
         catch (Exception exception)
         {
+            ShowChatEmptyState();
             ShowError(exception);
         }
     }
@@ -220,10 +284,7 @@ public sealed partial class ChatWindow : Window
         FilterConversations();
         _credentialBox.ItemsSource = _controller.State.Credentials.Where(item => item.Enabled).ToList();
         await ApplyBindingAsync();
-        if (_controller.State.Conversations.Length == 0)
-        {
-            ShowChatEmptyState();
-        }
+        ShowChatEmptyState();
     }
 
     private void ShowChatEmptyState()
@@ -231,56 +292,41 @@ public sealed partial class ChatWindow : Window
         var hasCredential = _controller.State.Credentials.Any(item => item.Enabled);
         var hasModel = _controller.State.Models.Any(item => item.Enabled &&
             _controller.State.Credentials.Any(credential => credential.Enabled && credential.Id == item.CredentialId));
-        var title = hasCredential && hasModel ? L("AI_ChatWelcome") : L("AI_ConfigurationRequired");
-        var description = !hasCredential
-            ? L("AI_AddCredentialGuide")
-            : !hasModel ? L("AI_AddModelGuide") : L("AI_ChatWelcomeDescription");
-        var stack = new StackPanel
+        var state = ChatConversationGrouping.EmptyState(hasCredential, hasModel);
+        var title = state == AiChatEmptyStateKind.Welcome ? L("AI_ChatWelcome") : L("AI_ConfigurationRequired");
+        var description = state switch
         {
-            Spacing = 10,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            MaxWidth = 520
+            AiChatEmptyStateKind.ConfigurationRequired => L("AI_AddCredentialGuide"),
+            AiChatEmptyStateKind.ModelRequired => L("AI_AddModelGuide"),
+            _ => L("AI_ChatWelcomeDescription")
         };
-        stack.Children.Add(new FontIcon { Glyph = "\uE950", FontSize = 36 });
-        stack.Children.Add(new TextBlock
+        ChatEmptyStateTitle.Text = title;
+        ChatEmptyStateDescription.Text = description;
+        ChatEmptyStateConfigButton.Visibility = state is AiChatEmptyStateKind.ConfigurationRequired or AiChatEmptyStateKind.ModelRequired
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ChatEmptyStateConfigButton.Tag = state == AiChatEmptyStateKind.ModelRequired ? "models" : "credentials";
+        MessageScrollViewer.Visibility = Visibility.Collapsed;
+        ChatEmptyState.Visibility = Visibility.Visible;
+    }
+
+    private void HideChatEmptyState()
+    {
+        ChatEmptyState.Visibility = Visibility.Collapsed;
+        MessageScrollViewer.Visibility = Visibility.Visible;
+    }
+
+    private void OpenConfigurationForEmptyState()
+    {
+        if (_visualFixture) return;
+        try
         {
-            Text = title,
-            FontSize = 22,
-            FontWeight = FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = description,
-            TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            Foreground = Brush("TextFillColorSecondaryBrush", Colors.Gray)
-        });
-        if (!hasCredential || !hasModel)
-        {
-            var configure = new Button
-            {
-                Content = L("AI_OpenConfigApp"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Padding = new Thickness(16, 9, 16, 9)
-            };
-            var page = hasCredential ? "models" : "credentials";
-            configure.Click += (_, _) =>
-            {
-                try { _applicationLauncher.Launch(AiApplication.Config, $"--page={page}"); }
-                catch (Exception exception) { ShowError(exception); }
-            };
-            stack.Children.Add(configure);
+            _applicationLauncher.Launch(AiApplication.Config, $"--page={ChatEmptyStateConfigButton.Tag as string ?? "credentials"}");
         }
-        _messagePanel.Children.Add(new Border
+        catch (Exception exception)
         {
-            Margin = new Thickness(0, 150, 0, 0),
-            Padding = new Thickness(28),
-            CornerRadius = new CornerRadius(12),
-            Background = Brush("CardBackgroundFillColorDefaultBrush", ColorHelper.FromArgb(255, 248, 250, 252)),
-            Child = stack
-        });
+            ShowError(exception);
+        }
     }
 
     private async Task ApplyBindingAsync()
@@ -311,22 +357,32 @@ public sealed partial class ChatWindow : Window
 
     private void StartNewConversation()
     {
+        if (_visualFixture) return;
+        _conversationSelectionVersion++;
         _controller.StartNewConversation();
         _conversationList.SelectedItem = null;
         _messagePanel.Children.Clear();
+        ShowChatEmptyState();
         _inputBox.Focus(FocusState.Programmatic);
     }
 
-    private async Task SelectConversationAsync()
+    private async Task SelectConversationAsync(SelectionChangedEventArgs args)
     {
-        if (_conversationList.SelectedItem is not AiConversationSummary selected)
+        if (_visualFixture || _suppressConversationSelection) return;
+        var selected = args.AddedItems.OfType<AiConversationSummary>().LastOrDefault();
+        if (selected is null)
         {
             return;
         }
 
+        var selectionVersion = ++_conversationSelectionVersion;
         try
         {
             var conversation = await _controller.GetConversationAsync(selected.Id);
+            if (selectionVersion != _conversationSelectionVersion)
+            {
+                return;
+            }
             _controller.SelectConversation(conversation.Id);
             RenderMessages(conversation.Messages);
         }
@@ -338,9 +394,14 @@ public sealed partial class ChatWindow : Window
 
     private void RenderMessages(IEnumerable<AiChatMessage> messages)
     {
-        ChatEmptyState.Visibility = Visibility.Collapsed;
         _messagePanel.Children.Clear();
         var timeline = messages.ToList();
+        if (timeline.Count == 0)
+        {
+            ShowChatEmptyState();
+            return;
+        }
+        HideChatEmptyState();
         var renderedVariants = new HashSet<string>(StringComparer.Ordinal);
         foreach (var message in timeline)
         {
@@ -359,11 +420,15 @@ public sealed partial class ChatWindow : Window
             }
             _messagePanel.Children.Add(_messageView.Bubble(message));
         }
+        _regenerateButton.Visibility = timeline.Any(item => item.Role == "assistant")
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ScrollToEnd();
     }
 
     private async Task SendAsync()
     {
+        if (_visualFixture) return;
         if (string.IsNullOrWhiteSpace(_inputBox.Text) ||
             _credentialBox.SelectedItem is not AiCredential credential ||
             _modelBox.SelectedItem is not AiModelProfile model)
@@ -378,7 +443,7 @@ public sealed partial class ChatWindow : Window
             return;
         }
         _inputBox.Text = string.Empty;
-        ChatEmptyState.Visibility = Visibility.Collapsed;
+        HideChatEmptyState();
         _messagePanel.Children.Add(_messageView.Bubble("user", text, null));
         _controller.BeginGeneration();
         var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
@@ -396,21 +461,25 @@ public sealed partial class ChatWindow : Window
                 ConfirmConsentAsync);
             if (!execution.Executed)
             {
-                SetGenerating(false);
+                StopGenerationAfterLocalFailure();
                 return;
             }
             var result = execution.Value!;
-            _controller.AcceptInvocation(result);
+            if (_controller.AcceptInvocation(result))
+            {
+                await RefreshAndRenderCurrentConversationAsync();
+            }
         }
         catch (Exception exception)
         {
-            SetGenerating(false);
+            StopGenerationAfterLocalFailure();
             ShowError(exception);
         }
     }
 
     private async Task StopAsync()
     {
+        if (_visualFixture) return;
         if (_controller.State.ActiveInvocationId is null)
         {
             return;
@@ -448,30 +517,32 @@ public sealed partial class ChatWindow : Window
                         ScrollToEnd();
                     }
                     break;
+                case AiProtocolNotifications.ChatStarted:
+                    var started = args.Parameters.Deserialize<AiChatStarted>();
+                    if (started is not null && _sendButton.IsEnabled == false)
+                    {
+                        _controller.AdoptInvocation(started);
+                    }
+                    break;
                 case AiProtocolNotifications.ChatCompleted:
                 case AiProtocolNotifications.ChatCancelled:
                 case AiProtocolNotifications.ChatFailed:
                     var finished = args.Parameters.Deserialize<AiChatFinished>();
-                    if (finished is not null && finished.InvocationId == _controller.State.ActiveInvocationId)
+                    if (finished is not null && _controller.FinishInvocation(finished.InvocationId))
                     {
                         SetGenerating(false);
                         if (args.Method == AiProtocolNotifications.ChatFailed)
                         {
                             _statusPresenter.ShowMessage(_statusPresenter.ErrorText(finished.ErrorCode), ChatMessageSeverity.Error);
                         }
-                        await RefreshConversationsAsync();
-                        if (_controller.State.CurrentConversationId is not null)
-                        {
-                            var conversation = await _controller.GetConversationAsync(_controller.State.CurrentConversationId);
-                            RenderMessages(conversation.Messages);
-                        }
+                        QueueNotificationRefresh();
                     }
                     break;
             }
         }
         catch (Exception exception)
         {
-            SetGenerating(false);
+            StopGenerationAfterLocalFailure();
             ShowError(exception);
         }
     }
@@ -482,14 +553,71 @@ public sealed partial class ChatWindow : Window
         FilterConversations();
     }
 
+    private async Task RefreshAndRenderCurrentConversationAsync()
+    {
+        await RefreshConversationsAsync();
+        if (_controller.State.CurrentConversationId is not null)
+        {
+            var conversation = await _controller.GetConversationAsync(_controller.State.CurrentConversationId);
+            RenderMessages(conversation.Messages);
+        }
+    }
+
+    private void QueueNotificationRefresh()
+    {
+        if (Interlocked.Exchange(ref _notificationRefreshQueued, 1) != 0)
+        {
+            return;
+        }
+
+        _ = RefreshAfterNotificationAsync();
+    }
+
+    private async Task RefreshAfterNotificationAsync()
+    {
+        try
+        {
+            await Task.Yield();
+            await RefreshAndRenderCurrentConversationAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _notificationRefreshQueued, 0);
+        }
+    }
+
     private void FilterConversations()
     {
         var query = _conversationSearch.Text.Trim();
-        _conversationList.ItemsSource = string.IsNullOrEmpty(query)
-            ? _controller.State.Conversations.ToList()
-            : _controller.State.Conversations
-                .Where(item => item.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase))
-                .ToList();
+        var conversations = _visualFixtureData?.Conversations ?? _controller.State.Conversations;
+        var filtered = string.IsNullOrEmpty(query)
+            ? conversations
+            : conversations.Where(item => item.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+        var selectedId = (_conversationList.SelectedItem as AiConversationSummary)?.Id ?? _controller.State.CurrentConversationId;
+        var grouped = ChatConversationGrouping.Group(
+            filtered,
+            DateTimeOffset.Now,
+            L("AI_Today"),
+            L("AI_Yesterday"),
+            CultureInfo.CurrentCulture);
+        var selected = selectedId is null
+            ? null
+            : grouped.SelectMany(group => group).FirstOrDefault(item => item.Id == selectedId);
+        _suppressConversationSelection = true;
+        try
+        {
+            _conversationGroups.Source = grouped;
+            _conversationList.ItemsSource = _conversationGroups.View;
+            _conversationList.SelectedItem = selected;
+        }
+        finally
+        {
+            _suppressConversationSelection = false;
+        }
     }
 
     private void SetGenerating(bool generating)
@@ -497,11 +625,22 @@ public sealed partial class ChatWindow : Window
         _sendButton.IsEnabled = !generating;
         _regenerateButton.IsEnabled = !generating;
         _stopButton.IsEnabled = generating;
+        _regenerateButton.Visibility = generating || _controller.State.CurrentConversationId is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         if (!generating)
         {
-            _controller.CompleteInvocation();
             _streamingText = null;
         }
+    }
+
+    private void StopGenerationAfterLocalFailure()
+    {
+        if (_controller.State.IsGenerating)
+        {
+            _controller.CompleteInvocation();
+        }
+        SetGenerating(false);
     }
 
     private void ScrollToEnd()
@@ -512,11 +651,22 @@ public sealed partial class ChatWindow : Window
 
     private void ShowError(Exception exception) => _statusPresenter.ShowError(exception);
 
-
-    private static SolidColorBrush Brush(string key, Color fallback)
+    private void InitializeVisualFixture()
     {
-        _ = key;
-        return new SolidColorBrush(fallback);
+#if DEBUG
+        _visualFixtureData = ChatVisualFixture.Create();
+        _credentialBox.ItemsSource = new[] { _visualFixtureData.Credential };
+        _credentialBox.SelectedItem = _visualFixtureData.Credential;
+        _modelBox.ItemsSource = new[] { _visualFixtureData.Model };
+        _modelBox.SelectedItem = _visualFixtureData.Model;
+        FilterConversations();
+        _conversationList.SelectedItem = _visualFixtureData.Conversations[0];
+        RenderMessages(_visualFixtureData.Messages);
+        _regenerateButton.Visibility = Visibility.Collapsed;
+        _stopButton.IsEnabled = true;
+#else
+        throw new InvalidOperationException("The visual fixture is available only in Debug builds.");
+#endif
     }
 
 }

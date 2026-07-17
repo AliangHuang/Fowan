@@ -187,7 +187,7 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
         var path = ResolveCorePath();
         if (path is null)
         {
-            throw new AiCoreException("provider_unavailable", "fowan-core.exe was not found.");
+            throw new AiCoreException("provider_unavailable", $"{AiCoreEndpointResolver.ExecutableName} was not found.");
         }
 
         _processLauncher.Start(path);

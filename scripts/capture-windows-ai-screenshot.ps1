@@ -5,35 +5,46 @@ param(
     [string]$Configuration = "Debug",
     [ValidateSet("credentials", "models", "bindings")]
     [string]$Page = "credentials",
-    [string]$OutputPath
+    [string]$OutputPath,
+    [switch]$VisualFixture,
+    [string]$ExecutablePath
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outputConfiguration = $Configuration.ToLowerInvariant()
-$processName = if ($Tool -eq "chat") { "Fowan.Ai.Chat.Windows" } else { "Fowan.Ai.Config.Windows" }
+$processName = if ($Tool -eq "chat") { "Fowan.Ai.Chat.Windows.Dev" } else { "Fowan.Ai.Config.Windows.Dev" }
 $executable = if ($Tool -eq "chat") {
-    Join-Path $repoRoot "out/windows-ai-chat/$outputConfiguration/Fowan.Ai.Chat.Windows.exe"
+    Join-Path $repoRoot "build/windows/win-x64/app/Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe"
 } else {
-    Join-Path $repoRoot "out/windows-ai-config/$outputConfiguration/Fowan.Ai.Config.Windows.exe"
+    Join-Path $repoRoot "build/windows/win-x64/app/Tools/AI/Config/Fowan.Ai.Config.Windows.Dev.exe"
 }
 $OutputPath = if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    Join-Path $repoRoot "out/screenshots/fowan-ai-$Tool.png"
+    Join-Path $repoRoot "build/test/screenshots/fowan-ai-$Tool.png"
 } else {
     [System.IO.Path]::GetFullPath($OutputPath)
 }
+$executable = if ([string]::IsNullOrWhiteSpace($ExecutablePath)) { $executable } else { [System.IO.Path]::GetFullPath($ExecutablePath) }
 
-Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-Process -Name "fowan-core" -ErrorAction SilentlyContinue | Stop-Process -Force
+if ($VisualFixture -and $Configuration -ne "Debug") {
+    throw "The AI visual fixture is available only in Debug builds."
+}
+
+if (-not $VisualFixture) {
+    Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force
+}
+if (-not $VisualFixture) {
+    Get-Process -Name "fowan-core.Dev" -ErrorAction SilentlyContinue | Stop-Process -Force
+}
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out-Null
+$windowsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+$drawingAssembly = Get-ChildItem (Join-Path $windowsDirectory "Microsoft.NET\assembly\GAC_MSIL\System.Drawing") -Recurse -Filter "System.Drawing.dll" |
+    Select-Object -First 1 -ExpandProperty FullName
 $qaRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("FowanAiVisualQa-" + [Guid]::NewGuid().ToString("N"))
 $qaLocalAppData = Join-Path $qaRoot "LocalAppData"
 New-Item -ItemType Directory -Force -Path $qaLocalAppData | Out-Null
 $previousLocalAppData = $env:LOCALAPPDATA
 $env:LOCALAPPDATA = $qaLocalAppData
 
-$drawingAssembly = Get-ChildItem "$env:WINDIR\Microsoft.NET\assembly\GAC_MSIL\System.Drawing" -Recurse -Filter "System.Drawing.dll" |
-    Select-Object -First 1 -ExpandProperty FullName
 Add-Type -ReferencedAssemblies $drawingAssembly @'
 using System;
 using System.Drawing;
@@ -48,7 +59,6 @@ public static class FowanAiWindowCapture
     public static void Save(IntPtr handle, string path)
     {
         SetForegroundWindow(handle);
-        System.Threading.Thread.Sleep(400);
         Rect rect;
         if (!GetWindowRect(handle, out rect)) throw new InvalidOperationException("Unable to read AI window bounds.");
         var width = rect.Right - rect.Left;
@@ -64,16 +74,19 @@ public static class FowanAiWindowCapture
 '@
 
 if ($Tool -eq "config") {
-    Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -ArgumentList "--page=$Page"
+    $startedProcess = Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -ArgumentList "--page=$Page" -PassThru
 } else {
-    Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable)
+    $arguments = if ($VisualFixture) { "--visual-fixture" } else { $null }
+    $startedProcess = Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -ArgumentList $arguments -PassThru
 }
 Start-Sleep -Seconds 4
-$process = Get-Process -Name $processName -ErrorAction Stop | Select-Object -First 1
+$process = if ($VisualFixture) { Get-Process -Id $startedProcess.Id -ErrorAction Stop } else { Get-Process -Name $processName -ErrorAction Stop | Select-Object -First 1 }
 if ($process.MainWindowHandle -eq 0) { throw "$processName did not create a top-level window." }
 [FowanAiWindowCapture]::Save($process.MainWindowHandle, $OutputPath)
-Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-Process -Name "fowan-core" -ErrorAction SilentlyContinue | Stop-Process -Force
+if ($VisualFixture) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } else { Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force }
+if (-not $VisualFixture) {
+    Get-Process -Name "fowan-core.Dev" -ErrorAction SilentlyContinue | Stop-Process -Force
+}
 $env:LOCALAPPDATA = $previousLocalAppData
 Remove-Item -LiteralPath $qaRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "AI screenshot: $OutputPath"

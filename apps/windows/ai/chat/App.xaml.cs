@@ -4,12 +4,17 @@ namespace Fowan.Ai.Chat.Windows;
 
 public partial class App : Application
 {
-    private const string MutexName = @"Local\Fowan.Ai.Chat.Windows.SingleInstance";
-    private const string ActivationEventName = @"Local\Fowan.Ai.Chat.Windows.Activate";
+    private const string MainMutexName = @"Local\Fowan.Ai.Chat.Windows.SingleInstance";
+    private const string MainActivationEventName = @"Local\Fowan.Ai.Chat.Windows.Activate";
+    private const string VisualFixtureMutexName = @"Local\Fowan.Ai.Chat.Windows.VisualFixture";
+    private const string VisualFixtureActivationEventName = @"Local\Fowan.Ai.Chat.Windows.VisualFixture.Activate";
     private Mutex? _mutex;
     private EventWaitHandle? _activationEvent;
     private CancellationTokenSource? _listenerCts;
     private Window? _window;
+    private readonly bool _visualFixtureRequested = IsVisualFixtureRequested(Environment.GetCommandLineArgs());
+    private string InstanceMutexName => _visualFixtureRequested ? VisualFixtureMutexName : MainMutexName;
+    private string InstanceActivationEventName => _visualFixtureRequested ? VisualFixtureActivationEventName : MainActivationEventName;
 
     public App()
     {
@@ -31,7 +36,7 @@ public partial class App : Application
     {
         if (!AcquireSingleInstance())
         {
-            SignalExistingInstance();
+            SignalExistingInstance(InstanceActivationEventName);
             Exit();
             return;
         }
@@ -39,7 +44,7 @@ public partial class App : Application
         ChatWindow window;
         try
         {
-            window = new ChatWindow();
+            window = new ChatWindow(_visualFixtureRequested);
         }
         catch (Exception exception)
         {
@@ -52,8 +57,20 @@ public partial class App : Application
         WriteStartupTrace("ChatWindow activated");
     }
 
+    private static bool IsVisualFixtureRequested(IEnumerable<string> arguments)
+    {
+#if DEBUG
+        return arguments
+            .Any(argument => string.Equals(argument, "--visual-fixture", StringComparison.Ordinal));
+#else
+        _ = arguments;
+        return false;
+#endif
+    }
+
     private static void WriteStartupTrace(string message)
     {
+        if (IsVisualFixtureRequested(Environment.GetCommandLineArgs())) return;
         try
         {
             var directory = Path.Combine(
@@ -72,7 +89,7 @@ public partial class App : Application
 
     private bool AcquireSingleInstance()
     {
-        var mutex = new Mutex(false, MutexName);
+        var mutex = new Mutex(false, InstanceMutexName);
         try
         {
             if (!mutex.WaitOne(0))
@@ -85,17 +102,17 @@ public partial class App : Application
         {
         }
         _mutex = mutex;
-        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
+        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceActivationEventName);
         return true;
     }
 
-    private static void SignalExistingInstance()
+    private static void SignalExistingInstance(string activationEventName)
     {
         for (var attempt = 0; attempt < 20; attempt++)
         {
             try
             {
-                using var activation = EventWaitHandle.OpenExisting(ActivationEventName);
+                using var activation = EventWaitHandle.OpenExisting(activationEventName);
                 activation.Set();
                 return;
             }

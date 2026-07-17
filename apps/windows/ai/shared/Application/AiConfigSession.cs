@@ -44,6 +44,9 @@ public sealed class AiConfigSession(IAiCoreApi api, AiConsentCoordinator consent
 
     public AiConfigSnapshot State => new(_channels, _credentials, _models, _presets);
 
+    public bool HasEnabledModelForCredential(string credentialId) =>
+        _models.Any(model => model.CredentialId == credentialId && model.Enabled);
+
     public Task ConnectAsync(CancellationToken cancellationToken = default) =>
         OwnedClient().ConnectAsync(["ai.config.v1"], cancellationToken);
 

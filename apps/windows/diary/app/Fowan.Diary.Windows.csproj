@@ -4,7 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Diary.Windows</RootNamespace>
-    <AssemblyName>Fowan.Diary.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Diary.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Diary.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

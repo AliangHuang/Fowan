@@ -1,8 +1,8 @@
 # .NET / WinUI build outputs
 bin/
 obj/
-out/
-artifacts/
+build/
+publish/
 
 # User-local IDE and tooling state
 .vs/

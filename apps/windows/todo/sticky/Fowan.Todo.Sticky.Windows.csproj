@@ -3,7 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <RootNamespace>Fowan.Todo.Sticky.Windows</RootNamespace>
-    <AssemblyName>Fowan.Todo.Sticky.Windows</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Todo.Sticky.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Todo.Sticky.Windows</AssemblyName>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>..\app\Assets\fowan-todo.ico</ApplicationIcon>
   </PropertyGroup>

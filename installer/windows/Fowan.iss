@@ -9,19 +9,19 @@
 #endif
 
 #ifndef SourceDir
-#define SourceDir "..\..\out\installer\windows\win-x64\app"
+#error "SourceDir must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef OutputDir
-#define OutputDir "..\..\out\installer\windows\win-x64"
+#error "OutputDir must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef VcRedistPath
-#define VcRedistPath "..\..\out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe"
+#error "VcRedistPath must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef ReleaseNotesPath
-#define ReleaseNotesPath "..\..\out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt"
+#error "ReleaseNotesPath must be supplied by scripts\package-windows.ps1"
 #endif
 
 [Setup]

@@ -37,4 +37,6 @@ Use the short-path output helpers from the repository root:
 .\scripts\run-windows.ps1 -Configuration Debug
 ```
 
-The executable is published to `out/windows/debug/Fowan.Windows.exe`.
+The development executable is written to
+`build/windows/win-x64/app/Fowan.Windows.Dev.exe`. Release packages retain the
+production name `Fowan.Windows.exe`.

@@ -45,8 +45,8 @@ internal sealed class ToolLaunchCoordinator(
         {
             "todo" => Launch(ToolExecutableResolver.ResolveTodo(), "Tool_Todo"),
             "diary" => Launch(ToolExecutableResolver.ResolveDiary(), "Tool_Diary"),
-            "ai-chat" => Launch(ToolExecutableResolver.ResolveAi("Fowan.Ai.Chat.Windows.exe", "windows-ai-chat", "Chat"), "Tool_AIChat"),
-            "ai-config" => Launch(ToolExecutableResolver.ResolveAi("Fowan.Ai.Config.Windows.exe", "windows-ai-config", "Config"), "Tool_AIConfig"),
+            "ai-chat" => Launch(ToolExecutableResolver.ResolveAi(ToolExecutableResolver.AiChatExecutableName, "Chat"), "Tool_AIChat"),
+            "ai-config" => Launch(ToolExecutableResolver.ResolveAi(ToolExecutableResolver.AiConfigExecutableName, "Config"), "Tool_AIConfig"),
             _ => false
         };
         switch (tool.Id)

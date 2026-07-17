@@ -11,10 +11,12 @@ public interface IAiChatCommands
     void StartNewConversation();
     void SelectConversation(string conversationId);
     void BeginGeneration();
-    void AcceptInvocation(AiChatStarted started);
+    bool AcceptInvocation(AiChatStarted started);
     void AdoptInvocation(string invocationId);
+    void AdoptInvocation(AiChatStarted started);
     string AppendDelta(string delta);
     void CompleteInvocation();
+    bool FinishInvocation(string invocationId);
     Task CancelAsync(string invocationId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AiBinding>> ListBindingsAsync(CancellationToken cancellationToken = default);
     Task<AiConversation> GetConversationAsync(string id, CancellationToken cancellationToken = default);
@@ -49,6 +51,7 @@ public sealed class AiChatSession(IAiCoreApi api, AiConsentCoordinator consent) 
     public string? ActiveInvocationId { get; private set; }
     public string StreamingContent { get; private set; } = string.Empty;
     public bool IsGenerating { get; private set; }
+    private string? CompletedInvocationId { get; set; }
 
     public event EventHandler<AiChatSnapshot>? StateChanged;
 
@@ -110,22 +113,45 @@ public sealed class AiChatSession(IAiCoreApi api, AiConsentCoordinator consent) 
     {
         StreamingContent = string.Empty;
         ActiveInvocationId = null;
+        CompletedInvocationId = null;
         IsGenerating = true;
         Publish();
     }
 
-    public void AcceptInvocation(AiChatStarted started)
+    public bool AcceptInvocation(AiChatStarted started)
     {
-        ActiveInvocationId = started.InvocationId;
         CurrentConversationId = started.ConversationId;
-        IsGenerating = true;
+        var completedBeforeResponse = string.Equals(CompletedInvocationId, started.InvocationId, StringComparison.Ordinal);
+        if (completedBeforeResponse)
+        {
+            ActiveInvocationId = null;
+            StreamingContent = string.Empty;
+            IsGenerating = false;
+        }
+        else
+        {
+            ActiveInvocationId = started.InvocationId;
+            IsGenerating = true;
+        }
         Publish();
+        return completedBeforeResponse;
     }
 
     public void AdoptInvocation(string invocationId)
     {
+        if (string.Equals(CompletedInvocationId, invocationId, StringComparison.Ordinal))
+        {
+            return;
+        }
         ActiveInvocationId ??= invocationId;
         Publish();
+    }
+
+    public void AdoptInvocation(AiChatStarted started)
+    {
+        ArgumentNullException.ThrowIfNull(started);
+        CurrentConversationId = started.ConversationId;
+        AdoptInvocation(started.InvocationId);
     }
 
     public string AppendDelta(string delta)
@@ -140,7 +166,24 @@ public sealed class AiChatSession(IAiCoreApi api, AiConsentCoordinator consent) 
         ActiveInvocationId = null;
         StreamingContent = string.Empty;
         IsGenerating = false;
+        CompletedInvocationId = null;
         Publish();
+    }
+
+    public bool FinishInvocation(string invocationId)
+    {
+        if (!IsGenerating || (ActiveInvocationId is not null &&
+            !string.Equals(ActiveInvocationId, invocationId, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        ActiveInvocationId = null;
+        StreamingContent = string.Empty;
+        IsGenerating = false;
+        CompletedInvocationId = invocationId;
+        Publish();
+        return true;
     }
 
     private void Publish() => StateChanged?.Invoke(this, State);

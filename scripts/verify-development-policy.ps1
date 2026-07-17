@@ -198,7 +198,7 @@ foreach ($component in $manifest.components) {
             }
         }
     }
-    Get-ChildItem -LiteralPath $fullPath -Directory | Where-Object { $_.Name -notin @('bin', 'obj', 'artifacts', 'out') } | ForEach-Object {
+    Get-ChildItem -LiteralPath $fullPath -Directory | Where-Object { $_.Name -notin @('bin', 'obj', 'build', 'publish') } | ForEach-Object {
         if (-not $registeredModules.ContainsKey($_.Name)) { throw "Unregistered top-level module: $relative/$($_.Name)" }
     }
 }
@@ -242,7 +242,7 @@ foreach ($baselineDependency in $baselineDependencies.Keys) {
     }
 }
 Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.csproj | Where-Object {
-    $_.FullName -notmatch '[\\/](?:artifacts|out|obj|bin)[\\/]'
+    $_.FullName -notmatch '[\\/](?:build|publish|obj|bin)[\\/]'
 } | ForEach-Object {
     [xml]$project = Get-Content -Raw -LiteralPath $_.FullName
     foreach ($reference in @($project.Project.ItemGroup.PackageReference)) {
