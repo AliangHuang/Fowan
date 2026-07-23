@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.2.0"
+#define AppVersion "0.2.1"
 #endif
 
 #ifndef SourceDir
@@ -18,6 +18,14 @@
 
 #ifndef VcRedistPath
 #error "VcRedistPath must be supplied by scripts\package-windows.ps1"
+#endif
+
+#ifndef DotNetDesktopRuntimePath
+#error "DotNetDesktopRuntimePath must be supplied by scripts\package-windows.ps1"
+#endif
+
+#ifndef WindowsAppRuntimeInstallerPath
+#error "WindowsAppRuntimeInstallerPath must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef ReleaseNotesPath
@@ -58,6 +66,8 @@ Name: "autostart"; Description: "登录 Windows 时自动启动 Fowan"; GroupDes
 Source: "close-fowan-processes.ps1"; Flags: dontcopy noencryption
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "uninstall-clean-fowan-data.ps1"; DestDir: "{app}\Installer"; Flags: ignoreversion
+Source: "{#DotNetDesktopRuntimePath}"; DestDir: "{tmp}"; DestName: "windowsdesktop-runtime-8-x64.exe"; Flags: deleteafterinstall
+Source: "{#WindowsAppRuntimeInstallerPath}"; DestDir: "{tmp}"; DestName: "WindowsAppRuntimeInstall-x64.exe"; Flags: deleteafterinstall
 Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
 Source: "{#ReleaseNotesPath}"; Flags: dontcopy
 
@@ -407,6 +417,76 @@ begin
   end;
 end;
 
+function HasDotNetDesktopRuntime8(): Boolean;
+var
+  FindRec: TFindRec;
+begin
+  Result := FindFirst(
+    ExpandConstant('{pf}\dotnet\shared\Microsoft.WindowsDesktop.App\8.0.*'),
+    FindRec);
+  if Result then
+  begin
+    FindClose(FindRec);
+  end;
+end;
+
+procedure InstallDotNetDesktopRuntimeIfNeeded();
+var
+  ResultCode: Integer;
+begin
+  if HasDotNetDesktopRuntime8() then
+  begin
+    exit;
+  end;
+
+  WizardForm.StatusLabel.Caption := '正在安装 .NET 8 Desktop Runtime...';
+  WizardForm.StatusLabel.Update;
+
+  if not Exec(
+    ExpandConstant('{tmp}\windowsdesktop-runtime-8-x64.exe'),
+    '/install /quiet /norestart',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    MsgBox('.NET 8 Desktop Runtime 无法启动。Fowan 无法继续安装。', mbError, MB_OK);
+    Abort;
+  end;
+
+  if (ResultCode <> 0) and (ResultCode <> 3010) then
+  begin
+    MsgBox('.NET 8 Desktop Runtime 安装失败，退出码：' + IntToStr(ResultCode) + '。', mbError, MB_OK);
+    Abort;
+  end;
+end;
+
+procedure InstallWindowsAppRuntime();
+var
+  ResultCode: Integer;
+begin
+  WizardForm.StatusLabel.Caption := '正在安装 Windows App Runtime...';
+  WizardForm.StatusLabel.Update;
+
+  if not Exec(
+    ExpandConstant('{tmp}\WindowsAppRuntimeInstall-x64.exe'),
+    '--quiet',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    MsgBox('Windows App Runtime 无法启动。Fowan 无法继续安装。', mbError, MB_OK);
+    Abort;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    MsgBox('Windows App Runtime 安装失败，退出码：' + IntToStr(ResultCode) + '。', mbError, MB_OK);
+    Abort;
+  end;
+end;
+
 procedure InstallVcRedistIfNeeded();
 var
   ResultCode: Integer;
@@ -452,6 +532,8 @@ begin
       RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Fowan');
     end;
 
+    InstallDotNetDesktopRuntimeIfNeeded();
+    InstallWindowsAppRuntime();
     InstallVcRedistIfNeeded();
   end;
 end;

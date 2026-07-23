@@ -116,8 +116,8 @@ dialog failure, and check failure all complete with an observed outcome.
 Installer creation is an explicit release-only workflow and is not run by CI:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.2.0 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
-.\scripts\package-windows.ps1 -Version 0.2.0 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
+.\scripts\package-windows.ps1 -Version 0.2.1 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.2.1 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
 The first command is a preflight only: it cleans its isolated staging directory

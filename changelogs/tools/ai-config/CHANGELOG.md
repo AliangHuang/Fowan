@@ -1,5 +1,9 @@
 # Fowan AI Configuration Changelog
 
+## 0.2.1 - 2026-07-23
+
+- AI 配置中心改用整套 Fowan 共享运行时交付，减少发布包重复依赖；密钥安全存储和模型绑定行为保持不变。
+
 ## 0.2.0 - 2026-07-23
 
 - 新增独立 `Fowan.Ai.Config.Windows.exe`，管理渠道、多个密钥、模型和 `ai.chat` 默认绑定。

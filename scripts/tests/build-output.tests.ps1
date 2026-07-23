@@ -27,8 +27,12 @@ $releaseChangelogs = @(
 )
 foreach ($relativePath in $releaseChangelogs) {
     $changelog = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "changelogs/$relativePath")
-    Assert-True ($changelog -match '(?m)^##\s+0\.2\.0(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.0: $relativePath"
+    Assert-True ($changelog -match '(?m)^##\s+0\.2\.1(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.1: $relativePath"
 }
+Assert-True ($packageScript.Contains('--self-contained false')) "release packaging must use the shared .NET Desktop Runtime"
+Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=false')) "release packaging must use the shared Windows App Runtime"
+Assert-True ($packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must include the .NET Desktop Runtime prerequisite"
+Assert-True ($packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must include the Windows App Runtime prerequisite"
 Assert-True ($stopScript.Contains('"Report"')) "stop-windows must support the Report component"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.Dev.exe')) "stop-windows must stop the development Report runtime"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.exe')) "stop-windows must stop the release Report runtime"

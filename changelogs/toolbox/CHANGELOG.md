@@ -1,5 +1,9 @@
 # Fowan 工具箱 Changelog
 
+## 0.2.1 - 2026-07-23
+
+- Windows 发布包改为共享 .NET 8 Desktop Runtime 与 Windows App Runtime，减少工具箱和随包工具重复携带的运行时文件；安装器会自动完成依赖安装。
+
 ## 0.2.0 - 2026-07-23
 
 - 新增独立汇报工具入口，并将其与 AI Chat、AI 配置中心一同纳入 Windows 发布包和发布说明。

@@ -61,7 +61,9 @@ try {
     Expand-Archive -LiteralPath $portable -DestinationPath $temporaryRoot -Force
     $portableRoot = Join-Path $temporaryRoot "Fowan-$Version-portable"
     $requiredPortablePaths = @(
-        "README.txt", "prerequisites/vc_redist.x64.exe", "app/Fowan.Windows.exe", "app/Core/fowan-core.exe",
+        "README.txt", "prerequisites/vc_redist.x64.exe", "prerequisites/windowsdesktop-runtime-8-x64.exe",
+        "prerequisites/WindowsAppRuntimeInstall-x64.exe", "prerequisites/install-fowan-prerequisites.ps1",
+        "app/Fowan.Windows.exe", "app/Core/fowan-core.exe",
         "app/Tools/Todo/Fowan.Todo.Windows.exe", "app/Tools/Todo/Fowan.Todo.Sticky.Windows.exe",
         "app/Tools/Diary/Fowan.Diary.Windows.exe", "app/Tools/AI/Chat/Fowan.Ai.Chat.Windows.exe",
         "app/Tools/AI/Config/Fowan.Ai.Config.Windows.exe", "app/ReleaseNotes/release-notes.txt"

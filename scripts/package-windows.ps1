@@ -25,6 +25,9 @@ $retentionPending = $false
 $appStage = Join-Path $installerRoot "app"
 $prereqRoot = Join-Path $installerRoot "prerequisites"
 $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
+$dotNetDesktopRuntimePath = Join-Path $prereqRoot "windowsdesktop-runtime-8-x64.exe"
+$windowsAppRuntimeInstallerPath = Join-Path $prereqRoot "WindowsAppRuntimeInstall-x64.exe"
+$portablePrerequisitesScript = Join-Path $repoRoot "installer/windows/install-fowan-prerequisites.ps1"
 $windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
@@ -37,6 +40,8 @@ $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
 $dotnet = if (Test-Path -LiteralPath $localDotnet) { $localDotnet } else { "dotnet" }
 $vcRedistUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
+$dotNetDesktopRuntimeUrl = "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe"
+$windowsAppRuntimeInstallerUrl = "https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe"
 $assemblyVersion = if ($Version.Split('.').Count -eq 3) { "$Version.0" } else { $Version }
 
 function Assert-PathInside {
@@ -67,9 +72,9 @@ function Publish-FowanProject {
     & $dotnet publish $Project `
         -c $Configuration `
         -r $RuntimeIdentifier `
-        --self-contained true `
+        --self-contained false `
         -p:WindowsPackageType=None `
-        -p:WindowsAppSDKSelfContained=true `
+        -p:WindowsAppSDKSelfContained=false `
         -p:FowanVersion=$Version `
         -p:FowanAssemblyVersion=$assemblyVersion `
         -p:PublishSingleFile=false `
@@ -270,19 +275,45 @@ function Save-Download {
     }
 }
 
-function Ensure-VcRedist {
-    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
+function Assert-MicrosoftSignature {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
 
-    if (-not (Test-Path -LiteralPath $vcRedistPath -PathType Leaf)) {
-        Write-Host "Downloading Microsoft Visual C++ Redistributable x64..."
-        Save-Download -Url $vcRedistUrl -Output $vcRedistPath
-    }
-
-    $signature = Get-AuthenticodeSignature -LiteralPath $vcRedistPath
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne "Valid" -or
         $signature.SignerCertificate.Subject -notlike "*Microsoft Corporation*") {
-        throw "Visual C++ Redistributable signature validation failed: $vcRedistPath"
+        throw "$Description signature validation failed: $Path"
     }
+}
+
+function Ensure-MicrosoftPrerequisite {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Output,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Output -PathType Leaf)) {
+        Write-Host "Downloading $Description..."
+        Save-Download -Url $Url -Output $Output
+    }
+
+    Assert-MicrosoftSignature -Path $Output -Description $Description
+}
+
+function Ensure-RuntimePrerequisites {
+    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
+
+    Ensure-MicrosoftPrerequisite -Url $vcRedistUrl -Output $vcRedistPath -Description "Microsoft Visual C++ Redistributable x64"
+    Ensure-MicrosoftPrerequisite -Url $dotNetDesktopRuntimeUrl -Output $dotNetDesktopRuntimePath -Description ".NET 8 Desktop Runtime x64"
+    Ensure-MicrosoftPrerequisite -Url $windowsAppRuntimeInstallerUrl -Output $windowsAppRuntimeInstallerPath -Description "Windows App Runtime 2.2 x64"
 }
 
 function Write-ChecksumManifest {
@@ -307,7 +338,7 @@ function Write-ChecksumManifest {
 
 try {
 $deliveryStage = $installerRoot
-Ensure-VcRedist
+Ensure-RuntimePrerequisites
 
 if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
@@ -394,6 +425,8 @@ if (-not $iscc) {
     "/DSourceDir=$appStage" `
     "/DReleaseNotesPath=$releaseNotesPath" `
     "/DVcRedistPath=$vcRedistPath" `
+    "/DDotNetDesktopRuntimePath=$dotNetDesktopRuntimePath" `
+    "/DWindowsAppRuntimeInstallerPath=$windowsAppRuntimeInstallerPath" `
     "/DOutputDir=$installerRoot" `
     $issPath
 
@@ -415,9 +448,10 @@ $updateManifestPath = Write-UpdateManifest `
 $portableRoot = Join-Path $installerRoot "Fowan-$Version-portable"
 Copy-BuildDirectoryContent -Source $appStage -Destination (Join-Path $portableRoot "app")
 Copy-BuildDirectoryContent -Source $prereqRoot -Destination (Join-Path $portableRoot "prerequisites")
+Copy-Item -LiteralPath $portablePrerequisitesScript -Destination (Join-Path $portableRoot "prerequisites/install-fowan-prerequisites.ps1") -Force
 [IO.File]::WriteAllText(
     (Join-Path $portableRoot "README.txt"),
-    "解压后运行 app\\Fowan.Windows.exe。若系统提示缺少 VC++ 运行库，请运行 prerequisites\\vc_redist.x64.exe。`r`n",
+    "首次使用前，请以管理员身份运行 prerequisites\\install-fowan-prerequisites.ps1 安装共享 .NET 8 Desktop Runtime、Windows App Runtime 和 VC++ 运行库；完成后运行 app\\Fowan.Windows.exe。`r`n",
     [Text.UTF8Encoding]::new($false))
 $portableZip = Join-Path $installerRoot "Fowan-$Version-portable.zip"
 Compress-Archive -Path $portableRoot -DestinationPath $portableZip -CompressionLevel Optimal -Force
