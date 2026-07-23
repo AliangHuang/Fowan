@@ -9,27 +9,53 @@ internal sealed class TodoWindowQuery(
     TodoDateRangeFilter? dateRange,
     string? listIdFilter,
     int maximumDepth,
+    TodoCompletionFilter completionFilter,
+    bool filterParentTasks,
     string defaultListId)
 {
     public IEnumerable<TodoTask> ActiveTasks(string viewId) => ActiveNodes(viewId).Select(node => node.Task);
 
     public IEnumerable<TodoTask> CompletedTasks(string viewId) => CompletedNodes(viewId).Select(node => node.Task);
 
-    public IEnumerable<TodoTaskNode> ActiveNodes(string viewId) => TodoQuery.ActiveTaskNodesForView(
-        data,
-        viewId,
-        CollapsedIds(),
-        dateFilter: dateRange,
-        maximumDepth: maximumDepth,
-        listIdFilter: listIdFilter);
+    public bool IsFilteringActive => DateRange is { IsValid: true } ||
+        !string.IsNullOrWhiteSpace(ListIdFilter) ||
+        MaximumDepth < TodoQuery.MaxTaskTreeDepth ||
+        CompletionFilter != TodoCompletionFilter.All ||
+        FilterParentTasks;
 
-    public IEnumerable<TodoTaskNode> CompletedNodes(string viewId) => TodoQuery.CompletedTaskNodesForView(
+    public IEnumerable<TodoTaskNode> ActiveNodes(string viewId)
+    {
+        if (CompletionFilter == TodoCompletionFilter.Completed) return [];
+        return TodoQuery.ActiveTaskNodesForView(
+            data,
+            viewId,
+            CollapsedIds(),
+            dateFilter: DateRange,
+            maximumDepth: MaximumDepth,
+            listIdFilter: ListIdFilter);
+    }
+
+    public IEnumerable<TodoTaskNode> CompletedNodes(string viewId)
+    {
+        if (CompletionFilter == TodoCompletionFilter.Incomplete) return [];
+        return TodoQuery.CompletedTaskNodesForView(
+            data,
+            viewId,
+            CollapsedIds(),
+            dateFilter: DateRange,
+            maximumDepth: MaximumDepth,
+            listIdFilter: ListIdFilter);
+    }
+
+    public IEnumerable<TodoTaskNode> FilteredNodes(string viewId) => TodoQuery.FilteredTaskNodesForView(
         data,
         viewId,
+        CompletionFilter,
         CollapsedIds(),
-        dateFilter: dateRange,
-        maximumDepth: maximumDepth,
-        listIdFilter: listIdFilter);
+        dateFilter: DateRange,
+        maximumDepth: MaximumDepth,
+        listIdFilter: ListIdFilter,
+        filterParentTasks: FilterParentTasks);
 
     public IEnumerable<TodoTask> TasksForList(string listId) => data.Tasks.Where(task =>
         task.DeletedAt is null && string.Equals(task.ListId, listId, StringComparison.Ordinal));
@@ -44,15 +70,20 @@ internal sealed class TodoWindowQuery(
     public TodoTask? FirstForSelection(string viewId)
     {
         if (viewId == TodoViewIds.RecycleBin) return null;
+        if (IsFilteringActive) return FilteredNodes(viewId).Select(node => node.Task).FirstOrDefault();
         return viewId == TodoViewIds.Completed
             ? CompletedTasks(viewId).FirstOrDefault()
+            : viewId == TodoViewIds.Uncompleted
+                ? ActiveTasks(viewId).FirstOrDefault()
             : ActiveTasks(viewId).Concat(CompletedTasks(viewId)).FirstOrDefault();
     }
 
     public bool BelongsToView(TodoTask task, string viewId)
     {
         if (task.DeletedAt is not null || viewId == TodoViewIds.RecycleBin) return false;
+        if (IsFilteringActive) return FilteredNodes(viewId).Any(candidate => candidate.Task.Id == task.Id);
         if (viewId == TodoViewIds.Completed) return task.IsCompleted;
+        if (viewId == TodoViewIds.Uncompleted) return !task.IsCompleted;
         return task.IsCompleted
             ? CompletedTasks(viewId).Any(candidate => candidate.Id == task.Id)
             : ActiveTasks(viewId).Any(candidate => candidate.Id == task.Id);
@@ -100,4 +131,10 @@ internal sealed class TodoWindowQuery(
     }
 
     private HashSet<string> CollapsedIds() => new(settings.CollapsedTaskIds, StringComparer.Ordinal);
+
+    private TodoDateRangeFilter? DateRange => dateRange;
+    private string? ListIdFilter => listIdFilter;
+    private int MaximumDepth => maximumDepth;
+    private TodoCompletionFilter CompletionFilter => completionFilter;
+    private bool FilterParentTasks => filterParentTasks;
 }

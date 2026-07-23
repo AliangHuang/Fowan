@@ -16,8 +16,7 @@
     "ai-shared",
     "ai-chat-windows",
     "ai-config-windows",
-    "ai-ui-resources",
-    "ai-protocol-v0.1"
+    "ai-ui-resources"
   ],
   "modules": [
     "windows-toolbox/Application",
@@ -28,11 +27,9 @@
     "windows-toolbox/Properties",
     "windows-toolbox/Resources",
     "windows-toolbox/Services",
-    "todo-contracts/Models",
     "todo-shared/Application",
     "todo-shared/Models",
     "todo-shared/Properties",
-    "todo-shared/Services",
     "todo-windows/Application",
     "todo-windows/Assets",
     "todo-windows/Platform",
@@ -48,17 +45,11 @@
     "diary-windows/Coordination",
     "diary-windows/Platform",
     "diary-windows/Presentation",
-    "ai-shared/Application",
-    "ai-shared/Models",
     "ai-shared/Properties",
-    "ai-shared/Services",
     "ai-chat-windows/Application",
     "ai-chat-windows/Platform",
     "ai-chat-windows/Presentation",
-    "ai-config-windows/Platform",
-    "ai-config-windows/Presentation",
-    "ai-protocol-v0.1/examples",
-    "ai-protocol-v0.1/schema"
+    "ai-config-windows/Platform"
   ],
   "dependencies": [
     "JsonSchema.Net",

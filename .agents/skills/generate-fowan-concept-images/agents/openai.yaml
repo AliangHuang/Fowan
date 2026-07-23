@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fowan 概念图生成"
+  short_description: "为 Fowan 生成统一视觉语言的 16:9 多界面产品概念图"
+  default_prompt: "Use $generate-fowan-concept-images to create 16:9 concept images for this Fowan feature."

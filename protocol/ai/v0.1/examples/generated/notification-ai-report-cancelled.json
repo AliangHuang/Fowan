@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.report.cancelled",
+  "params": {
+    "invocationId": "report-invocation-1",
+    "errorCode": null,
+    "requestId": null
+  }
+}

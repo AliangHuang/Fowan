@@ -45,7 +45,7 @@
       "kind": "contracts",
       "stateOwner": null,
       "proposal": "baseline",
-      "modules": { "Models": "baseline" }
+      "modules": { "Models": "docs/design-proposals/DP-0003-windows-report-tool.md" }
     },
     {
       "id": "todo-shared",
@@ -58,7 +58,7 @@
         "Application": "baseline",
         "Models": "baseline",
         "Properties": "baseline",
-        "Services": "baseline"
+        "Services": "docs/design-proposals/DP-0003-windows-report-tool.md"
       }
     },
     {
@@ -124,10 +124,10 @@
       "proposal": "baseline",
       "tests": ["tests/Fowan.Ai.Shared.Tests"],
       "modules": {
-        "Application": "baseline",
-        "Models": "baseline",
+        "Application": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "Models": "docs/design-proposals/DP-0003-windows-report-tool.md",
         "Properties": "baseline",
-        "Services": "baseline"
+        "Services": "docs/design-proposals/DP-0003-windows-report-tool.md"
       }
     },
     {
@@ -150,10 +150,11 @@
       "kind": "tool",
       "stateOwner": "AiConfigSession",
       "proposal": "baseline",
+      "adrs": ["docs/adr/0004-ai-credential-advanced-provisioning.md"],
       "tests": ["tests/Fowan.Ai.Shared.Tests"],
       "modules": {
         "Platform": "baseline",
-        "Presentation": "baseline"
+        "Presentation": "docs/design-proposals/DP-0003-windows-report-tool.md"
       }
     },
     {
@@ -169,12 +170,48 @@
       "path": "protocol/ai/v0.1",
       "kind": "protocol",
       "stateOwner": null,
-      "proposal": "baseline",
-      "adrs": ["docs/adr/0001-windows-ai-v0.1-contract.md"],
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "adrs": ["docs/adr/0001-windows-ai-v0.1-contract.md", "docs/adr/0004-ai-credential-advanced-provisioning.md", "docs/adr/0005-ai-report-contract-revision-1.md"],
       "modules": {
-        "examples": "baseline",
-        "schema": "baseline"
+        "examples": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "schema": "docs/design-proposals/DP-0003-windows-report-tool.md"
       }
+    },
+    {
+      "id": "report-shared",
+      "path": "apps/windows/report/shared",
+      "kind": "shared",
+      "stateOwner": "ReportWorkspaceOwner",
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "adrs": ["docs/adr/0006-report-generation-metadata-history.md"],
+      "tests": ["tests/Fowan.Report.Shared.Tests"],
+      "modules": {
+        "Application": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "Models": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "Services": "docs/design-proposals/DP-0003-windows-report-tool.md"
+      }
+    },
+    {
+      "id": "report-windows",
+      "path": "apps/windows/report/app",
+      "kind": "tool",
+      "stateOwner": "ReportWorkspaceOwner",
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "adrs": ["docs/adr/0006-report-generation-metadata-history.md"],
+      "tests": ["tests/Fowan.Report.Shared.Tests"],
+      "modules": {
+        "Platform": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "Presentation": "docs/design-proposals/DP-0003-windows-report-tool.md",
+        "Properties": "docs/design-proposals/DP-0003-windows-report-tool.md"
+      }
+    },
+    {
+      "id": "report-tests",
+      "path": "tests/Fowan.Report.Shared.Tests",
+      "kind": "test",
+      "stateOwner": null,
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "modules": {}
     }
   ]
 }

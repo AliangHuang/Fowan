@@ -65,6 +65,9 @@
                 "provider_content_rejected",
                 "provider_unavailable",
                 "context_limit_exceeded",
+                "context_compression_required",
+                "message_too_large",
+                "response_too_large",
                 "timeout",
                 "cancelled",
                 "internal_error"

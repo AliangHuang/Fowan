@@ -3,10 +3,11 @@ namespace Fowan.Ai.Shared.Models;
 public static class AiProtocolContract
 {
     public const string Version = "0.1";
+    public const int ContractRevision = 1;
     public const int MaximumHeaderBytes = 8192;
     public const int MaximumFrameBytes = 8 * 1024 * 1024;
 
-    public static IReadOnlyList<string> Capabilities { get; } = ["ai.config.v1", "ai.chat.v1"];
+    public static IReadOnlyList<string> Capabilities { get; } = ["ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1"];
 }
 
 public static class AiProtocolMethods
@@ -36,9 +37,15 @@ public static class AiProtocolMethods
     public const string ConversationsGet = "ai.conversations.get";
     public const string ConversationsRename = "ai.conversations.rename";
     public const string ConversationsDelete = "ai.conversations.delete";
+    public const string ConversationMessagesList = "ai.conversations.messages.list";
+    public const string ConversationBranchSelect = "ai.conversations.branch.select";
+    public const string ChatContextEstimate = "ai.chat.context.estimate";
+    public const string ChatContextCompact = "ai.chat.context.compact";
     public const string ChatSend = "ai.chat.send";
     public const string ChatCancel = "ai.chat.cancel";
     public const string ChatRegenerate = "ai.chat.regenerate";
+    public const string ReportGenerate = "ai.report.generate";
+    public const string ReportCancel = "ai.report.cancel";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -49,7 +56,8 @@ public static class AiProtocolMethods
         ToolFeaturesList, BindingsList, BindingsUpsert, BindingsDelete,
         ConsentsCheck, ConsentsGrant,
         ConversationsList, ConversationsCreate, ConversationsGet, ConversationsRename, ConversationsDelete,
-        ChatSend, ChatCancel, ChatRegenerate
+        ConversationMessagesList, ConversationBranchSelect, ChatContextEstimate, ChatContextCompact,
+        ChatSend, ChatCancel, ChatRegenerate, ReportGenerate, ReportCancel
     ];
 }
 
@@ -60,10 +68,19 @@ public static class AiProtocolNotifications
     public const string ChatCompleted = "ai.chat.completed";
     public const string ChatCancelled = "ai.chat.cancelled";
     public const string ChatFailed = "ai.chat.failed";
+    public const string ContextCompactStarted = "ai.chat.context.compact.started";
+    public const string ContextCompactCompleted = "ai.chat.context.compact.completed";
+    public const string ContextCompactFailed = "ai.chat.context.compact.failed";
+    public const string ReportStarted = "ai.report.started";
+    public const string ReportCompleted = "ai.report.completed";
+    public const string ReportCancelled = "ai.report.cancelled";
+    public const string ReportFailed = "ai.report.failed";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        ChatStarted, ChatDelta, ChatCompleted, ChatCancelled, ChatFailed
+        ChatStarted, ChatDelta, ChatCompleted, ChatCancelled, ChatFailed,
+        ContextCompactStarted, ContextCompactCompleted, ContextCompactFailed,
+        ReportStarted, ReportCompleted, ReportCancelled, ReportFailed
     };
 }
 
@@ -75,6 +92,7 @@ public static class AiProtocolErrors
         "consent_required", "secret_store_unavailable", "secure_state_inconsistent",
         "protected_data_unavailable", "storage_unavailable", "provider_auth_failed",
         "provider_model_not_found", "provider_rate_limited", "provider_content_rejected",
-        "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"
+        "provider_unavailable", "context_limit_exceeded", "context_compression_required",
+        "message_too_large", "response_too_large", "timeout", "cancelled", "internal_error"
     };
 }

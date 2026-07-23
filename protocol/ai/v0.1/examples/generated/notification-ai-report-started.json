@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.report.started",
+  "params": {
+    "invocationId": "report-invocation-1"
+  }
+}

@@ -65,7 +65,7 @@ public sealed class DiaryStoreTests : IDisposable
     }
 
     [Fact]
-    public void VersionThreeGoldenFixturePreservesEveryExistingFieldAndValue()
+    public void VersionOneGoldenFixturePreservesEveryExistingFieldAndValue()
     {
         Directory.CreateDirectory(_rootPath);
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "fixtures", "diary-data.json");

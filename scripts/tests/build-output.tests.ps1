@@ -8,6 +8,31 @@ function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
 }
 
+$repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$packageScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/package-windows.ps1")
+$stopScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/stop-windows.ps1")
+Assert-True ($packageScript.Contains('apps/windows/report/app/Fowan.Report.Windows.csproj')) "release packaging must publish Report"
+Assert-True ($packageScript.Contains('Tools/Report')) "release packaging must stage Report under Tools/Report"
+Assert-True ($packageScript.Contains('Fowan.Report.Windows.exe')) "release packaging must require the Report executable"
+Assert-True ($packageScript.Contains('tools/report/CHANGELOG.md')) "release notes must include Report"
+Assert-True ($packageScript.Contains('tools/ai-chat/CHANGELOG.md')) "release notes must include AI Chat"
+Assert-True ($packageScript.Contains('tools/ai-config/CHANGELOG.md')) "release notes must include AI Configuration"
+$releaseChangelogs = @(
+    'toolbox/CHANGELOG.md',
+    'tools/todo/CHANGELOG.md',
+    'tools/diary/CHANGELOG.md',
+    'tools/report/CHANGELOG.md',
+    'tools/ai-chat/CHANGELOG.md',
+    'tools/ai-config/CHANGELOG.md'
+)
+foreach ($relativePath in $releaseChangelogs) {
+    $changelog = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "changelogs/$relativePath")
+    Assert-True ($changelog -match '(?m)^##\s+0\.2\.0(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.0: $relativePath"
+}
+Assert-True ($stopScript.Contains('"Report"')) "stop-windows must support the Report component"
+Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.Dev.exe')) "stop-windows must stop the development Report runtime"
+Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.exe')) "stop-windows must stop the release Report runtime"
+
 try {
     New-Item -ItemType Directory -Force -Path $root | Out-Null
     $repository = Join-Path $root "repo with spaces"

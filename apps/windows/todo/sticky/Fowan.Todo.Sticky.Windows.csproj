@@ -6,6 +6,7 @@
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Todo.Sticky.Windows.Dev</AssemblyName>
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Todo.Sticky.Windows</AssemblyName>
     <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\app\Assets\fowan-todo.ico</ApplicationIcon>
   </PropertyGroup>
 

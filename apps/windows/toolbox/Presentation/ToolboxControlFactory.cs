@@ -12,6 +12,16 @@ internal sealed class ToolboxControlFactory(
     Func<string, Brush> themeBrush,
     Func<ToolStatus, SolidColorBrush> statusBrush)
 {
+    // All dedicated tool icons are normalized to the AI Chat visual footprint in every tile size.
+    // New icon assets should use the canonical canvas padding (scale 1.0); register a source-specific
+    // scale only when its transparent safe area differs, so grid, list, and detail views stay aligned.
+    private static readonly IReadOnlyDictionary<string, DedicatedToolIcon> DedicatedToolIcons =
+        new Dictionary<string, DedicatedToolIcon>(StringComparer.Ordinal)
+        {
+            ["ai-chat"] = new("fowan-ai-chat-app-icon-256.png", 1.0),
+            ["ai-config"] = new("fowan-ai-config-app-icon-256.png", 1.2)
+        };
+
     public static Button IconButton(string glyph, string label)
     {
         var button = new Button
@@ -91,11 +101,12 @@ internal sealed class ToolboxControlFactory(
 
     public Border IconTile(ToolCard tool, double size, double glyphSize)
     {
-        UIElement icon = tool.Id == "ai-chat"
+        UIElement icon = DedicatedToolIcons.TryGetValue(tool.Id, out var dedicatedIcon)
             ? new Image
             {
-                Width = size - 8, Height = size - 8,
-                Source = new BitmapImage(FileUri(Path.Combine(AppContext.BaseDirectory, "Assets", "fowan-ai-chat-app-icon-256.png"))),
+                Width = (size - 8) * dedicatedIcon.CanvasScale,
+                Height = (size - 8) * dedicatedIcon.CanvasScale,
+                Source = new BitmapImage(FileUri(Path.Combine(AppContext.BaseDirectory, "Assets", dedicatedIcon.AssetFileName))),
                 Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
@@ -142,9 +153,12 @@ internal sealed class ToolboxControlFactory(
         "notes" => ColorHelper.FromArgb(255, 255, 174, 36), "knowledge" => ColorHelper.FromArgb(255, 45, 194, 154),
         "files" => ColorHelper.FromArgb(255, 47, 140, 255), "global-search" => ColorHelper.FromArgb(255, 156, 92, 255),
         "workflows" => ColorHelper.FromArgb(255, 123, 202, 91), "ai" => ColorHelper.FromArgb(255, 177, 123, 226),
+        "report" => ColorHelper.FromArgb(255, 36, 137, 177),
         "plugins" => ColorHelper.FromArgb(255, 255, 125, 72), "settings" => ColorHelper.FromArgb(255, 86, 145, 255),
         "diagnostics" => ColorHelper.FromArgb(255, 42, 190, 178), _ => ColorHelper.FromArgb(255, 38, 128, 235)
     });
+
+    private sealed record DedicatedToolIcon(string AssetFileName, double CanvasScale);
 
     private static Uri FileUri(string path) => new UriBuilder
     {

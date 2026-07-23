@@ -6,7 +6,10 @@
     "credentialId": "credential-1",
     "modelId": "gpt-4.1-mini",
     "displayName": "GPT 4.1 mini",
-    "source": "custom",
-    "enabled": true
+    "source": "preset",
+    "enabled": true,
+    "contextWindowTokens": 1048576,
+    "maxOutputTokens": 32768,
+    "thinkingEnabled": true
   }
 }

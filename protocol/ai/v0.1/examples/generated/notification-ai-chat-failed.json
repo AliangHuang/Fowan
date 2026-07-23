@@ -4,6 +4,7 @@
   "params": {
     "invocationId": "invocation-1",
     "assistantMessageId": "message-2",
-    "errorCode": "provider_unavailable"
+    "errorCode": "provider_unavailable",
+    "requestId": "req-safe-1"
   }
 }

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
+using Fowan.Todo.Sticky.Windows.Platform.Windows;
 
 namespace Fowan.Todo.Sticky.Windows;
 
@@ -21,6 +22,8 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        EnsureWindowsDirectoryEnvironment();
+
         if (!TryAcquireSingleInstance())
         {
             SignalExistingInstance();
@@ -32,6 +35,7 @@ internal static class Program
         try
         {
             var startHidden = HasArgument(args, StartHiddenArgument);
+            StickyDpiAwarenessBootstrapper.EnsurePerMonitorAwareness();
             var app = new global::System.Windows.Application
             {
                 ShutdownMode = ShutdownMode.OnMainWindowClose
@@ -54,6 +58,20 @@ internal static class Program
         finally
         {
             DisposeSingleInstanceResources();
+        }
+    }
+
+    private static void EnsureWindowsDirectoryEnvironment()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WINDIR")))
+        {
+            return;
+        }
+
+        var windowsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (!string.IsNullOrWhiteSpace(windowsDirectory))
+        {
+            Environment.SetEnvironmentVariable("WINDIR", windowsDirectory);
         }
     }
 

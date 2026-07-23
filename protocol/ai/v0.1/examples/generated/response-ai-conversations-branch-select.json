@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 27,
+  "result": {
+    "conversationId": "conversation-1",
+    "activeLeafMessageId": "message-2"
+  }
+}

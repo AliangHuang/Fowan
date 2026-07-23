@@ -1,12 +1,13 @@
 {
   "protocolVersion": "0.1",
+  "contractRevision": 1,
   "schemas": {
     "envelope": "schema/jsonrpc.schema.json",
     "messages": "schema/methods.schema.json",
     "handshakeParameters": "schema/handshake.schema.json"
   },
   "fixtureManifest": "examples/manifest.json",
-  "capabilities": ["ai.config.v1", "ai.chat.v1"],
+  "capabilities": ["ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1"],
   "methods": [
     "engine.handshake",
     "ai.channels.list", "ai.channels.create", "ai.channels.update", "ai.channels.delete",
@@ -15,18 +16,22 @@
     "ai.toolFeatures.list", "ai.bindings.list", "ai.bindings.upsert", "ai.bindings.delete",
     "ai.consents.check", "ai.consents.grant",
     "ai.conversations.list", "ai.conversations.create", "ai.conversations.get",
-    "ai.conversations.rename", "ai.conversations.delete",
-    "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate"
+    "ai.conversations.rename", "ai.conversations.delete", "ai.conversations.messages.list",
+    "ai.conversations.branch.select", "ai.chat.context.estimate", "ai.chat.context.compact",
+    "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate", "ai.report.generate", "ai.report.cancel"
   ],
   "notifications": [
-    "ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"
+    "ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed",
+    "ai.chat.context.compact.started", "ai.chat.context.compact.completed", "ai.chat.context.compact.failed",
+    "ai.report.started", "ai.report.completed", "ai.report.cancelled", "ai.report.failed"
   ],
   "errors": [
     "invalid_argument", "not_found", "conflict", "protocol_mismatch", "handshake_required",
     "consent_required", "secret_store_unavailable", "secure_state_inconsistent",
     "protected_data_unavailable", "storage_unavailable", "provider_auth_failed",
     "provider_model_not_found", "provider_rate_limited", "provider_content_rejected",
-    "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"
+    "provider_unavailable", "context_limit_exceeded", "context_compression_required",
+    "message_too_large", "response_too_large", "timeout", "cancelled", "internal_error"
   ],
   "limits": {
     "maximumFrameBytes": 8388608,

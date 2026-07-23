@@ -17,19 +17,20 @@
     },
     "featureIdParams": {
       "type": "object", "required": ["featureId"], "additionalProperties": false,
-      "properties": { "featureId": { "const": "ai.chat" } }
+      "properties": { "featureId": { "enum": ["ai.chat", "ai.report"] } }
     },
     "endpointParams": {
       "type": "object", "required": ["endpoint"], "additionalProperties": false,
       "properties": { "endpoint": { "type": "string", "minLength": 1, "pattern": "\\S" } }
     },
     "handshakeParams": {
-      "type": "object", "required": ["protocolVersion", "requiredCapabilities"], "additionalProperties": false,
+      "type": "object", "required": ["protocolVersion", "contractRevision", "requiredCapabilities"], "additionalProperties": false,
       "properties": {
         "protocolVersion": { "const": "0.1" },
+        "contractRevision": { "const": 1 },
         "requiredCapabilities": {
           "type": "array", "uniqueItems": true,
-          "items": { "enum": ["ai.config.v1", "ai.chat.v1"] }
+          "items": { "enum": ["ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1"] }
         }
       }
     },
@@ -52,7 +53,9 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 }, "channelId": { "type": "string", "minLength": 1 },
         "label": { "type": "string", "minLength": 1 }, "baseUrl": { "type": ["string", "null"] },
-        "secret": { "type": ["string", "null"] }, "enabled": { "type": "boolean" }
+        "secret": { "type": ["string", "null"] }, "enabled": { "type": "boolean" },
+        "initialModelIds": { "type": ["array", "null"], "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "thinkingEnabled": { "type": ["boolean", "null"] }
       }
     },
     "credentialTestParams": {
@@ -60,11 +63,13 @@
       "properties": { "credentialId": { "type": "string", "minLength": 1 } }
     },
     "modelUpsertParams": {
-      "type": "object", "required": ["credentialId", "modelId", "displayName"], "additionalProperties": false,
+      "type": "object", "required": ["credentialId", "modelId", "displayName", "contextWindowTokens", "maxOutputTokens"], "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 }, "credentialId": { "type": "string", "minLength": 1 },
         "modelId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 },
-        "source": { "type": "string" }, "enabled": { "type": "boolean" }
+        "source": { "type": "string" }, "enabled": { "type": "boolean" },
+        "contextWindowTokens": { "type": "integer", "minimum": 2048 },
+        "maxOutputTokens": { "type": "integer", "minimum": 1 }, "thinkingEnabled": { "type": ["boolean", "null"] }
       }
     },
     "modelTestParams": {
@@ -74,7 +79,8 @@
     "bindingUpsertParams": {
       "type": "object", "required": ["featureId", "modelProfileId"], "additionalProperties": false,
       "properties": {
-        "featureId": { "const": "ai.chat" }, "modelProfileId": { "type": "string", "minLength": 1 }
+        "featureId": { "enum": ["ai.chat", "ai.report"] }, "modelProfileId": { "type": "string", "minLength": 1 },
+        "thinkingEffort": { "enum": ["high", "max", null] }
       }
     },
     "conversationCreateParams": {
@@ -88,7 +94,7 @@
     "chatSendParams": {
       "type": "object", "required": ["credentialId", "modelProfileId", "text"], "additionalProperties": false,
       "properties": {
-        "conversationId": { "type": ["string", "null"] }, "credentialId": { "type": "string", "minLength": 1 },
+        "conversationId": { "type": ["string", "null"] }, "parentMessageId": { "type": ["string", "null"] }, "credentialId": { "type": "string", "minLength": 1 },
         "modelProfileId": { "type": "string", "minLength": 1 }, "text": { "type": "string", "minLength": 1 }
       }
     },
@@ -96,10 +102,101 @@
       "type": "object", "required": ["conversationId", "credentialId", "modelProfileId"], "additionalProperties": false,
       "properties": {
         "conversationId": { "type": "string", "minLength": 1 }, "credentialId": { "type": "string", "minLength": 1 },
-        "modelProfileId": { "type": "string", "minLength": 1 }
+        "modelProfileId": { "type": "string", "minLength": 1 }, "userMessageId": { "type": ["string", "null"] }
       }
     },
+    "contextEstimateParams": {
+      "type": "object", "required": ["modelProfileId", "draft"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": ["string", "null"] }, "modelProfileId": { "type": "string", "minLength": 1 }, "branchLeafMessageId": { "type": ["string", "null"] }, "draft": { "type": "string" } }
+    },
+    "contextCompactParams": {
+      "type": "object", "required": ["conversationId", "credentialId", "modelProfileId"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": "string", "minLength": 1 }, "credentialId": { "type": "string", "minLength": 1 }, "modelProfileId": { "type": "string", "minLength": 1 }, "branchLeafMessageId": { "type": ["string", "null"] } }
+    },
+    "messagesListParams": {
+      "type": "object", "required": ["conversationId"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": "string", "minLength": 1 }, "branchLeafMessageId": { "type": ["string", "null"] }, "cursor": { "type": ["string", "null"] }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }
+    },
+    "branchSelectParams": {
+      "type": "object", "required": ["conversationId", "leafMessageId"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": "string", "minLength": 1 }, "leafMessageId": { "type": "string", "minLength": 1 } }
+    },
     "chatCancelParams": {
+      "type": "object", "required": ["invocationId"], "additionalProperties": false,
+      "properties": { "invocationId": { "type": "string", "minLength": 1 } }
+    },
+    "reportTask": {
+      "type": "object", "required": ["title", "notes", "listName", "level", "important", "startDate", "dueDate", "completedAt", "status"], "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 }, "notes": { "type": ["string", "null"] }, "listName": { "type": "string", "minLength": 1 },
+        "level": { "type": "integer", "minimum": 1 }, "important": { "type": "boolean" }, "startDate": { "type": "string", "minLength": 1 },
+        "dueDate": { "type": ["string", "null"] }, "completedAt": { "type": ["string", "null"] }, "status": { "enum": ["completed", "unfinished"] }
+      }
+    },
+    "reportContentCell": {
+      "type": "object", "required": ["value", "valueKind", "editable"], "additionalProperties": false,
+      "properties": {
+        "value": { "type": ["string", "null"], "maxLength": 65536 },
+        "valueKind": { "enum": ["text", "number", "boolean", "formula"] },
+        "editable": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "valueKind": { "const": "formula" } } },
+          "then": { "properties": { "value": { "type": "null" }, "editable": { "const": false } } }
+        }
+      ]
+    },
+    "reportContentTable": {
+      "type": "object", "required": ["rows", "canAppendRows"], "additionalProperties": false,
+      "properties": {
+        "rows": { "type": "array", "maxItems": 10000, "items": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/reportContentCell" } } },
+        "canAppendRows": { "type": "boolean" }
+      }
+    },
+    "reportContentBlock": {
+      "type": "object", "required": ["kind", "text", "bold", "italic", "link", "isChecked", "table"], "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["paragraph", "heading1", "heading2", "heading3", "bulletedList", "numberedList", "todoList", "quote", "code", "divider", "table"] },
+        "text": { "type": ["string", "null"], "maxLength": 65536 }, "bold": { "type": "boolean" }, "italic": { "type": "boolean" },
+        "link": { "type": ["string", "null"], "maxLength": 4096 }, "isChecked": { "type": "boolean" },
+        "table": { "anyOf": [{ "$ref": "#/$defs/reportContentTable" }, { "type": "null" }] }
+      }
+    },
+    "reportContentSheet": {
+      "type": "object", "required": ["name", "rows", "canAppendRows"], "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "rows": { "type": "array", "maxItems": 10000, "items": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/reportContentCell" } } },
+        "canAppendRows": { "type": "boolean" }
+      }
+    },
+    "reportContentDocument": {
+      "type": "object", "required": ["format", "blocks", "sheets"], "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["text", "docx", "xlsx"] },
+        "blocks": { "type": "array", "maxItems": 2048, "items": { "$ref": "#/$defs/reportContentBlock" } },
+        "sheets": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/reportContentSheet" } }
+      }
+    },
+    "reportGenerateParams": {
+      "type": "object", "required": ["reportType", "rangeStart", "rangeEnd", "style", "customRequirements", "templateMode", "template", "example", "attempt", "candidate", "validationFeedback", "completedTasks", "unfinishedTasks"], "additionalProperties": false,
+      "properties": {
+        "reportType": { "enum": ["weekly", "monthly", "range"] }, "rangeStart": { "type": "string", "minLength": 1 }, "rangeEnd": { "type": "string", "minLength": 1 },
+        "style": { "enum": ["professional", "plain", "concise"] }, "customRequirements": { "type": "string", "maxLength": 500 },
+        "templateMode": { "enum": ["text", "file"] }, "template": { "$ref": "#/$defs/reportContentDocument" }, "example": { "anyOf": [{ "$ref": "#/$defs/reportContentDocument" }, { "type": "null" }] },
+        "attempt": { "type": "integer", "minimum": 1, "maximum": 3 }, "candidate": { "anyOf": [{ "$ref": "#/$defs/reportContentDocument" }, { "type": "null" }] },
+        "validationFeedback": { "type": ["string", "null"], "maxLength": 4096 },
+        "completedTasks": { "type": "array", "items": { "$ref": "#/$defs/reportTask" } }, "unfinishedTasks": { "type": "array", "items": { "$ref": "#/$defs/reportTask" } }
+      }
+    },
+    "reportOutput": {
+      "type": "object", "required": ["document"], "additionalProperties": false,
+      "properties": {
+        "document": { "$ref": "#/$defs/reportContentDocument" }
+      }
+    },
+    "reportInvocationResult": {
       "type": "object", "required": ["invocationId"], "additionalProperties": false,
       "properties": { "invocationId": { "type": "string", "minLength": 1 } }
     },
@@ -114,8 +211,9 @@
             "ai.models.list", "ai.models.upsert", "ai.models.delete", "ai.models.test", "ai.models.presets",
             "ai.toolFeatures.list", "ai.bindings.list", "ai.bindings.upsert", "ai.bindings.delete",
             "ai.consents.check", "ai.consents.grant", "ai.conversations.list", "ai.conversations.create",
-            "ai.conversations.get", "ai.conversations.rename", "ai.conversations.delete",
-            "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate"
+            "ai.conversations.get", "ai.conversations.rename", "ai.conversations.delete", "ai.conversations.messages.list",
+            "ai.conversations.branch.select", "ai.chat.context.estimate", "ai.chat.context.compact",
+            "ai.chat.send", "ai.chat.cancel", "ai.chat.regenerate", "ai.report.generate", "ai.report.cancel"
           ]
         },
         "params": { "type": "object" }
@@ -135,22 +233,34 @@
         { "if": { "properties": { "method": { "enum": ["ai.consents.check", "ai.consents.grant"] } } }, "then": { "properties": { "params": { "$ref": "#/$defs/endpointParams" } } } },
         { "if": { "properties": { "method": { "const": "ai.conversations.create" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/conversationCreateParams" } } } },
         { "if": { "properties": { "method": { "const": "ai.conversations.rename" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/conversationRenameParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.conversations.messages.list" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/messagesListParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.conversations.branch.select" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/branchSelectParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.context.estimate" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/contextEstimateParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.context.compact" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/contextCompactParams" } } } },
         { "if": { "properties": { "method": { "const": "ai.chat.send" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatSendParams" } } } },
         { "if": { "properties": { "method": { "const": "ai.chat.regenerate" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatRegenerateParams" } } } },
-        { "if": { "properties": { "method": { "const": "ai.chat.cancel" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatCancelParams" } } } }
+        { "if": { "properties": { "method": { "const": "ai.chat.cancel" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatCancelParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.report.generate" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/reportGenerateParams" } } } },
+        { "if": { "properties": { "method": { "const": "ai.report.cancel" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/chatCancelParams" } } } }
       ]
     },
     "notification": {
       "type": "object", "required": ["jsonrpc", "method", "params"], "additionalProperties": false,
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "method": { "enum": ["ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"] },
+        "method": { "enum": ["ai.chat.started", "ai.chat.delta", "ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed", "ai.chat.context.compact.started", "ai.chat.context.compact.completed", "ai.chat.context.compact.failed", "ai.report.started", "ai.report.completed", "ai.report.cancelled", "ai.report.failed"] },
         "params": { "type": "object" }
       },
       "allOf": [
         { "if": { "properties": { "method": { "const": "ai.chat.started" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "conversationId", "assistantMessageId"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" }, "assistantMessageId": { "type": "string" } } } } } },
         { "if": { "properties": { "method": { "const": "ai.chat.delta" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "delta"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "delta": { "type": "string" } } } } } },
-        { "if": { "properties": { "method": { "enum": ["ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"] } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "assistantMessageId", "errorCode"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "assistantMessageId": { "type": "string" }, "errorCode": { "type": ["string", "null"] } } } } } }
+        { "if": { "properties": { "method": { "enum": ["ai.chat.completed", "ai.chat.cancelled", "ai.chat.failed"] } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "assistantMessageId", "errorCode"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "assistantMessageId": { "type": "string" }, "errorCode": { "type": ["string", "null"] }, "requestId": { "type": ["string", "null"], "maxLength": 128 } } } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.context.compact.started" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "conversationId"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" } } } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.context.compact.completed" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "conversationId", "summaryId", "throughMessageId"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" }, "summaryId": { "type": "string" }, "throughMessageId": { "type": "string" } } } } } },
+        { "if": { "properties": { "method": { "const": "ai.chat.context.compact.failed" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "conversationId", "errorCode"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" }, "errorCode": { "type": "string" }, "requestId": { "type": ["string", "null"], "maxLength": 128 } } } } } },
+        { "if": { "properties": { "method": { "const": "ai.report.started" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/reportInvocationResult" } } } },
+        { "if": { "properties": { "method": { "const": "ai.report.completed" } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "output"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "output": { "$ref": "#/$defs/reportOutput" } } } } } },
+        { "if": { "properties": { "method": { "enum": ["ai.report.cancelled", "ai.report.failed"] } } }, "then": { "properties": { "params": { "type": "object", "required": ["invocationId", "errorCode"], "additionalProperties": false, "properties": { "invocationId": { "type": "string" }, "errorCode": { "type": ["string", "null"] }, "requestId": { "type": ["string", "null"], "maxLength": 128 } } } } } }
       ]
     },
     "channel": {
@@ -162,16 +272,16 @@
       "properties": { "id": { "type": "string" }, "channelId": { "type": "string" }, "label": { "type": "string" }, "baseUrl": { "type": "string" }, "secretHint": { "type": "string" }, "enabled": { "type": "boolean" }, "lastTestStatus": { "type": ["string", "null"] }, "lastTestAt": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
     },
     "model": {
-      "type": "object", "required": ["id", "credentialId", "modelId", "displayName", "source", "enabled", "lastTestStatus", "lastTestAt", "createdAt", "updatedAt"], "additionalProperties": false,
-      "properties": { "id": { "type": "string" }, "credentialId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" }, "source": { "type": "string" }, "enabled": { "type": "boolean" }, "lastTestStatus": { "type": ["string", "null"] }, "lastTestAt": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
+      "type": "object", "required": ["id", "credentialId", "modelId", "displayName", "source", "enabled", "thinkingEnabled", "thinkingEffortOptions", "contextWindowTokens", "maxOutputTokens", "limitsConfigured", "lastTestStatus", "lastTestAt", "createdAt", "updatedAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "credentialId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" }, "source": { "type": "string" }, "enabled": { "type": "boolean" }, "thinkingEnabled": { "type": "boolean" }, "thinkingEffortOptions": { "type": "array", "uniqueItems": true, "items": { "enum": ["high", "max"] } }, "contextWindowTokens": { "type": ["integer", "null"], "minimum": 2048 }, "maxOutputTokens": { "type": ["integer", "null"], "minimum": 1 }, "limitsConfigured": { "type": "boolean" }, "lastTestStatus": { "type": ["string", "null"] }, "lastTestAt": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } }
     },
     "binding": {
-      "type": "object", "required": ["featureId", "credentialId", "modelProfileId", "updatedAt"], "additionalProperties": false,
-      "properties": { "featureId": { "const": "ai.chat" }, "credentialId": { "type": "string" }, "modelProfileId": { "type": "string" }, "updatedAt": { "type": "string" } }
+      "type": "object", "required": ["featureId", "credentialId", "modelProfileId", "thinkingEffort", "updatedAt"], "additionalProperties": false,
+      "properties": { "featureId": { "enum": ["ai.chat", "ai.report"] }, "credentialId": { "type": "string" }, "modelProfileId": { "type": "string" }, "thinkingEffort": { "enum": ["high", "max", null] }, "updatedAt": { "type": "string" } }
     },
     "presetModel": {
-      "type": "object", "required": ["channelId", "modelId", "displayName"], "additionalProperties": false,
-      "properties": { "channelId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" } }
+      "type": "object", "required": ["channelId", "modelId", "displayName", "contextWindowTokens", "maxOutputTokens"], "additionalProperties": false,
+      "properties": { "channelId": { "type": "string" }, "modelId": { "type": "string" }, "displayName": { "type": "string" }, "contextWindowTokens": { "type": "integer", "minimum": 2048 }, "maxOutputTokens": { "type": "integer", "minimum": 1 } }
     },
     "toolFeature": {
       "type": "object", "required": ["featureId", "toolId", "displayName", "requiredCapabilities"], "additionalProperties": false,
@@ -193,8 +303,8 @@
     "presetsResult": { "type": "array", "items": { "$ref": "#/$defs/presetModel" } },
     "toolFeaturesResult": { "type": "array", "items": { "$ref": "#/$defs/toolFeature" } },
     "handshakeResult": {
-      "type": "object", "required": ["engineVersion", "protocolVersion", "capabilities"], "additionalProperties": false,
-      "properties": { "engineVersion": { "type": "string" }, "protocolVersion": { "const": "0.1" }, "capabilities": { "type": "array", "uniqueItems": true, "items": { "enum": ["ai.config.v1", "ai.chat.v1"] } } }
+      "type": "object", "required": ["engineVersion", "protocolVersion", "contractRevision", "capabilities"], "additionalProperties": false,
+      "properties": { "engineVersion": { "type": "string" }, "protocolVersion": { "const": "0.1" }, "contractRevision": { "const": 1 }, "capabilities": { "type": "array", "uniqueItems": true, "items": { "enum": ["ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1"] } } }
     },
     "idResult": {
       "type": "object", "required": ["id"], "additionalProperties": false,
@@ -224,6 +334,26 @@
       "type": "object", "required": ["invocationId", "conversationId", "assistantMessageId"], "additionalProperties": false,
       "properties": { "invocationId": { "type": "string", "minLength": 1 }, "conversationId": { "type": "string", "minLength": 1 }, "assistantMessageId": { "type": "string", "minLength": 1 } }
     },
+    "contextEstimateResult": {
+      "type": "object", "required": ["estimatedInputTokens", "safeInputTokens", "contextWindowTokens", "maxOutputTokens", "usageRatio", "action", "compactedThroughMessageId"], "additionalProperties": false,
+      "properties": { "estimatedInputTokens": { "type": "integer", "minimum": 0 }, "safeInputTokens": { "type": "integer", "minimum": 0 }, "contextWindowTokens": { "type": "integer", "minimum": 2048 }, "maxOutputTokens": { "type": "integer", "minimum": 1 }, "usageRatio": { "type": "number", "minimum": 0 }, "action": { "enum": ["ready", "warning", "compression_required", "too_large"] }, "compactedThroughMessageId": { "type": ["string", "null"] } }
+    },
+    "compactInvocationResult": {
+      "type": "object", "required": ["invocationId", "conversationId"], "additionalProperties": false,
+      "properties": { "invocationId": { "type": "string" }, "conversationId": { "type": "string" } }
+    },
+    "branchSelectResult": {
+      "type": "object", "required": ["conversationId", "activeLeafMessageId"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": "string" }, "activeLeafMessageId": { "type": "string" } }
+    },
+    "summaryRecord": {
+      "type": "object", "required": ["id", "content", "throughMessageId", "createdAt"], "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "content": { "type": "string" }, "throughMessageId": { "type": "string" }, "createdAt": { "type": "string" } }
+    },
+    "messagesPageResult": {
+      "type": "object", "required": ["conversationId", "activeLeafMessageId", "items", "nextCursor", "hasMore", "summary"], "additionalProperties": false,
+      "properties": { "conversationId": { "type": "string" }, "activeLeafMessageId": { "type": ["string", "null"] }, "items": { "type": "array", "items": { "$ref": "#/$defs/chatMessage" } }, "nextCursor": { "type": ["string", "null"] }, "hasMore": { "type": "boolean" }, "summary": { "oneOf": [{ "$ref": "#/$defs/summaryRecord" }, { "type": "null" }] } }
+    },
     "conversationDetailResult": {
       "type": "object", "required": ["id", "title", "createdAt", "updatedAt", "messages"], "additionalProperties": false,
       "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" }, "messages": { "type": "array", "items": { "$ref": "#/$defs/chatMessage" } } }
@@ -249,7 +379,12 @@
             { "$ref": "#/$defs/cancelledResult" },
             { "$ref": "#/$defs/consentResult" },
             { "$ref": "#/$defs/invocationResult" },
-            { "$ref": "#/$defs/conversationDetailResult" }
+            { "$ref": "#/$defs/contextEstimateResult" },
+            { "$ref": "#/$defs/compactInvocationResult" },
+            { "$ref": "#/$defs/branchSelectResult" },
+            { "$ref": "#/$defs/messagesPageResult" },
+            { "$ref": "#/$defs/conversationDetailResult" },
+            { "$ref": "#/$defs/reportInvocationResult" }
           ]
         }
       }
@@ -261,7 +396,7 @@
         "error": {
           "type": "object", "required": ["code", "message"], "additionalProperties": false,
           "properties": {
-            "code": { "enum": ["invalid_argument", "not_found", "conflict", "protocol_mismatch", "handshake_required", "consent_required", "secret_store_unavailable", "secure_state_inconsistent", "protected_data_unavailable", "storage_unavailable", "provider_auth_failed", "provider_model_not_found", "provider_rate_limited", "provider_content_rejected", "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"] },
+            "code": { "enum": ["invalid_argument", "not_found", "conflict", "protocol_mismatch", "handshake_required", "consent_required", "secret_store_unavailable", "secure_state_inconsistent", "protected_data_unavailable", "storage_unavailable", "provider_auth_failed", "provider_model_not_found", "provider_rate_limited", "provider_content_rejected", "provider_unavailable", "context_limit_exceeded", "context_compression_required", "message_too_large", "response_too_large", "timeout", "cancelled", "internal_error"] },
             "message": { "type": "string" }, "data": { "type": "object" }
           },
           "allOf": [

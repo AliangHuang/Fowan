@@ -2,6 +2,14 @@
   "schemaVersion": 2,
   "policyVersion": "2026-07-14",
   "dependencies": {
+    "DocumentFormat.OpenXml": {
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "purpose": "Parse report-template content trees and strongly validate writes to copied Word and Excel packages through typed Open XML APIs.",
+      "license": "MIT",
+      "securityImpact": "Processes user-selected Office package content locally; only validated body/table text and Excel constants are written to temporary copies. Macros, formulas, layout and source files are protected.",
+      "alternatives": "Manual ZIP/XML manipulation would be less safe and harder to validate; Office automation would require a desktop Office dependency.",
+      "removalStrategy": "Remove with file-template report mode or replace with an equivalently maintained Open XML package library."
+    },
     "JsonSchema.Net": {
       "proposal": "baseline",
       "purpose": "Validate the checked-in public AI JSON schemas in contract tests.",
@@ -9,6 +17,14 @@
       "securityImpact": "Test-only schema parsing; no runtime data path.",
       "alternatives": "Hand-written validation would be less complete and harder to audit.",
       "removalStrategy": "Remove when protocol validation moves to an equivalent maintained validator."
+    },
+    "Markdig": {
+      "proposal": "docs/design-proposals/DP-0002-ai-chat-production-hardening.md",
+      "purpose": "Parse CommonMark into an AST for safe native WinUI chat rendering.",
+      "license": "BSD-2-Clause",
+      "securityImpact": "Runtime parsing of local/provider Markdown; raw HTML, images and automatic external navigation remain disabled.",
+      "alternatives": "The existing handwritten line parser is incomplete; WebView rendering would add a larger browser and script surface.",
+      "removalStrategy": "Replace only with an equivalent maintained AST parser and native renderer."
     },
     "Microsoft.CodeAnalysis.CSharp": {
       "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",

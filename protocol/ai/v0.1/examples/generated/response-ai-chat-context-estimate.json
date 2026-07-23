@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 28,
+  "result": {
+    "estimatedInputTokens": 256,
+    "safeInputTokens": 963379,
+    "contextWindowTokens": 1048576,
+    "maxOutputTokens": 32768,
+    "usageRatio": 0.000266,
+    "action": "ready",
+    "compactedThroughMessageId": null
+  }
+}

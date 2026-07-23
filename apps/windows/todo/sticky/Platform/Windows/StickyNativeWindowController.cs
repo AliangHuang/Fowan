@@ -1,6 +1,5 @@
 using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
+using System.Windows.Threading;
 using static Fowan.Todo.Sticky.Windows.Platform.Windows.StickyNativeMethods;
 
 namespace Fowan.Todo.Sticky.Windows.Platform.Windows;
@@ -8,22 +7,28 @@ namespace Fowan.Todo.Sticky.Windows.Platform.Windows;
 internal sealed class StickyNativeWindowController(
     Window window,
     Func<bool> isFloating,
+    Action restoreFloatingWindow,
     Func<bool> isWindowDragCandidate,
     Action completeWindowDrag,
     Func<bool> tryEnterFloating,
     Action enforceDisplayConstraints,
-    Action synchronizeChildWindows)
+    Action synchronizeChildWindows,
+    Action synchronizeForDpiChange)
 {
     private const double ResizeBorderDip = 10;
     private const int MinResizeBorderPixels = 8;
     private const int MaxResizeBorderPixels = 12;
     private const int GwlStyle = -16;
     private const int WmNcHitTest = 0x0084;
+    private const int WmSysCommand = 0x0112;
     private const int WmNonClientLeftButtonUp = 0x00A2;
     private const int WmLeftButtonUp = 0x0202;
     private const int WmMoving = 0x0216;
     private const int WmEnterSizeMove = 0x0231;
     private const int WmExitSizeMove = 0x0232;
+    private const int WmDpiChanged = 0x02E0;
+    private const long SysCommandMask = 0xFFF0;
+    private const long ScMinimize = 0xF020;
     private const int HtClient = 1;
     private const int HtLeft = 10;
     private const int HtRight = 11;
@@ -62,6 +67,19 @@ internal sealed class StickyNativeWindowController(
 
     public IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (message == WmDpiChanged)
+        {
+            // Leave WPF's default handler in control of the suggested bounds. Synchronize
+            // owned windows after WPF has adopted the new device transform.
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, synchronizeForDpiChange);
+            return IntPtr.Zero;
+        }
+        if (message == WmSysCommand && isFloating() && (wParam.ToInt64() & SysCommandMask) == ScMinimize)
+        {
+            handled = true;
+            window.Dispatcher.BeginInvoke(restoreFloatingWindow);
+            return IntPtr.Zero;
+        }
         if ((message == WmLeftButtonUp || message == WmNonClientLeftButtonUp) && isWindowDragCandidate())
             window.Dispatcher.BeginInvoke(completeWindowDrag);
         if (message == WmEnterSizeMove)

@@ -43,6 +43,12 @@
             "null"
           ]
         },
+        "parentMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "credentialId": {
           "type": "string",
           "minLength": 1

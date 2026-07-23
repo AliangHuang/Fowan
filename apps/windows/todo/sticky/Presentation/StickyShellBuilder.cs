@@ -11,10 +11,13 @@ namespace Fowan.Todo.Sticky.Windows.Presentation;
 
 internal sealed record StickyViewElements(
     Grid Root, Border Shell, Border DismissOverlay, Border AddRow, Border TaskDivider,
-    FrameworkElement DragHandle, FrameworkElement BrandIcon, Button SettingsButton,
-    Button AddTaskButton, TextBlock TitleText, TextBlock CountText, TextBox AddBox,
+    FrameworkElement TitleArea, FrameworkElement BrandIcon, Button AddTaskButton, TextBlock TitleText, TextBlock CountText, TextBox AddBox,
     TextBlock AddPlaceholder, ScrollViewer TaskScroll, StackPanel ActiveTasks,
     StackPanel CompletedTasks, StackPanel CompletedTaskSection, Button CompletedToggle);
+
+internal sealed record StickyMenuViewElements(
+    Grid Root, Border DismissOverlay, FrameworkElement Header, FrameworkElement BrandIcon,
+    Button CompactAddTaskButton);
 
 internal sealed class StickyShellBuilder(
     Window window,
@@ -36,6 +39,10 @@ internal sealed class StickyShellBuilder(
     Action refreshTasks)
 {
     private const double FloatingWindowSize = 52;
+    private const double HeaderHeight = 54;
+    private const double HeaderDividerHeight = 1;
+    internal const double MenuBarHeight = HeaderHeight + HeaderDividerHeight;
+    internal const double MenuBodyOverlap = 2;
 
     public StickyViewElements Build()
     {
@@ -43,41 +50,71 @@ internal sealed class StickyShellBuilder(
         var root = new Grid { LayoutTransform = scaleTransform, Background = Brushes.Transparent };
         var shell = new Border
         {
-            CornerRadius = new CornerRadius(8), Background = palette.Surface,
-            BorderBrush = palette.Brush(0xDCE7EA), BorderThickness = new Thickness(1)
+            CornerRadius = new CornerRadius(8),
+            Background = palette.Surface
         };
         root.Children.Add(shell);
-        var layout = new Grid();
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(54) });
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1) });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        shell.Child = layout;
-        var header = BuildHeader(out var dragHandle, out var brandIcon, out var settingsButton);
-        Grid.SetRow(header, 0);
-        layout.Children.Add(header);
-        var divider = new Border { Background = palette.Brush(0xDCE7EA) };
-        Grid.SetRow(divider, 1);
-        layout.Children.Add(divider);
+        var content = new Grid();
+        shell.Child = content;
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var titleArea = BuildTitleArea(out var titleText, out var countText);
-        Grid.SetRow(titleArea, 2);
-        layout.Children.Add(titleArea);
+        Grid.SetRow(titleArea, 0);
+        content.Children.Add(titleArea);
         var addRow = BuildAddRow(out var addTaskButton, out var addBox, out var addPlaceholder);
-        Grid.SetRow(addRow, 3);
-        layout.Children.Add(addRow);
+        Grid.SetRow(addRow, 1);
+        content.Children.Add(addRow);
         var taskScroll = BuildTaskScroll(out var activeTasks, out var completedTasks,
             out var completedSection, out var completedToggle, out var taskDivider);
-        Grid.SetRow(taskScroll, 4);
-        layout.Children.Add(taskScroll);
+        Grid.SetRow(taskScroll, 2);
+        content.Children.Add(taskScroll);
         var overlay = new Border { Background = Brushes.Transparent, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
         overlay.MouseLeftButtonDown += (_, args) => { closeChildWindows(); args.Handled = true; };
         Panel.SetZIndex(overlay, 20);
         root.Children.Add(overlay);
         window.Content = root;
-        return new StickyViewElements(root, shell, overlay, addRow, taskDivider, dragHandle, brandIcon,
-            settingsButton, addTaskButton, titleText, countText, addBox, addPlaceholder, taskScroll,
+        return new StickyViewElements(root, shell, overlay, addRow, taskDivider, titleArea, new Grid(),
+            addTaskButton, titleText, countText, addBox, addPlaceholder, taskScroll,
             activeTasks, completedTasks, completedSection, completedToggle);
+    }
+
+    public StickyMenuViewElements BuildMenu()
+    {
+        var root = new Grid { Background = Brushes.Transparent };
+        var surface = new Border
+        {
+            Background = palette.Surface,
+            CornerRadius = new CornerRadius(8, 8, 0, 0)
+        };
+        root.Children.Add(surface);
+        var layout = new Grid();
+        surface.Child = layout;
+        var header = BuildHeader(out _, out var brandIcon, out _, out var compactAddTaskButton);
+        header.Height = HeaderHeight;
+        header.VerticalAlignment = VerticalAlignment.Top;
+        layout.Children.Add(header);
+        layout.Children.Add(new Border
+        {
+            Height = HeaderDividerHeight,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, HeaderHeight, 0, 0),
+            Background = palette.Brush(0xDCE7EA)
+        });
+        var dismissOverlay = new Border
+        {
+            Background = Brushes.Transparent,
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false
+        };
+        dismissOverlay.MouseLeftButtonDown += (_, args) =>
+        {
+            closeChildWindows();
+            args.Handled = true;
+        };
+        Panel.SetZIndex(dismissOverlay, 20);
+        root.Children.Add(dismissOverlay);
+        return new StickyMenuViewElements(root, dismissOverlay, header, brandIcon, compactAddTaskButton);
     }
 
     private StickyViewElements BuildFloating()
@@ -101,18 +138,22 @@ internal sealed class StickyShellBuilder(
         root.Children.Add(shell);
         window.Content = root;
         return new StickyViewElements(root, shell, new Border(), new Border(), new Border(), new Grid(), icon,
-            new Button(), new Button(), new TextBlock(), new TextBlock(), new TextBox(), new TextBlock(),
+            new Button(), new TextBlock(), new TextBlock(), new TextBox(), new TextBlock(),
             new ScrollViewer(), new StackPanel(), new StackPanel(), new StackPanel(), new Button());
     }
 
-    private UIElement BuildHeader(out FrameworkElement dragHandle, out FrameworkElement brandIcon, out Button settingsButton)
+    private Border BuildHeader(
+        out FrameworkElement dragHandle,
+        out FrameworkElement brandIcon,
+        out Button settingsButton,
+        out Button compactAddTaskButton)
     {
         var header = new Border { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
         dragHandle = header;
         header.MouseLeftButtonDown += onHeaderDown;
         var grid = new Grid { Margin = new Thickness(18, 0, 16, 0), VerticalAlignment = VerticalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < 5; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        for (var i = 0; i < 6; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var brandImage = new Image
         {
@@ -121,17 +162,21 @@ internal sealed class StickyShellBuilder(
         };
         brandIcon = brandImage;
         System.Windows.Automation.AutomationProperties.SetName(brandImage, "便签品牌图标");
-        brand.Children.Add(new Border
-        {
-            Width = 24, Height = 24, CornerRadius = new CornerRadius(6),
-            Background = palette.Brush(0x001B3D), Child = brandImage
-        });
+        brand.Children.Add(brandImage);
         brand.Children.Add(new TextBlock
         {
             Text = "Fowan", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = palette.Text,
             Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center
         });
         grid.Children.Add(brand);
+        compactAddTaskButton = controls.HeaderIconButton("\uE710", "添加任务");
+        compactAddTaskButton.ToolTip = null;
+        compactAddTaskButton.FocusVisualStyle = null;
+        compactAddTaskButton.Focusable = false;
+        compactAddTaskButton.IsTabStop = false;
+        compactAddTaskButton.Visibility = settings().IsStickyAddTaskMinimized ? Visibility.Visible : Visibility.Collapsed;
+        compactAddTaskButton.Click += (_, _) => { if (!addTaskFromInput()) showAddTask(); };
+        AddHeaderButton(grid, compactAddTaskButton, 1);
         var topmost = controls.HeaderPillButton(settings().IsStickyTopmost ? "\uE840" : "\uE718", "置顶");
         topmost.Click += (_, _) =>
         {
@@ -140,24 +185,24 @@ internal sealed class StickyShellBuilder(
             topmost.Content = StickyControlFactory.HeaderButtonContent(topmostEnabled ? "\uE840" : "\uE718", "置顶", palette.Accent);
             synchronizeChildWindows();
         };
-        AddHeaderButton(grid, topmost, 1);
+        AddHeaderButton(grid, topmost, 2);
         var restore = controls.HeaderIconButton("\uE72B", "回到大界面");
         restore.Click += (_, _) => returnToMain();
-        AddHeaderButton(grid, restore, 2);
-        settingsButton = controls.HeaderIconButton("\uE713", "透明度和缩放");
+        AddHeaderButton(grid, restore, 3);
+        settingsButton = controls.HeaderIconButton("\uE713", "便签设置");
         settingsButton.Click += (_, _) => toggleAdjustment();
-        AddHeaderButton(grid, settingsButton, 3);
+        AddHeaderButton(grid, settingsButton, 4);
         var minimize = controls.HeaderIconButton("\uE921", "最小化便签");
         minimize.Click += (_, _) => window.WindowState = WindowState.Minimized;
-        AddHeaderButton(grid, minimize, 4);
+        AddHeaderButton(grid, minimize, 5);
         var close = controls.HeaderIconButton("\uE711", "关闭便签");
         close.Click += (_, _) => window.Close();
-        AddHeaderButton(grid, close, 5);
+        AddHeaderButton(grid, close, 6);
         header.Child = grid;
         return header;
     }
 
-    private UIElement BuildTitleArea(out TextBlock title, out TextBlock count)
+    private FrameworkElement BuildTitleArea(out TextBlock title, out TextBlock count)
     {
         var stack = new StackPanel { Margin = new Thickness(20, 20, 20, 0) };
         var row = new Grid();
@@ -165,7 +210,7 @@ internal sealed class StickyShellBuilder(
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         title = new TextBlock
         {
-            FontSize = 26, FontWeight = FontWeights.Bold, Foreground = palette.Text,
+            FontSize = settings().StickyTitleFontSize, FontWeight = FontWeights.Bold, Foreground = palette.Text,
             VerticalAlignment = VerticalAlignment.Center
         };
         row.Children.Add(title);

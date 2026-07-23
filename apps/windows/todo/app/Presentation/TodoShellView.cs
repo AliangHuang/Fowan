@@ -18,6 +18,8 @@ internal sealed record TodoTaskAreaParts(
     FrameworkElement Root,
     TextBlock Title,
     TextBlock Summary,
+    Button UndoButton,
+    Button RedoButton,
     Button FilterButton,
     Button StickyModeButton,
     TextBox AddTaskBox,
@@ -49,6 +51,8 @@ internal sealed record TodoShellActions(
     Func<Task> ShowSettings,
     Func<Task> ShowHelp,
     Func<Task> ShowFilter,
+    Action Undo,
+    Action Redo,
     Action OpenSticky,
     Func<Task> AddTask);
 
@@ -75,11 +79,10 @@ internal sealed class TodoShellView(
             Padding = new Thickness(20, 26, 18, 24),
             VerticalAlignment = VerticalAlignment.Center
         };
-        brand.Children.Add(new Border
+        brand.Children.Add(new Image
         {
-            Width = 40, Height = 40, CornerRadius = new CornerRadius(10),
-            Background = palette.BrandBackground,
-            Child = new Image { Width = 28, Height = 28, Source = new BitmapImage(iconUri) }
+            Width = 28, Height = 28, Margin = new Thickness(6),
+            Source = new BitmapImage(iconUri)
         });
         brand.Children.Add(new TextBlock
         {
@@ -146,6 +149,8 @@ internal sealed class TodoShellView(
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var title = new TextBlock
         {
             FontSize = 32, FontWeight = FontWeights.Bold, Foreground = palette.Text,
@@ -157,16 +162,24 @@ internal sealed class TodoShellView(
             VerticalAlignment = VerticalAlignment.Center
         };
         header.Children.Add(new StackPanel { Spacing = 8, Children = { title, summary } });
+        var undo = controls.IconOnlyButton("\uE7A7", "撤销");
+        undo.Click += (_, _) => actions.Undo();
+        Grid.SetColumn(undo, 1);
+        header.Children.Add(undo);
+        var redo = controls.IconOnlyButton("\uE7A6", "重做");
+        redo.Click += (_, _) => actions.Redo();
+        Grid.SetColumn(redo, 2);
+        header.Children.Add(redo);
         var filter = controls.PillButton("筛选", "\uE71C");
         filter.ClearValue(Control.BackgroundProperty);
         filter.ClearValue(Control.BorderBrushProperty);
         filter.MinWidth = 92;
         filter.Click += async (_, _) => await actions.ShowFilter();
-        Grid.SetColumn(filter, 1);
+        Grid.SetColumn(filter, 3);
         header.Children.Add(filter);
         var sticky = controls.IconOnlyButton("\uE8A7", "切换便签模式");
         sticky.Click += (_, _) => actions.OpenSticky();
-        Grid.SetColumn(sticky, 2);
+        Grid.SetColumn(sticky, 4);
         header.Children.Add(sticky);
         grid.Children.Add(header);
         var addShell = new Border
@@ -214,6 +227,6 @@ internal sealed class TodoShellView(
         Grid.SetRow(scroll, 2);
         grid.Children.Add(scroll);
         border.Child = grid;
-        return new(border, title, summary, filter, sticky, addTask, scroll, content);
+        return new(border, title, summary, undo, redo, filter, sticky, addTask, scroll, content);
     }
 }

@@ -12,19 +12,22 @@ internal sealed class StickyChildWindowCoordinator(
     Func<TodoSettings> settings,
     Func<TodoData> data,
     Func<Border> dismissOverlay,
-    Func<string, TodoTask?> findTask)
+    Func<string, TodoTask?> findTask,
+    Action<Window, bool> updatePointerState,
+    Action<bool> updateMenuDismissOverlay)
 {
     private StickyAdjustmentWindow? _adjustment;
     private StickyAddTaskWindow? _addTask;
     private StickyTaskDetailWindow? _taskDetail;
     private StickyConfirmWindow? _confirm;
     private bool _isSynchronizingPositions;
+    private readonly HashSet<Window> _childWindows = [];
 
     public bool HasOpenWindow() =>
         _adjustment is { IsVisible: true } ||
         _addTask is { IsVisible: true } ||
         _taskDetail is { IsVisible: true } ||
-        owner.OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
+        _confirm is { IsVisible: true };
 
     public void ToggleAdjustment()
     {
@@ -52,7 +55,7 @@ internal sealed class StickyChildWindowCoordinator(
             return;
         }
         CloseAll();
-        _addTask = new StickyAddTaskWindow(owner, parent);
+        _addTask = new StickyAddTaskWindow(owner, data(), parent);
         Register(_addTask);
         _addTask.Closed += (_, _) => { _addTask = null; UpdateDismissOverlay(); };
         ApplyState(_addTask, reposition: true);
@@ -115,7 +118,7 @@ internal sealed class StickyChildWindowCoordinator(
 
     public void Synchronize(bool reposition)
     {
-        foreach (Window window in owner.OwnedWindows)
+        foreach (var window in _childWindows.ToList())
         {
             window.Topmost = owner.Topmost;
             if (window is IStickyChildWindow child) ApplyState(child, reposition);
@@ -124,7 +127,7 @@ internal sealed class StickyChildWindowCoordinator(
 
     public void CloseAll()
     {
-        foreach (Window window in owner.OwnedWindows.Cast<Window>().ToList()) window.Close();
+        foreach (var window in _childWindows.ToList()) window.Close();
         _adjustment = null;
         _addTask = null;
         _taskDetail = null;
@@ -139,8 +142,16 @@ internal sealed class StickyChildWindowCoordinator(
         if (window is not IStickyChildWindow child)
             throw new InvalidOperationException("Sticky child windows must synchronize with the owner window.");
         window.Owner = owner;
+        _childWindows.Add(window);
         window.ShowInTaskbar = false;
         window.Topmost = owner.Topmost;
+        window.MouseEnter += (_, _) => updatePointerState(window, true);
+        window.MouseLeave += (_, _) => updatePointerState(window, false);
+        window.Closed += (_, _) =>
+        {
+            _childWindows.Remove(window);
+            updatePointerState(window, false);
+        };
         window.LocationChanged += (_, _) =>
         {
             if (!_isSynchronizingPositions && window.IsVisible) ApplyState(child, reposition: true);
@@ -161,5 +172,6 @@ internal sealed class StickyChildWindowCoordinator(
         var visible = HasOpenWindow();
         overlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         overlay.IsHitTestVisible = visible;
+        updateMenuDismissOverlay(visible);
     }
 }

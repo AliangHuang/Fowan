@@ -13,7 +13,9 @@ internal sealed class StickyFloatingModeController(
     Func<FrameworkElement> brandIcon,
     Func<(double X, double Y)> deviceScale,
     Func<(double Width, double Height)> monitorSize,
+    Func<double> menuHeight,
     Action closeChildren,
+    Action hideMenuWindow,
     Action buildUi,
     Action applyStoredSettings,
     Action refresh,
@@ -59,11 +61,13 @@ internal sealed class StickyFloatingModeController(
         var center = window.Left + (window.ActualWidth > 0 ? window.ActualWidth : window.Width) / 2;
         var edge = TodoStickyPlacement.FindDockEdgeByCenter(workLeft, workRight, center, EdgeThreshold);
         if (edge is null) return false;
+        hideMenuWindow();
         var restore = startGeometry ?? new StickyWindowGeometry(window.Left, window.Top, window.Width, window.Height);
+        var expanded = TodoStickyPlacement.ExpandedGeometryFromBody(restore.Top, restore.Height, menuHeight());
         settings.StickyLeft = restore.Left;
-        settings.StickyTop = restore.Top;
+        settings.StickyTop = expanded.Top;
         settings.StickyWidth = restore.Width;
-        settings.StickyHeight = restore.Height;
+        settings.StickyHeight = expanded.Height;
         settings.StickyFloatingEdge = edge;
         settings.StickyFloatingTop = AlignedTop();
         settings.IsStickyFloatingModeEnabled = true;
@@ -107,11 +111,19 @@ internal sealed class StickyFloatingModeController(
             updateMinimumSize(false);
             var max = monitorSize();
             window.Width = Math.Clamp(settings.StickyWidth ?? BaseWidth * settings.StickyScale, window.MinWidth, max.Width);
-            window.Height = Math.Clamp(settings.StickyHeight ?? BaseHeight * settings.StickyScale, window.MinHeight, max.Height);
+            var expandedHeight = settings.StickyHeight ?? BaseHeight * settings.StickyScale;
+            var body = TodoStickyPlacement.BodyGeometryFromExpanded(0, expandedHeight, menuHeight());
+            window.Height = Math.Clamp(
+                body.Height,
+                window.MinHeight,
+                Math.Max(window.MinHeight, max.Height - menuHeight()));
             if (settings.StickyLeft.HasValue && settings.StickyTop.HasValue)
             {
                 window.Left = settings.StickyLeft.Value;
-                window.Top = settings.StickyTop.Value;
+                window.Top = TodoStickyPlacement.BodyGeometryFromExpanded(
+                    settings.StickyTop.Value,
+                    0,
+                    menuHeight()).Top;
             }
             window.Topmost = settings.IsStickyTopmost;
             buildUi();
@@ -130,6 +142,7 @@ internal sealed class StickyFloatingModeController(
 
     public void ApplyFloatingGeometry(bool save)
     {
+        hideMenuWindow();
         var hwnd = Handle();
         if (hwnd == IntPtr.Zero) return;
         var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);

@@ -18,6 +18,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\fixtures\todo-v5\todo-data.json" Link="fixtures\todo-data.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\fixtures\todo-v1\todo-data.json" Link="fixtures\todo-data.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

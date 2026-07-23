@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Toolbox", "Todo", "Diary", "Ai", "All")]
+    [ValidateSet("Toolbox", "Todo", "Diary", "Report", "Ai", "All")]
     [string]$Component = "All"
 )
 
@@ -17,6 +17,7 @@ $relativePaths = switch ($Component) {
         )
     }
     "Diary" { @("Tools/Diary/Fowan.Diary.Windows.Dev.exe", "Tools/Diary/Fowan.Diary.Windows.exe") }
+    "Report" { @("Tools/Report/Fowan.Report.Windows.Dev.exe", "Tools/Report/Fowan.Report.Windows.exe") }
     "Ai" {
         @(
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe",
@@ -33,6 +34,7 @@ $relativePaths = switch ($Component) {
             "Tools/Todo/Fowan.Todo.Windows.Dev.exe",
             "Tools/Todo/Fowan.Todo.Sticky.Windows.Dev.exe",
             "Tools/Diary/Fowan.Diary.Windows.Dev.exe",
+            "Tools/Report/Fowan.Report.Windows.Dev.exe",
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe",
             "Tools/AI/Config/Fowan.Ai.Config.Windows.Dev.exe",
             "Core/fowan-core.Dev.exe",
@@ -40,6 +42,7 @@ $relativePaths = switch ($Component) {
             "Tools/Todo/Fowan.Todo.Windows.exe",
             "Tools/Todo/Fowan.Todo.Sticky.Windows.exe",
             "Tools/Diary/Fowan.Diary.Windows.exe",
+            "Tools/Report/Fowan.Report.Windows.exe",
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.exe",
             "Tools/AI/Config/Fowan.Ai.Config.Windows.exe",
             "Core/fowan-core.exe"

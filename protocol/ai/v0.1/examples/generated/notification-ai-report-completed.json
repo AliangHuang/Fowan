@@ -1,0 +1,24 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.report.completed",
+  "params": {
+    "invocationId": "report-invocation-1",
+    "output": {
+      "document": {
+        "format": "text",
+        "blocks": [
+          {
+            "kind": "heading1",
+            "text": "周报",
+            "bold": true,
+            "italic": false,
+            "link": null,
+            "isChecked": false,
+            "table": null
+          }
+        ],
+        "sheets": []
+      }
+    }
+  }
+}

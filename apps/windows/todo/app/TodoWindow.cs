@@ -60,6 +60,8 @@ public sealed class TodoWindow : Window
     private FrameworkElement _brandArea = new Grid();
     private Button _helpButton = new();
     private Button _stickyModeButton = new();
+    private Button _undoButton = new();
+    private Button _redoButton = new();
     private TextBox _addTaskBox = new();
     private Button _filterButton = new();
 
@@ -146,6 +148,7 @@ public sealed class TodoWindow : Window
             RefreshAll,
             () => OpenStickyMode(),
             QueueMainOnboardingIfNeeded);
+        CreateDueRecurringTasks();
         PurgeExpiredRecycleBin();
         _presentation.Restore(_workspace.State.Settings, IsKnownView);
         _uiSettings.ColorValuesChanged += (_, _) =>
@@ -189,6 +192,10 @@ public sealed class TodoWindow : Window
         Activated += (_, _) =>
         {
             _chrome.QueueRegionUpdate();
+            if (CreateDueRecurringTasks() > 0)
+            {
+                RefreshAll();
+            }
             if (!_workspace.State.Settings.HasCompletedMainOnboarding && !_onboarding.IsShowing)
             {
                 DispatcherQueue.TryEnqueue(QueueMainOnboardingIfNeeded);
@@ -228,6 +235,8 @@ public sealed class TodoWindow : Window
                 ShowSettingsDialogAsync,
                 ShowHelpDialogAsync,
                 ShowFilterDialogAsync,
+                Undo,
+                Redo,
                 () => OpenStickyMode(),
                 () => _creation.AddFromInputAsync(_addTaskBox)),
             new Uri(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Assets", "fowan-todo-app-icon-256.png"))));
@@ -239,9 +248,12 @@ public sealed class TodoWindow : Window
         _root.Children.Add(sidebar.Root);
 
         var taskArea = shell.BuildTaskArea();
+        _undoButton = taskArea.UndoButton;
+        _redoButton = taskArea.RedoButton;
         _filterButton = taskArea.FilterButton;
         _stickyModeButton = taskArea.StickyModeButton;
         _addTaskBox = taskArea.AddTaskBox;
+        RefreshUndoRedoButtonState();
         RefreshFilterButtonState();
         Grid.SetColumn(taskArea.Root, 1);
         _root.Children.Add(taskArea.Root);
@@ -256,7 +268,7 @@ public sealed class TodoWindow : Window
         _root.Children.Add(detailHost);
         _taskArea.Attach(_root, taskArea, detailHost);
         Content = _root;
-        _chrome.SetLayout(_root, _brandArea, _filterButton, _stickyModeButton);
+        _chrome.SetLayout(_root, _brandArea, _undoButton, _redoButton, _filterButton, _stickyModeButton);
     }
 
 
@@ -268,6 +280,7 @@ public sealed class TodoWindow : Window
         }
 
         RefreshNavigation();
+        RefreshUndoRedoButtonState();
         RefreshFilterButtonState();
         RefreshTaskContent();
         RefreshDetail();
@@ -282,6 +295,7 @@ public sealed class TodoWindow : Window
             _workspace.State.ToQuerySettings(),
             _presentation.CurrentViewId,
             Query(),
+            UnfilteredQuery(),
             _navigation.Actions(
             NavigateToView,
             _controls.SidebarIconButton,
@@ -319,6 +333,29 @@ public sealed class TodoWindow : Window
         _chrome.QueueRegionUpdate();
     }
 
+    private void RefreshUndoRedoButtonState()
+    {
+        SetHistoryButtonState(_undoButton, _commands.CanUndo, "撤销");
+        SetHistoryButtonState(_redoButton, _commands.CanRedo, "重做");
+        _chrome.QueueRegionUpdate();
+    }
+
+    private void SetHistoryButtonState(Button button, bool isAvailable, string action)
+    {
+        button.IsEnabled = isAvailable;
+        button.Opacity = isAvailable ? 1 : 0.42;
+        button.Background = isAvailable
+            ? _palette.LightDark(0xE6F5F7, 0x1A3942)
+            : TodoThemePalette.Transparent;
+        if (button.Content is FontIcon icon)
+        {
+            icon.Foreground = isAvailable
+                ? _palette.Accent
+                : _palette.LightDark(0x9EADB4, 0x66747F);
+        }
+        ToolTipService.SetToolTip(button, isAvailable ? action : $"暂无可{action}的操作");
+    }
+
     private async Task ShowSettingsDialogAsync()
     {
         await _settingsCoordinator.ShowAsync();
@@ -352,6 +389,20 @@ public sealed class TodoWindow : Window
     {
         PersistNavigation();
         RefreshAll();
+    }
+
+    private void Undo()
+    {
+        if (!_commands.Undo()) return;
+        RefreshAll();
+        PersistNavigation();
+    }
+
+    private void Redo()
+    {
+        if (!_commands.Redo()) return;
+        RefreshAll();
+        PersistNavigation();
     }
 
     private void PersistNavigation()
@@ -417,6 +468,7 @@ public sealed class TodoWindow : Window
     private void ReloadDataAndSettings()
     {
         _commands.Reload();
+        CreateDueRecurringTasks();
         PurgeExpiredRecycleBin();
         _presentation.Restore(_workspace.State.Settings, IsKnownView);
     }
@@ -435,15 +487,19 @@ public sealed class TodoWindow : Window
         _commands.PurgeExpiredRecycleBin();
     }
 
+    private int CreateDueRecurringTasks() => _commands.CreateDueRecurringTasks();
+
     private void StartRecycleBinMaintenanceTimer()
     {
         _recycleBinMaintenanceTimer = DispatcherQueue.CreateTimer();
         _recycleBinMaintenanceTimer.Interval = TimeSpan.FromHours(1);
         _recycleBinMaintenanceTimer.Tick += (_, _) =>
         {
+            var createdRecurringTasks = CreateDueRecurringTasks();
             if (!_store.UpdateData((latestData, latestSettings) =>
                     TodoRecycleBin.PurgeExpired(latestData, latestSettings) > 0))
             {
+                if (createdRecurringTasks > 0) RefreshAll();
                 return;
             }
 
@@ -459,7 +515,19 @@ public sealed class TodoWindow : Window
         _filter.DateRange,
         _filter.ListId,
         _filter.MaximumDepth,
+        _filter.CompletionFilter,
+        _filter.FilterParentTasks,
         _store.DefaultListId);
+
+    private TodoWindowQuery UnfilteredQuery() => new(
+        _workspace.State.ToQueryData(),
+        _workspace.State.ToQuerySettings(),
+        dateRange: null,
+        listIdFilter: null,
+        maximumDepth: TodoQuery.MaxTaskTreeDepth,
+        completionFilter: TodoCompletionFilter.All,
+        filterParentTasks: false,
+        defaultListId: _store.DefaultListId);
 
     private TodoTask? FirstTaskForSelection(string viewId) => Query().FirstForSelection(viewId);
 

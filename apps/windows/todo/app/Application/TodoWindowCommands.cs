@@ -4,6 +4,14 @@ namespace Fowan.Todo.Windows.Application;
 
 internal sealed class TodoWindowCommands(TodoWorkspace workspace)
 {
+    public bool CanUndo => workspace.CanUndo;
+
+    public bool CanRedo => workspace.CanRedo;
+
+    public bool Undo() => workspace.Undo();
+
+    public bool Redo() => workspace.Redo();
+
     public void PersistNavigation(string currentViewId, string? selectedTaskId)
         => workspace.SetPresentationPreferences(currentViewId, selectedTaskId);
 
@@ -21,6 +29,8 @@ internal sealed class TodoWindowCommands(TodoWorkspace workspace)
         workspace.UpdateRecycleBinSettings(enabled, preset, customDays);
 
     public int PurgeExpiredRecycleBin() => workspace.PurgeExpiredRecycleBin();
+
+    public int CreateDueRecurringTasks() => workspace.CreateDueRecurringTasks();
 
     public void Reload() => workspace.Reload();
 }

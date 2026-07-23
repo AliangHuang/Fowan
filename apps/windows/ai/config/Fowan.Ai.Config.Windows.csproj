@@ -7,7 +7,7 @@
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Ai.Config.Windows.Dev</AssemblyName>
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Ai.Config.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan-ai-config.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSdkBootstrapInitialize>
@@ -21,8 +21,8 @@
     <ProjectReference Include="..\shared\Fowan.Ai.Shared.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\..\assets\brand\windows\fowan-app-icon-256.png" Link="Assets\fowan-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\..\assets\brand\windows\fowan-ai-config-app-icon-256.png" Link="Assets\fowan-ai-config-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\toolbox\Resources\Strings\*.json" Link="Resources\Strings\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Page Include="..\ui\AiLightTheme.xaml" Link="Styles\AiLightTheme.xaml" />
   </ItemGroup>

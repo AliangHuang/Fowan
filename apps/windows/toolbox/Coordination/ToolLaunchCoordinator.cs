@@ -45,6 +45,7 @@ internal sealed class ToolLaunchCoordinator(
         {
             "todo" => Launch(ToolExecutableResolver.ResolveTodo(), "Tool_Todo"),
             "diary" => Launch(ToolExecutableResolver.ResolveDiary(), "Tool_Diary"),
+            "report" => Launch(ToolExecutableResolver.ResolveReport(), "Tool_Report"),
             "ai-chat" => Launch(ToolExecutableResolver.ResolveAi(ToolExecutableResolver.AiChatExecutableName, "Chat"), "Tool_AIChat"),
             "ai-config" => Launch(ToolExecutableResolver.ResolveAi(ToolExecutableResolver.AiConfigExecutableName, "Config"), "Tool_AIConfig"),
             _ => false

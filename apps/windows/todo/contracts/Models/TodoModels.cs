@@ -75,6 +75,8 @@ public sealed class TodoTask
     public bool IsImportant { get; set; }
     public DateTime StartDate { get; set; } = DateTime.Today;
     public DateTime? DueDate { get; set; }
+    public TodoRecurrenceRule? Recurrence { get; set; }
+    public string? RecurrenceSourceTaskId { get; set; }
     public bool IsCompleted { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
@@ -94,6 +96,9 @@ public sealed class TodoSettings
     public const double MaxStickyOpacity = 1.0;
     public const double MinStickyScale = 0.5;
     public const double MaxStickyScale = 2.0;
+    public const double DefaultStickyTitleFontSize = 26;
+    public const double MinStickyTitleFontSize = 12;
+    public const double MaxStickyTitleFontSize = 36;
 
     public string Theme { get; set; } = TodoThemeIds.System;
     public string CurrentViewId { get; set; } = TodoViewIds.Today;
@@ -103,6 +108,10 @@ public sealed class TodoSettings
     public bool IsStickyModeEnabled { get; set; }
     public bool IsStickyTopmost { get; set; } = true;
     public bool IsStickyCompletedExpanded { get; set; } = true;
+    public bool IsStickyTitleHidden { get; set; }
+    public bool IsStickyAddTaskMinimized { get; set; }
+    public bool IsStickyMenuAutoHideEnabled { get; set; }
+    public double StickyTitleFontSize { get; set; } = DefaultStickyTitleFontSize;
     public double StickyOpacity { get; set; } = MaxStickyOpacity;
     public double StickyScale { get; set; } = 1.0;
     public double? StickyLeft { get; set; }
@@ -136,7 +145,9 @@ public static class TodoViewIds
     public const string Today = "today";
     public const string Planned = "planned";
     public const string Important = "important";
+    public const string Recurring = "recurring";
     public const string All = "all";
+    public const string Uncompleted = "uncompleted";
     public const string Completed = "completed";
     public const string RecycleBin = "recycle-bin";
 
@@ -145,6 +156,28 @@ public static class TodoViewIds
     public static bool IsList(string viewId) => viewId.StartsWith("list:", StringComparison.Ordinal);
 
     public static string ListId(string viewId) => IsList(viewId) ? viewId[5..] : string.Empty;
+}
+
+public static class TodoRecurrenceFrequencies
+{
+    public const string Weekly = "weekly";
+    public const string Monthly = "monthly";
+}
+
+public sealed class TodoRecurrenceRule
+{
+    public string Frequency { get; set; } = string.Empty;
+    public List<DayOfWeek> Weekdays { get; set; } = [];
+    public List<int> MonthDays { get; set; } = [];
+    public DayOfWeek? WeeklyDueDay { get; set; }
+    public int? MonthlyDueDay { get; set; }
+}
+
+public enum TodoCompletionFilter
+{
+    All,
+    Incomplete,
+    Completed
 }
 
 public static class TodoRecycleBinRetentionPresets

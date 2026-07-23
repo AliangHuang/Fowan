@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 29,
+  "method": "ai.chat.context.compact",
+  "params": {
+    "conversationId": "conversation-1",
+    "credentialId": "credential-1",
+    "modelProfileId": "model-1",
+    "branchLeafMessageId": "message-2"
+  }
+}

@@ -2,7 +2,7 @@ namespace Fowan.Windows.Models;
 
 public static class ToolCatalog
 {
-    private const string CurrentReleaseDate = "2026-07-13";
+    private const string CurrentReleaseDate = "2026-07-23";
 
     public static IReadOnlyList<ToolCategory> Categories { get; } =
     [
@@ -26,6 +26,7 @@ public static class ToolCatalog
         Planned("global-search", "Tool_GlobalSearch", "Tool_GlobalSearch_Description", "\uE721", "knowledge"),
         Planned("workflows", "Tool_Workflows", "Tool_Workflows_Description", "\uE8F1", "automation"),
         AvailableAiChat(),
+        AvailableReport(),
         AvailableAiConfig(),
         Planned("plugins", "Tool_Plugins", "Tool_Plugins_Description", "\uECAA", "automation"),
         Available("settings", "Tool_Settings", "Tool_Settings_Description", "\uE713", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
@@ -38,7 +39,7 @@ public static class ToolCatalog
         {
             var version = typeof(ToolCatalog).Assembly.GetName().Version;
             return version is null
-                ? "0.1.4"
+                ? "0.2.0"
                 : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
         }
     }
@@ -133,6 +134,22 @@ public static class ToolCatalog
             "automation",
             ToolStatus.Available,
             ["ai.config.v1"],
+            new ToolAction("open", "Action_Open"),
+            [new ToolAction("pin", "Action_Pin")],
+            ProductVersion,
+            CurrentReleaseDate);
+    }
+
+    private static ToolCard AvailableReport()
+    {
+        return new(
+            "report",
+            "Tool_Report",
+            "Tool_Report_Description",
+            "\uE9D2",
+            "automation",
+            ToolStatus.Available,
+            ["ai.report.v1"],
             new ToolAction("open", "Action_Open"),
             [new ToolAction("pin", "Action_Pin")],
             ProductVersion,

@@ -1,1 +1,1 @@
-{"jsonrpc":"2.0","id":1,"method":"engine.handshake","params":{"protocolVersion":"0.1","requiredCapabilities":["ai.chat.v1","ai.chat.v1"]}}
+{"jsonrpc":"2.0","id":1,"method":"engine.handshake","params":{"protocolVersion":"0.1","contractRevision":1,"requiredCapabilities":["ai.chat.v1","ai.chat.v1"]}}

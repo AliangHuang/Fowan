@@ -4,7 +4,7 @@ namespace Fowan.Diary.Shared.Models;
 
 public sealed class DiaryData
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 1;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public List<DiaryNotebook> Notebooks { get; set; } = [];

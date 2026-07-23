@@ -7,6 +7,14 @@ public static class TodoQuery
     public const int MaxTaskTreeDepth = 3;
     public const int MaxChildTasksPerTask = 100;
 
+    public static bool HasListName(TodoData data, string name, string? excludedListId = null)
+    {
+        var normalized = name.Trim();
+        return normalized.Length > 0 && data.Lists.Any(list =>
+            !string.Equals(list.Id, excludedListId, StringComparison.Ordinal) &&
+            string.Equals(list.Name.Trim(), normalized, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static IEnumerable<TodoTask> ActiveTasksForView(
         TodoData data,
         string viewId,
@@ -15,6 +23,34 @@ public static class TodoQuery
         string? listIdFilter = null)
     {
         return ActiveTaskNodesForView(data, viewId, today, dateFilter, listIdFilter: listIdFilter).Select(node => node.Task);
+    }
+
+    /// <summary>
+    /// The canonical cross-tool filtered task query. It reuses the exact Todo
+    /// active/completed, hierarchy, date-range, list, and recycle-bin rules.
+    /// </summary>
+    public static IEnumerable<TodoTaskNode> TaskNodesForCriteria(
+        TodoData data,
+        bool completed,
+        TodoFilterCriteria? criteria,
+        DateTime? today = null)
+    {
+        var normalized = (criteria ?? TodoFilterCriteria.Default).Normalize();
+        return completed
+            ? CompletedTaskNodesForView(
+                data,
+                TodoViewIds.All,
+                today,
+                normalized.DateRange,
+                normalized.MaximumDepth,
+                normalized.ListId)
+            : ActiveTaskNodesForView(
+                data,
+                TodoViewIds.All,
+                today,
+                normalized.DateRange,
+                normalized.MaximumDepth,
+                normalized.ListId);
     }
 
     public static IEnumerable<TodoTask> CompletedTasksForView(
@@ -115,6 +151,65 @@ public static class TodoQuery
         return BuildTaskNodes(data, visible, collapsedTaskIds, completed, maximumDepth);
     }
 
+    /// <summary>
+    /// Builds one filter result tree that can contain both completed and incomplete tasks.
+    /// When parent filtering is disabled, every matching descendant brings its non-deleted
+    /// ancestors into the tree so that the match keeps its original context.
+    /// </summary>
+    public static IEnumerable<TodoTaskNode> FilteredTaskNodesForView(
+        TodoData data,
+        string viewId,
+        TodoCompletionFilter completionFilter,
+        ISet<string>? collapsedTaskIds = null,
+        DateTime? today = null,
+        TodoDateRangeFilter? dateFilter = null,
+        int? maximumDepth = null,
+        string? listIdFilter = null,
+        bool filterParentTasks = false)
+    {
+        var effectiveCompletion = EffectiveCompletionFilter(viewId, completionFilter);
+        if (effectiveCompletion is null)
+        {
+            return [];
+        }
+
+        var visible = new List<TodoTask>();
+        if (effectiveCompletion is TodoCompletionFilter.All or TodoCompletionFilter.Incomplete)
+        {
+            visible.AddRange(FilterTasks(
+                data,
+                viewId,
+                completed: false,
+                today: today,
+                dateFilter: dateFilter,
+                listIdFilter: listIdFilter));
+        }
+
+        if (effectiveCompletion is TodoCompletionFilter.All or TodoCompletionFilter.Completed)
+        {
+            var completedViewId = viewId == TodoViewIds.Completed ? TodoViewIds.All : viewId;
+            visible.AddRange(FilterTasks(
+                data,
+                completedViewId,
+                completed: true,
+                today: today,
+                dateFilter: dateFilter,
+                listIdFilter: listIdFilter));
+        }
+
+        var matching = visible
+            .GroupBy(task => task.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        var treeTasks = filterParentTasks ? matching : IncludeUnmatchedParents(data, matching);
+        return BuildTaskNodes(
+            data,
+            treeTasks,
+            filterParentTasks ? collapsedTaskIds : null,
+            effectiveCompletion == TodoCompletionFilter.Completed,
+            maximumDepth);
+    }
+
     public static IEnumerable<TodoTask> RecycleBinTasks(TodoData data)
     {
         return data.Tasks.Where(task => task.DeletedAt is not null);
@@ -188,6 +283,9 @@ public static class TodoQuery
                 TodoViewIds.Planned => task.StartDate.Date > currentDate ||
                     (task.DueDate.HasValue && task.DueDate.Value.Date > currentDate),
                 TodoViewIds.Important => task.IsImportant,
+                TodoViewIds.Recurring => task.Recurrence is not null,
+                TodoViewIds.Uncompleted when completed => false,
+                TodoViewIds.Uncompleted => true,
                 TodoViewIds.All or TodoViewIds.Completed => true,
                 _ => false
             };
@@ -196,7 +294,7 @@ public static class TodoQuery
 
     public static bool IsKnownView(TodoData data, string viewId)
     {
-        if (viewId is TodoViewIds.Today or TodoViewIds.Planned or TodoViewIds.Important or TodoViewIds.All or TodoViewIds.Completed or TodoViewIds.RecycleBin)
+        if (viewId is TodoViewIds.Today or TodoViewIds.Planned or TodoViewIds.Important or TodoViewIds.Recurring or TodoViewIds.All or TodoViewIds.Uncompleted or TodoViewIds.Completed or TodoViewIds.RecycleBin)
         {
             return true;
         }
@@ -217,7 +315,9 @@ public static class TodoQuery
         {
             TodoViewIds.Planned => "计划任务",
             TodoViewIds.Important => "重要任务",
+            TodoViewIds.Recurring => "循环任务",
             TodoViewIds.All => "全部任务",
+            TodoViewIds.Uncompleted => "未完成",
             TodoViewIds.Completed => "已完成",
             TodoViewIds.RecycleBin => "回收站",
             _ => "今日任务"
@@ -348,6 +448,45 @@ public static class TodoQuery
                 }
             }
         }
+    }
+
+    private static TodoCompletionFilter? EffectiveCompletionFilter(
+        string viewId,
+        TodoCompletionFilter completionFilter)
+    {
+        return viewId switch
+        {
+            TodoViewIds.Completed when completionFilter == TodoCompletionFilter.Incomplete => null,
+            TodoViewIds.Completed => TodoCompletionFilter.Completed,
+            TodoViewIds.Uncompleted when completionFilter == TodoCompletionFilter.Completed => null,
+            TodoViewIds.Uncompleted => TodoCompletionFilter.Incomplete,
+            _ => completionFilter
+        };
+    }
+
+    private static List<TodoTask> IncludeUnmatchedParents(
+        TodoData data,
+        IReadOnlyCollection<TodoTask> matching)
+    {
+        var activeTasksById = data.Tasks
+            .Where(task => task.DeletedAt is null)
+            .ToDictionary(task => task.Id, StringComparer.Ordinal);
+        var includedIds = matching.Select(task => task.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var task in matching)
+        {
+            var current = task;
+            var seen = new HashSet<string>(StringComparer.Ordinal) { task.Id };
+            while (!string.IsNullOrWhiteSpace(current.ParentTaskId) &&
+                   activeTasksById.TryGetValue(current.ParentTaskId, out var parent) &&
+                   seen.Add(parent.Id))
+            {
+                includedIds.Add(parent.Id);
+                current = parent;
+            }
+        }
+
+        return data.Tasks.Where(task => task.DeletedAt is null && includedIds.Contains(task.Id)).ToList();
     }
 
     private static IEnumerable<TodoTaskNode> FlattenTaskNode(

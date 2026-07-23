@@ -48,6 +48,12 @@
         "modelProfileId": {
           "type": "string",
           "minLength": 1
+        },
+        "userMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }

@@ -1,5 +1,6 @@
 using Fowan.Todo.Shared.Application;
 using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Shared.Services;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -11,8 +12,8 @@ internal sealed class StickyDisplayGeometryController(
     Window window,
     TodoWorkspace workspace,
     Func<TodoSettings> settings,
-    Func<FrameworkElement> root,
-    Func<FrameworkElement> dragHandle)
+    Func<double> menuHeight,
+    Func<FrameworkElement> root)
 {
     private const double BaseWidth = 408;
     private const double BaseHeight = 568;
@@ -25,7 +26,9 @@ internal sealed class StickyDisplayGeometryController(
         var maxSize = CurrentMonitorSizeDip();
         var current = settings();
         window.MinWidth = Math.Min(BaseWidth * TodoSettings.MinStickyScale * current.StickyScale, maxSize.Width);
-        window.MinHeight = Math.Min(BaseHeight * TodoSettings.MinStickyScale * current.StickyScale, maxSize.Height);
+        window.MinHeight = Math.Max(0,
+            Math.Min(BaseHeight * TodoSettings.MinStickyScale * current.StickyScale, maxSize.Height) -
+            menuHeight());
         if (!clampCurrentSize) return;
         window.Width = Math.Max(window.Width, window.MinWidth);
         window.Height = Math.Max(window.Height, window.MinHeight);
@@ -39,7 +42,7 @@ internal sealed class StickyDisplayGeometryController(
         {
             UpdateMinimumWindowSize(clampCurrentSize: false);
             ClampWindowSizeToCurrentMonitor();
-            ClampDragHandleToVisibleDisplay();
+            ClampMenuAndTaskBodyToVisibleDisplay();
         }
         finally
         {
@@ -84,17 +87,18 @@ internal sealed class StickyDisplayGeometryController(
         }
         else
         {
+            var expanded = TodoStickyPlacement.ExpandedGeometryFromBody(window.Top, window.Height, menuHeight());
             current.StickyLeft = window.Left;
-            current.StickyTop = window.Top;
+            current.StickyTop = expanded.Top;
             current.StickyWidth = window.Width;
-            current.StickyHeight = window.Height;
+            current.StickyHeight = expanded.Height;
         }
         workspace.SaveSettings(current);
     }
 
     public void EnforceVerticalConstraints()
     {
-        if (!TryGetDragHandleScreenRect(out var dragRect)) return;
+        if (!TryGetMenuAndTaskBodyScreenRect(out var dragRect)) return;
         var monitor = MonitorFromRect(ref dragRect, MonitorDefaultToNearest);
         if (!TryGetMonitorInfo(monitor, out var monitorInfo)) return;
         var dy = dragRect.Top < monitorInfo.WorkArea.Top
@@ -109,14 +113,15 @@ internal sealed class StickyDisplayGeometryController(
     {
         var maxSize = CurrentMonitorSizeDip();
         var nextWidth = Math.Clamp(window.Width, window.MinWidth, Math.Max(window.MinWidth, maxSize.Width));
-        var nextHeight = Math.Clamp(window.Height, window.MinHeight, Math.Max(window.MinHeight, maxSize.Height));
+        var maxBodyHeight = Math.Max(window.MinHeight, maxSize.Height - menuHeight());
+        var nextHeight = Math.Clamp(window.Height, window.MinHeight, maxBodyHeight);
         if (Math.Abs(nextWidth - window.Width) > 0.5) window.Width = nextWidth;
         if (Math.Abs(nextHeight - window.Height) > 0.5) window.Height = nextHeight;
     }
 
-    private void ClampDragHandleToVisibleDisplay()
+    private void ClampMenuAndTaskBodyToVisibleDisplay()
     {
-        if (!TryGetDragHandleScreenRect(out var dragRect)) return;
+        if (!TryGetMenuAndTaskBodyScreenRect(out var dragRect)) return;
         var monitor = MonitorFromRect(ref dragRect, MonitorDefaultToNearest);
         if (!TryGetMonitorInfo(monitor, out var monitorInfo)) return;
         var bounds = monitorInfo.Monitor;
@@ -128,42 +133,23 @@ internal sealed class StickyDisplayGeometryController(
         window.Top += dy / scale.Y;
     }
 
-    private bool TryGetDragHandleScreenRect(out NativeRect rect)
+    private bool TryGetMenuAndTaskBodyScreenRect(out NativeRect rect)
     {
-        var handle = dragHandle();
-        if (handle.IsLoaded && handle.ActualWidth > 0 && handle.ActualHeight > 0)
-        {
-            rect = ScreenRectForElement(handle, handle.ActualWidth, handle.ActualHeight);
-            return true;
-        }
         var contentRoot = root();
         if (contentRoot.IsLoaded)
         {
             var scale = DeviceScale();
-            var topLeft = contentRoot.PointToScreen(new Point(18, 0));
+            var topLeft = contentRoot.PointToScreen(new Point(18, -menuHeight()));
             rect = new NativeRect
             {
                 Left = (int)Math.Floor(topLeft.X), Top = (int)Math.Floor(topLeft.Y),
                 Right = (int)Math.Ceiling(topLeft.X + 150 * scale.X),
-                Bottom = (int)Math.Ceiling(topLeft.Y + 54 * scale.Y)
+                Bottom = (int)Math.Ceiling(topLeft.Y + menuHeight() * scale.Y)
             };
             return true;
         }
         rect = default;
         return false;
-    }
-
-    private static NativeRect ScreenRectForElement(FrameworkElement element, double width, double height)
-    {
-        var topLeft = element.PointToScreen(new Point(0, 0));
-        var bottomRight = element.PointToScreen(new Point(width, height));
-        return new NativeRect
-        {
-            Left = (int)Math.Floor(Math.Min(topLeft.X, bottomRight.X)),
-            Top = (int)Math.Floor(Math.Min(topLeft.Y, bottomRight.Y)),
-            Right = (int)Math.Ceiling(Math.Max(topLeft.X, bottomRight.X)),
-            Bottom = (int)Math.Ceiling(Math.Max(topLeft.Y, bottomRight.Y))
-        };
     }
 
     private static bool TryGetMonitorInfo(IntPtr monitor, out MonitorInfo monitorInfo)

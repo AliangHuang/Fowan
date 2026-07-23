@@ -1,6 +1,6 @@
 # Fowan AI Configuration Changelog
 
-## Unreleased - 2026-07-13
+## 0.2.0 - 2026-07-23
 
 - 新增独立 `Fowan.Ai.Config.Windows.exe`，管理渠道、多个密钥、模型和 `ai.chat` 默认绑定。
 - 支持 `--page=credentials|models|bindings` 定位，并可启动或激活独立 AI 对话应用。

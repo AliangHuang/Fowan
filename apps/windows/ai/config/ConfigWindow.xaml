@@ -5,11 +5,26 @@
     <Grid x:Name="RootLayout" RequestedTheme="Light" Background="{StaticResource AiPageBrush}">
         <Grid.RowDefinitions><RowDefinition Height="64" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <Grid x:Name="TitleBarDragRegion" Background="{StaticResource AiCardBrush}">
-            <StackPanel Margin="20,0,0,0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <Image Width="34" Height="34" Source="Assets/fowan-app-icon-256.png" />
-                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Fowan AI 配置中心" VerticalAlignment="Center" />
+            <Grid.Resources>
+                <Style x:Key="AiTitleBarButtonStyle" TargetType="Button" BasedOn="{StaticResource AiButtonStyle}">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="CornerRadius" Value="0" />
+                </Style>
+            </Grid.Resources>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="144" /></Grid.ColumnDefinitions>
+            <Grid x:Name="TitleBarDragSurface" PointerPressed="TitleBarDragSurface_PointerPressed">
+                <StackPanel Margin="20,0,0,0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Image Width="34" Height="34" Source="Assets/fowan-app-icon-256.png" />
+                    <TextBlock FontSize="20" FontWeight="SemiBold" Text="Fowan AI 配置中心" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="MinimizeWindowButton" Style="{StaticResource AiTitleBarButtonStyle}" Width="48" Height="64" Padding="0" ToolTipService.ToolTip="最小化窗口"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE921;" FontSize="14" /></Button>
+                <Button x:Name="MaximizeWindowButton" Style="{StaticResource AiTitleBarButtonStyle}" Width="48" Height="64" Padding="0" ToolTipService.ToolTip="最大化或还原窗口"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE922;" FontSize="14" /></Button>
+                <Button x:Name="CloseWindowButton" Style="{StaticResource AiTitleBarButtonStyle}" Width="48" Height="64" Padding="0" Foreground="{StaticResource AiDangerBrush}" ToolTipService.ToolTip="关闭窗口"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BB;" FontSize="14" /></Button>
             </StackPanel>
-            <Border VerticalAlignment="Bottom" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="0,0,0,1" />
+            <Border Grid.ColumnSpan="2" VerticalAlignment="Bottom" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="0,0,0,1" />
         </Grid>
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="308" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -17,7 +32,7 @@
                 <Grid Padding="22,30,18,18">
                     <Grid.RowDefinitions><RowDefinition Height="74" /><RowDefinition Height="*" /><RowDefinition Height="136" /><RowDefinition Height="52" /></Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="14" Margin="14,0,0,0" VerticalAlignment="Top">
-                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE946;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="27" />
+                        <Image Width="42" Height="42" Source="Assets/fowan-ai-config-app-icon-256.png" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <TextBlock FontSize="23" FontWeight="SemiBold" Text="AI 配置中心" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Row="1" Spacing="8">
@@ -30,13 +45,16 @@
                         <Button x:Name="BindingsNavButton" Style="{StaticResource AiNavButtonStyle}" HorizontalAlignment="Stretch">
                             <StackPanel Orientation="Horizontal" Spacing="16"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE90F;" FontSize="22" /><TextBlock Text="工具默认模型" FontSize="17" /></StackPanel>
                         </Button>
+                        <Button x:Name="UsageGuideNavButton" Style="{StaticResource AiNavButtonStyle}" HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="16"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE897;" FontSize="22" /><TextBlock Text="使用说明" FontSize="17" /></StackPanel>
+                        </Button>
                     </StackPanel>
                     <StackPanel Grid.Row="2" Spacing="2" VerticalAlignment="Bottom">
                         <Border Height="1" Background="{StaticResource AiBorderBrush}" Margin="0,0,4,12" />
-                        <Button Style="{StaticResource AiNavButtonStyle}" Height="48"><StackPanel Orientation="Horizontal" Spacing="14"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEA18;" FontSize="20" /><TextBlock Text="安全与隐私" /></StackPanel></Button>
-                        <Button Style="{StaticResource AiNavButtonStyle}" Height="48"><StackPanel Orientation="Horizontal" Spacing="14"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE946;" FontSize="20" /><TextBlock Text="关于" /></StackPanel></Button>
+                        <Button x:Name="SecurityAndPrivacyButton" Style="{StaticResource AiNavButtonStyle}" Height="48"><StackPanel Orientation="Horizontal" Spacing="14"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEA18;" FontSize="20" /><TextBlock Text="安全与隐私" /></StackPanel></Button>
+                        <Button x:Name="AboutButton" Style="{StaticResource AiNavButtonStyle}" Height="48"><StackPanel Orientation="Horizontal" Spacing="14"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE946;" FontSize="20" /><TextBlock Text="关于" /></StackPanel></Button>
                     </StackPanel>
-                    <Grid Grid.Row="3"><Button Style="{StaticResource AiButtonStyle}" Width="44" Padding="0"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;" FontSize="19" /></Button><Border Width="36" Height="36" HorizontalAlignment="Right" Background="{StaticResource AiSelectionBrush}" CornerRadius="18"><TextBlock Text="U" Foreground="{StaticResource AiPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" /></Border></Grid>
+                    <Grid Grid.Row="3"><Button Style="{StaticResource AiButtonStyle}" Width="44" Padding="0"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;" FontSize="19" /></Button></Grid>
                 </Grid>
             </Border>
 
@@ -50,10 +68,10 @@
                 <Grid x:Name="CredentialsPage" Grid.Row="1" Padding="40,8,34,18">
                     <Grid.RowDefinitions><RowDefinition Height="94" /><RowDefinition Height="*" /><RowDefinition Height="84" /></Grid.RowDefinitions>
                     <Grid>
-                        <StackPanel Spacing="9"><TextBlock Style="{StaticResource AiTitleTextStyle}" Text="渠道与密钥" /><TextBlock Style="{StaticResource AiBodyTextStyle}" Text="管理您的 AI 服务渠道和密钥。密钥仅保存在本机，通过 Windows 凭据管理器安全存储。" /></StackPanel>
+                        <StackPanel Spacing="9"><TextBlock Style="{StaticResource AiTitleTextStyle}" Text="渠道与密钥" /><TextBlock Style="{StaticResource AiBodyTextStyle}" Text="当前仅支持 DeepSeek；其他渠道会显示为暂不支持。密钥仅保存在本机，通过 Windows 凭据管理器安全存储。" /></StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,25,0,0">
                             <Button x:Name="AddCredentialButton" Style="{StaticResource AiPrimaryButtonStyle}" MinWidth="144"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="17" /><TextBlock Foreground="White" Text="添加密钥" /></StackPanel></Button>
-                            <Button x:Name="AddChannelButton" Style="{StaticResource AiOutlineButtonStyle}" MinWidth="186"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="17" /><TextBlock Foreground="{StaticResource AiPrimaryBrush}" Text="添加自定义渠道" /></StackPanel></Button>
+                            <Button x:Name="AddChannelButton" Style="{StaticResource AiOutlineButtonStyle}" IsEnabled="False" MinWidth="186"><StackPanel Orientation="Horizontal" Spacing="9"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="17" /><TextBlock Text="自定义渠道（暂不支持）" /></StackPanel></Button>
                         </StackPanel>
                     </Grid>
                     <Grid Grid.Row="1">
@@ -63,19 +81,19 @@
                                 <Border Height="126" Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="18,16">
                                     <Grid ColumnSpacing="18"><Grid.ColumnDefinitions><ColumnDefinition Width="62" /><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="0.7*" /><ColumnDefinition Width="0.9*" /><ColumnDefinition Width="1" /><ColumnDefinition Width="150" /></Grid.ColumnDefinitions>
                                         <Border Width="58" Height="58" CornerRadius="29" Background="{StaticResource AiSelectionBrush}"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE71B;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="26" /></Border>
-                                        <StackPanel Grid.Column="1" Spacing="6"><TextBlock Text="{Binding Label}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{Binding BaseUrl}" FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" TextTrimming="CharacterEllipsis" /><Border Background="#FFE7F7EA" CornerRadius="5" Padding="8,3" HorizontalAlignment="Left"><TextBlock Text="已启用" FontSize="13" Foreground="{StaticResource AiSuccessBrush}" /></Border></StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="6"><TextBlock Text="{Binding Label}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{Binding BaseUrl}" FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" TextTrimming="CharacterEllipsis" /><Border Background="#FFE7F7EA" CornerRadius="5" Padding="8,3" HorizontalAlignment="Left"><TextBlock Text="{Binding StatusLabel}" FontSize="13" Foreground="{StaticResource AiSuccessBrush}" /></Border></StackPanel>
                                         <StackPanel Grid.Column="2" Spacing="10" VerticalAlignment="Center"><TextBlock Text="凭据名称" FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" /><TextBlock Text="{Binding Label}" FontSize="15" /></StackPanel>
                                         <StackPanel Grid.Column="3" Spacing="10" VerticalAlignment="Center"><TextBlock Text="密钥" FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" /><TextBlock Text="{Binding SecretHint}" FontSize="15" /></StackPanel>
                                         <StackPanel Grid.Column="4" Spacing="10" VerticalAlignment="Center"><TextBlock Text="模型" FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" /><TextBlock Text="已配置" FontSize="15" /></StackPanel>
                                         <StackPanel Grid.Column="5" Spacing="10" VerticalAlignment="Center"><TextBlock Text="测试状态" FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" /><StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="8" Height="8" Fill="{StaticResource AiSuccessBrush}" /><TextBlock Text="{Binding LastTestStatus}" FontSize="15" /></StackPanel></StackPanel>
                                         <Border Grid.Column="6" Background="{StaticResource AiBorderBrush}" Margin="0,0,0,0" />
-                                        <StackPanel Grid.Column="7" Spacing="2" VerticalAlignment="Center"><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiPrimaryBrush}" Content="▷  测试连接" Click="CredentialTest_Click" /><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiPrimaryBrush}" Content="✎  编辑" Click="CredentialEdit_Click" /><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiDangerBrush}" Content="▣  删除" Click="CredentialDelete_Click" /></StackPanel>
+                                        <StackPanel Grid.Column="7" Spacing="2" VerticalAlignment="Center"><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiPrimaryBrush}" IsEnabled="{Binding Enabled}" Content="▷  测试连接" Click="CredentialTest_Click" /><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiPrimaryBrush}" Content="✎  编辑" Click="CredentialEdit_Click" /><Button Style="{StaticResource AiNavButtonStyle}" Height="34" Foreground="{StaticResource AiDangerBrush}" Content="▣  删除" Click="CredentialDelete_Click" /></StackPanel>
                                     </Grid>
                                 </Border>
                             </DataTemplate></ListView.ItemTemplate>
                         </ListView>
                         <Border x:Name="CredentialEmptyState" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="12">
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><Border Width="64" Height="64" CornerRadius="32" Background="{StaticResource AiSelectionBrush}"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE71B;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="28" /></Border><TextBlock Style="{StaticResource AiTitleTextStyle}" FontSize="22" Text="尚未添加密钥" HorizontalAlignment="Center" /><TextBlock Style="{StaticResource AiBodyTextStyle}" Text="添加内置渠道或自定义渠道，将 API 密钥安全保存到 Windows 凭据管理器。" HorizontalAlignment="Center" /></StackPanel>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><Border Width="64" Height="64" CornerRadius="32" Background="{StaticResource AiSelectionBrush}"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE71B;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="28" /></Border><TextBlock Style="{StaticResource AiTitleTextStyle}" FontSize="22" Text="尚未添加密钥" HorizontalAlignment="Center" /><TextBlock Style="{StaticResource AiBodyTextStyle}" Text="添加 DeepSeek 密钥，将 API 密钥安全保存到 Windows 凭据管理器。" HorizontalAlignment="Center" /></StackPanel>
                         </Border>
                     </Grid>
                     <Border Grid.Row="2" Background="{StaticResource AiSelectionBrush}" BorderBrush="#FFBAD6FF" BorderThickness="1" CornerRadius="8" Padding="14,0"><StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE946;" Foreground="{StaticResource AiPrimaryBrush}" /><TextBlock Style="{StaticResource AiBodyTextStyle}" Text="模型仅显示当前密钥下已配置的模型。" /></StackPanel></Border>
@@ -91,8 +109,45 @@
                 </Grid>
 
                 <Grid x:Name="BindingsPage" Grid.Row="1" Padding="40,8,34,18" Visibility="Collapsed">
-                    <StackPanel Spacing="18" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Style="{StaticResource AiTitleTextStyle}" Text="工具默认模型" /><TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="为 AI 对话设置新建会话时默认使用的密钥与模型。对话中仍可临时切换。" /><Border Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="26"><StackPanel Spacing="18"><TextBlock FontSize="19" FontWeight="SemiBold" Text="AI 对话" /><ComboBox x:Name="BindingCredentialComboBox" Style="{StaticResource AiComboBoxStyle}" Header="密钥配置" Width="520" HorizontalAlignment="Left" DisplayMemberPath="DisplayLabel" /><ComboBox x:Name="BindingModelComboBox" Style="{StaticResource AiComboBoxStyle}" Header="模型" Width="520" HorizontalAlignment="Left" DisplayMemberPath="DisplayLabel" /><StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="SaveBindingButton" Style="{StaticResource AiPrimaryButtonStyle}" Content="保存" MinWidth="108" /><Button x:Name="ClearBindingButton" Style="{StaticResource AiButtonStyle}" Content="清除默认值" MinWidth="128" /></StackPanel></StackPanel></Border></StackPanel>
+                    <StackPanel Spacing="18" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Style="{StaticResource AiTitleTextStyle}" Text="工具默认模型" /><TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="为每项 AI 功能设置默认密钥与模型。汇报工具仅使用“汇报”绑定，不会回退到 AI 对话。" /><Border Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="26"><StackPanel Spacing="18"><StackPanel Spacing="8"><TextBlock FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" Text="功能" /><ComboBox x:Name="BindingFeatureComboBox" Style="{StaticResource AiComboBoxStyle}" Width="520" Height="46" HorizontalAlignment="Left" PlaceholderText="请选择功能" DisplayMemberPath="DisplayName" /></StackPanel><StackPanel Spacing="8"><TextBlock FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" Text="密钥配置" /><Grid Width="520" Height="46" HorizontalAlignment="Left"><ComboBox x:Name="BindingCredentialComboBox" Style="{StaticResource AiComboBoxStyle}" Height="46" HorizontalAlignment="Stretch" PlaceholderText="请选择密钥" DisplayMemberPath="DisplayLabel" Background="Transparent" BorderThickness="0" Padding="14,0,42,0" /><Border IsHitTestVisible="False" Background="Transparent" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="6" /><FontIcon IsHitTestVisible="False" FontFamily="Segoe Fluent Icons" Glyph="&#xE70D;" FontSize="15" Foreground="{StaticResource AiPrimaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0" /></Grid></StackPanel><StackPanel Spacing="8"><TextBlock FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" Text="模型" /><Grid Width="520" Height="46" HorizontalAlignment="Left"><ComboBox x:Name="BindingModelComboBox" Style="{StaticResource AiComboBoxStyle}" Height="46" HorizontalAlignment="Stretch" PlaceholderText="请先选择密钥" DisplayMemberPath="DisplayLabel" Background="Transparent" BorderThickness="0" Padding="14,0,42,0" /><Border IsHitTestVisible="False" Background="Transparent" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="6" /><FontIcon IsHitTestVisible="False" FontFamily="Segoe Fluent Icons" Glyph="&#xE70D;" FontSize="15" Foreground="{StaticResource AiPrimaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0" /></Grid></StackPanel><StackPanel x:Name="BindingThinkingEffortPanel" Spacing="8" Visibility="Collapsed"><TextBlock FontSize="14" Foreground="{StaticResource AiSecondaryTextBrush}" Text="思考强度" /><Grid Width="520" Height="46" HorizontalAlignment="Left"><ComboBox x:Name="BindingThinkingEffortComboBox" Style="{StaticResource AiComboBoxStyle}" Height="46" HorizontalAlignment="Stretch" PlaceholderText="使用模型默认档位" DisplayMemberPath="DisplayLabel" Background="Transparent" BorderThickness="0" Padding="14,0,42,0" /><Border IsHitTestVisible="False" Background="Transparent" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="6" /><FontIcon IsHitTestVisible="False" FontFamily="Segoe Fluent Icons" Glyph="&#xE70D;" FontSize="15" Foreground="{StaticResource AiPrimaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0" /></Grid><TextBlock x:Name="BindingThinkingEffortHintTextBlock" FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" TextWrapping="Wrap" /></StackPanel><StackPanel Orientation="Horizontal" Spacing="12"><Button x:Name="SaveBindingButton" Style="{StaticResource AiPrimaryButtonStyle}" Content="保存" MinWidth="108" /><Button x:Name="ClearBindingButton" Style="{StaticResource AiButtonStyle}" Content="清除默认值" MinWidth="128" /></StackPanel></StackPanel></Border></StackPanel>
                 </Grid>
+
+                <ScrollViewer x:Name="UsageGuidePage" Grid.Row="1" Padding="40,8,34,18" Visibility="Collapsed" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="860" HorizontalAlignment="Left" Spacing="20" Padding="0,0,16,12">
+                        <StackPanel Spacing="9">
+                            <TextBlock Style="{StaticResource AiTitleTextStyle}" Text="使用说明" />
+                            <TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="完成以下四步，即可让 AI 对话和其他 AI 工具使用你的默认模型。" />
+                        </StackPanel>
+                        <Border Background="{StaticResource AiSelectionBrush}" BorderBrush="#FFBAD6FF" BorderThickness="1" CornerRadius="10" Padding="20,16">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE897;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="20" /><TextBlock FontSize="17" FontWeight="SemiBold" Text="1. 获取 DeepSeek API Key" /></StackPanel>
+                                <TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="当前配置中心支持 DeepSeek。请在开放平台注册或登录后创建 API Key；密钥只会在添加时输入，保存后不会以明文显示。" />
+                                <HyperlinkButton NavigateUri="https://platform.deepseek.com/api_keys" Content="打开 DeepSeek 开放平台获取 API Key ↗" Foreground="{StaticResource AiPrimaryBrush}" FontWeight="SemiBold" HorizontalAlignment="Left" Padding="0,4" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,16">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><Border Width="26" Height="26" CornerRadius="13" Background="{StaticResource AiSelectionBrush}"><TextBlock Text="2" Foreground="{StaticResource AiPrimaryBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock FontSize="17" FontWeight="SemiBold" Text="添加密钥" VerticalAlignment="Center" /></StackPanel>
+                                <TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="进入“渠道与密钥”，点击“添加密钥”，填写便于识别的名称并粘贴 API Key。首次保存会同时准备该渠道的默认模型。" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,16">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><Border Width="26" Height="26" CornerRadius="13" Background="{StaticResource AiSelectionBrush}"><TextBlock Text="3" Foreground="{StaticResource AiPrimaryBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock FontSize="17" FontWeight="SemiBold" Text="确认模型并设置默认值" VerticalAlignment="Center" /></StackPanel>
+                                <TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="在“模型”中检查已启用的模型；随后打开“工具默认模型”，为每项 AI 功能选择对应的密钥和模型，再点击“保存”。" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,16">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="10"><Border Width="26" Height="26" CornerRadius="13" Background="{StaticResource AiSelectionBrush}"><TextBlock Text="4" Foreground="{StaticResource AiPrimaryBrush}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock FontSize="17" FontWeight="SemiBold" Text="开始使用" VerticalAlignment="Center" /></StackPanel>
+                                <TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="点击右上角“打开 AI 对话”即可开始。首次向云端发送内容前，应用会请求你的明确确认；你也可以在模型或密钥列表中测试连接。" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#FFF7F9FC" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16,14">
+                            <StackPanel Orientation="Horizontal" Spacing="10"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE946;" Foreground="{StaticResource AiSuccessBrush}" FontSize="18" /><TextBlock Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" Text="安全提示：API Key 由 FowanCore 保存到 Windows 凭据管理器；配置中心不会展示完整密钥。" /></StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </Grid>
         <Border x:Name="StatusBorder" Grid.RowSpan="2" Visibility="Collapsed" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="330,76,24,0" Padding="14,10" CornerRadius="8" Background="#FFFFF4E5" BorderBrush="#FFF3C16B" BorderThickness="1"><Grid><TextBlock x:Name="StatusTextBlock" TextWrapping="Wrap" /><Button x:Name="CloseStatusButton" HorizontalAlignment="Right" Style="{StaticResource AiButtonStyle}" Height="30" Width="30" Padding="0" Content="×" /></Grid></Border>

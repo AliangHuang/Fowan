@@ -44,10 +44,14 @@ internal sealed class StickyControlFactory(Func<TodoSettings> settings, StickyTh
         var button = new Button
         {
             Width = 20, Height = 20, Padding = new Thickness(0), BorderThickness = new Thickness(0),
-            Background = background, Content = MdIcon(glyph, 11, foreground), ToolTip = label,
+            Background = background, Content = MdIcon(glyph, 11, foreground),
             VerticalAlignment = VerticalAlignment.Center,
+            FocusVisualStyle = null,
+            Focusable = false,
+            IsTabStop = false,
             Template = ButtonTemplate(new CornerRadius(10), background, palette.AccentDark)
         };
+        AutomationProperties.SetName(button, label);
         return button;
     }
 

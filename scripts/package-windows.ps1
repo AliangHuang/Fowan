@@ -29,6 +29,7 @@ $windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj
 $todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
 $diaryProject = Join-Path $repoRoot "apps/windows/diary/app/Fowan.Diary.Windows.csproj"
+$reportProject = Join-Path $repoRoot "apps/windows/report/app/Fowan.Report.Windows.csproj"
 $aiChatProject = Join-Path $repoRoot "apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj"
 $aiConfigProject = Join-Path $repoRoot "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
@@ -145,6 +146,21 @@ function Write-ReleaseNotes {
             Id = "diary"
             Title = "Diary"
             Path = Join-Path $changelogRoot "tools/diary/CHANGELOG.md"
+        },
+        @{
+            Id = "report"
+            Title = "Report"
+            Path = Join-Path $changelogRoot "tools/report/CHANGELOG.md"
+        },
+        @{
+            Id = "ai-chat"
+            Title = "AI Chat"
+            Path = Join-Path $changelogRoot "tools/ai-chat/CHANGELOG.md"
+        },
+        @{
+            Id = "ai-config"
+            Title = "AI Configuration"
+            Path = Join-Path $changelogRoot "tools/ai-config/CHANGELOG.md"
         }
     )
 
@@ -215,6 +231,7 @@ function Resolve-Iscc {
     }
 
     $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs/Inno Setup 6/ISCC.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe"),
         (Join-Path $env:ProgramFiles "Inno Setup 6/ISCC.exe")
     )
@@ -300,6 +317,8 @@ $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
 New-Item -ItemType Directory -Force -Path $diaryStage | Out-Null
+$reportStage = Join-Path $appStage "Tools/Report"
+New-Item -ItemType Directory -Force -Path $reportStage | Out-Null
 $aiChatStage = Join-Path $appStage "Tools/AI/Chat"
 New-Item -ItemType Directory -Force -Path $aiChatStage | Out-Null
 $aiConfigStage = Join-Path $appStage "Tools/AI/Config"
@@ -310,6 +329,7 @@ $publishTargets = @(
     @{ Project = $todoProject; Destination = $todoStage; Component = "publish-todo" },
     @{ Project = $stickyProject; Destination = $todoStage; Component = "publish-sticky" },
     @{ Project = $diaryProject; Destination = $diaryStage; Component = "publish-diary" },
+    @{ Project = $reportProject; Destination = $reportStage; Component = "publish-report" },
     @{ Project = $aiChatProject; Destination = $aiChatStage; Component = "publish-ai-chat" },
     @{ Project = $aiConfigProject; Destination = $aiConfigStage; Component = "publish-ai-config" }
 )
@@ -332,6 +352,7 @@ $requiredExecutables = @(
     (Join-Path $todoStage "Fowan.Todo.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
     (Join-Path $diaryStage "Fowan.Diary.Windows.exe"),
+    (Join-Path $reportStage "Fowan.Report.Windows.exe"),
     (Join-Path $aiChatStage "Fowan.Ai.Chat.Windows.exe"),
     (Join-Path $aiConfigStage "Fowan.Ai.Config.Windows.exe"),
     (Join-Path $coreStage "fowan-core.exe")

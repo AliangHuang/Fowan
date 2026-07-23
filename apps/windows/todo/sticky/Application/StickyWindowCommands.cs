@@ -15,6 +15,8 @@ internal sealed class StickyWindowCommands(TodoWorkspace workspace)
 
     public int PurgeExpiredRecycleBin() => workspace.PurgeExpiredRecycleBin();
 
+    public int CreateDueRecurringTasks() => workspace.CreateDueRecurringTasks();
+
     public double SetOpacity(double opacity)
     {
         workspace.Settings.StickyOpacity = Math.Clamp(
@@ -40,6 +42,19 @@ internal sealed class StickyWindowCommands(TodoWorkspace workspace)
         return workspace.Settings.StickyScale;
     }
 
+    public bool SetStickyTitleFontSize(double fontSize)
+    {
+        if (double.IsNaN(fontSize) || double.IsInfinity(fontSize)) return false;
+        var normalized = Math.Clamp(
+            Math.Round(fontSize),
+            TodoSettings.MinStickyTitleFontSize,
+            TodoSettings.MaxStickyTitleFontSize);
+        if (Math.Abs(workspace.Settings.StickyTitleFontSize - normalized) < 0.01) return false;
+        workspace.Settings.StickyTitleFontSize = normalized;
+        workspace.SaveSettings();
+        return true;
+    }
+
     public bool ToggleTopmost()
     {
         workspace.Settings.IsStickyTopmost = !workspace.Settings.IsStickyTopmost;
@@ -52,6 +67,30 @@ internal sealed class StickyWindowCommands(TodoWorkspace workspace)
         workspace.Settings.IsStickyCompletedExpanded = !workspace.Settings.IsStickyCompletedExpanded;
         workspace.SaveSettings();
         return workspace.Settings.IsStickyCompletedExpanded;
+    }
+
+    public bool SetStickyTitleHidden(bool hidden)
+    {
+        if (workspace.Settings.IsStickyTitleHidden == hidden) return false;
+        workspace.Settings.IsStickyTitleHidden = hidden;
+        workspace.SaveSettings();
+        return true;
+    }
+
+    public bool SetStickyAddTaskMinimized(bool minimized)
+    {
+        if (workspace.Settings.IsStickyAddTaskMinimized == minimized) return false;
+        workspace.Settings.IsStickyAddTaskMinimized = minimized;
+        workspace.SaveSettings();
+        return true;
+    }
+
+    public bool SetStickyMenuAutoHideEnabled(bool enabled)
+    {
+        if (workspace.Settings.IsStickyMenuAutoHideEnabled == enabled) return false;
+        workspace.Settings.IsStickyMenuAutoHideEnabled = enabled;
+        workspace.SaveSettings();
+        return true;
     }
 
     public bool ToggleCollapsed(string taskId)

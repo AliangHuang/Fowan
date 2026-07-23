@@ -29,6 +29,7 @@
       "required": [
         "engineVersion",
         "protocolVersion",
+        "contractRevision",
         "capabilities"
       ],
       "additionalProperties": false,
@@ -39,13 +40,19 @@
         "protocolVersion": {
           "const": "0.1"
         },
+        "contractRevision": {
+          "const": 1
+        },
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
           "items": {
             "enum": [
               "ai.config.v1",
-              "ai.chat.v1"
+              "ai.chat.v1",
+              "ai.chat.context.v1",
+              "ai.chat.branching.v1",
+              "ai.report.v1"
             ]
           }
         }

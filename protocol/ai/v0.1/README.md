@@ -16,7 +16,7 @@ The machine-readable source of truth is `contract.json`. The generic envelope is
 
 Request and correlated response identifiers are positive 32-bit integers (`1..2147483647`). String, zero, negative, fractional, and out-of-range identifiers are invalid. An error response may use `null` only when no valid request identifier can be recovered.
 
-The first request on every connection must be `engine.handshake` with `protocolVersion` and `requiredCapabilities`. The Core rejects all other methods until that handshake succeeds. AI Chat requires `ai.chat.v1`; AI Configuration requires `ai.config.v1`. A client is not required to request both capabilities.
+The first request on every connection must be `engine.handshake` with `protocolVersion="0.1"`, `contractRevision=1` and `requiredCapabilities`. The Core rejects all other methods until that handshake succeeds. AI Chat requires `ai.chat.v1`, AI Configuration requires `ai.config.v1`, and Reporting requires `ai.report.v1`. A client is not required to request every capability.
 
 The Core accepts multiple simultaneous clients. A transport or protocol failure is isolated to the offending connection, and chat cancellation identifiers are scoped to the client connection that created them.
 
@@ -36,6 +36,20 @@ Credential write requests may contain a one-time `secret`. No response contains 
 - `ai.conversations.list/create/get/rename/delete`
 - `ai.chat.send/cancel/regenerate`
 - `ai.chat.started/delta/completed/cancelled/failed` notifications
+
+## Report methods and events
+
+- `ai.report.generate/cancel`
+- `ai.report.started/completed/cancelled/failed` notifications
+
+Report generation resolves the independently configured `ai.report` model binding in Core. Its
+request carries a normalized Todo snapshot and constrained complete content tree, never a local
+path, credential, model selection, OpenXML, binary document, macro, formula, code, target ID or
+arbitrary file action. The terminal result is a complete same-format text/Word/Excel content tree;
+it has no scalar values, row values, location IDs or editing commands. For a file candidate the
+public client owns tree matching, temporary Open XML writing and strong structural validation. It
+may make at most two safe-diagnostic repair requests after the initial candidate. Core does not
+persist report requests, outputs, template context, candidates, diagnostics or custom requirements.
 
 `ai.chat.send` returns an invocation, conversation, and assistant-message identifier before streaming begins. Each delta contains only its invocation identifier and new text. Completed history responses contain the provider, credential display name, and model snapshot used for each assistant message, but never the credential secret.
 

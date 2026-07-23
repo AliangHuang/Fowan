@@ -5,7 +5,9 @@
     {
       "channelId": "openai",
       "modelId": "gpt-4.1-mini",
-      "displayName": "GPT 4.1 mini"
+      "displayName": "GPT 4.1 mini",
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 32768
     }
   ]
 }

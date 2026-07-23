@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Fowan Workspace Skill"
-  short_description: "Create Skills for Fowan and FowanCore repositories"
-  default_prompt: "Use $create-shared-skill to add or update a repository-local Codex Skill for Fowan, FowanCore, or both."

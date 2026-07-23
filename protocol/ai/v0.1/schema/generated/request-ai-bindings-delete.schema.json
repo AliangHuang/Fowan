@@ -36,7 +36,10 @@
       "additionalProperties": false,
       "properties": {
         "featureId": {
-          "const": "ai.chat"
+          "enum": [
+            "ai.chat",
+            "ai.report"
+          ]
         }
       }
     }

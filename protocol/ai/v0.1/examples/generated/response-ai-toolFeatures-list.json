@@ -7,7 +7,15 @@
       "toolId": "ai-chat",
       "displayName": "AI Chat",
       "requiredCapabilities": [
-        "chat"
+        "ai.chat.v1"
+      ]
+    },
+    {
+      "featureId": "ai.report",
+      "toolId": "report",
+      "displayName": "Report",
+      "requiredCapabilities": [
+        "ai.report.v1"
       ]
     }
   ]

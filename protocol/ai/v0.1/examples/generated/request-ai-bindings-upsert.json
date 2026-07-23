@@ -4,6 +4,7 @@
   "method": "ai.bindings.upsert",
   "params": {
     "featureId": "ai.chat",
-    "modelProfileId": "model-1"
+    "modelProfileId": "model-1",
+    "thinkingEffort": "high"
   }
 }

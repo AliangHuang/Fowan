@@ -6,7 +6,7 @@ public partial class App : Application
 {
     private const string MutexName = @"Local\Fowan.Ai.Config.Windows.SingleInstance";
     private const string ActivationEventPrefix = @"Local\Fowan.Ai.Config.Windows.Activate";
-    private static readonly string[] Pages = ["credentials", "models", "bindings"];
+    private static readonly string[] Pages = ["credentials", "models", "bindings", "guide"];
     private Mutex? _mutex;
     private readonly List<EventWaitHandle> _activationEvents = [];
     private CancellationTokenSource? _listenerCts;

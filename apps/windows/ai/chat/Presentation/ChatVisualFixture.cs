@@ -12,7 +12,9 @@ internal sealed record ChatVisualFixture(
     public static ChatVisualFixture Create() => new(
         new AiChannel("deepseek", "built-in", "DeepSeek", "https://api.deepseek.com", true, true),
         new AiCredential("fixture-credential", "deepseek", "DeepSeek · 工作密钥", "https://api.deepseek.com", "", true, "available", null, "2026-07-16T14:33:00+08:00", "2026-07-16T14:33:00+08:00"),
-        new AiModelProfile("fixture-model", "fixture-credential", "deepseek-v4-pro", "deepseek-v4-pro", "fixture", true, "available", null, "2026-07-16T14:33:00+08:00", "2026-07-16T14:33:00+08:00"),
+        new AiModelProfile("fixture-model", "fixture-credential", "deepseek-v4-pro", "deepseek-v4-pro", "fixture", true, true,
+            1_000_000, 384_000, true, "available", null,
+            "2026-07-16T14:33:00+08:00", "2026-07-16T14:33:00+08:00"),
         [
             Conversation("theme", "WinUI 3 应用中实现主题切换", "2026-07-16T14:32:00+08:00"),
             Conversation("tasks", "推荐几款高效的任务管理工具", "2026-07-16T10:15:00+08:00"),

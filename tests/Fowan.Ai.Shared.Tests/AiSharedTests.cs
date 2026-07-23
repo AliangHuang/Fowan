@@ -137,6 +137,12 @@ public sealed class AiSharedTests
                 AiProtocolMethods.CredentialsList => Credentials,
                 AiProtocolMethods.ModelsList => Models,
                 AiProtocolMethods.ModelsPresets => new List<AiPresetModel>(),
+                AiProtocolMethods.ToolFeaturesList => new List<AiToolFeature>
+                {
+                    new("ai.chat", "ai-chat", "AI Chat", ["ai.chat.v1"]),
+                    new("ai.report", "report", "Report", ["ai.report.v1"])
+                },
+                AiProtocolMethods.BindingsList => new List<AiBinding>(),
                 AiProtocolMethods.ConversationsList => new List<AiConversationSummary>(),
                 _ => JsonSerializer.SerializeToElement(new { })
             };
@@ -163,6 +169,50 @@ public sealed class AiSharedTests
     }
 
     [Fact]
+    public void Channel_display_label_marks_unavailable_channels()
+    {
+        var available = new AiChannel("deepseek", "deepseek", "DeepSeek", "https://api.deepseek.com", true, true);
+        var unavailable = new AiChannel("zhipu", "zhipu", "智谱 AI", "https://open.bigmodel.cn/api/paas/v4", true, false);
+
+        Assert.Equal("DeepSeek", available.DisplayLabel);
+        Assert.Equal("智谱 AI（暂不支持）", unavailable.DisplayLabel);
+    }
+
+    [Fact]
+    public void Model_profiles_deserialize_with_web_camel_case_options()
+    {
+        const string payload = """[{"id":"model-1","credentialId":"credential-1","modelId":"deepseek-v4-pro","displayName":"DeepSeek V4 Pro","source":"preset","enabled":true,"thinkingEnabled":true,"thinkingEffortOptions":["high","max"],"contextWindowTokens":1000000,"maxOutputTokens":384000,"limitsConfigured":true,"lastTestStatus":null,"lastTestAt":null,"createdAt":"2026-07-20T00:00:00Z","updatedAt":"2026-07-20T00:00:00Z"}]""";
+
+        var models = JsonSerializer.Deserialize<List<AiModelProfile>>(
+            payload,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var model = Assert.Single(models!);
+        Assert.True(model.LimitsConfigured);
+        Assert.Equal(1_000_000, model.ContextWindowTokens);
+        Assert.Equal(384_000, model.MaxOutputTokens);
+        Assert.Equal(["high", "max"], model.ThinkingEffortOptions);
+    }
+
+    [Fact]
+    public void Preset_model_defaults_match_channel_and_exact_model_id()
+    {
+        var presets = new[]
+        {
+            new AiPresetModel("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash", 1_000_000, 384_000)
+        };
+
+        var match = AiPresetModelDefaults.Find(presets, "deepseek", " deepseek-v4-flash ");
+
+        Assert.NotNull(match);
+        Assert.Equal(1_000_000, match.ContextWindowTokens);
+        Assert.Equal(384_000, match.MaxOutputTokens);
+        Assert.Null(AiPresetModelDefaults.Find(presets, "zhipu", "deepseek-v4-flash"));
+        Assert.Null(AiPresetModelDefaults.Find(presets, "deepseek", "DeepSeek-V4-Flash"));
+        Assert.Null(AiPresetModelDefaults.Find(presets, "deepseek", "unknown-model"));
+    }
+
+    [Fact]
     public void Launcher_prefers_explicit_chat_path()
     {
         var executable = Path.GetTempFileName();
@@ -180,23 +230,63 @@ public sealed class AiSharedTests
     }
 
     [Fact]
+    public void Core_resolver_finds_the_unified_core_from_the_report_tool_directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Fowan-Ai-Shared-Tests", Guid.NewGuid().ToString("N"));
+        var reportDirectory = Path.Combine(root, "app", "Tools", "Report");
+        var corePath = Path.Combine(root, "app", "Core", AiCoreEndpointResolver.ExecutableName);
+        var previous = Environment.GetEnvironmentVariable("FOWAN_CORE_PATH");
+        try
+        {
+            Directory.CreateDirectory(reportDirectory);
+            Directory.CreateDirectory(Path.GetDirectoryName(corePath)!);
+            File.WriteAllText(corePath, string.Empty);
+            Environment.SetEnvironmentVariable("FOWAN_CORE_PATH", null);
+
+            Assert.Equal(
+                Path.GetFullPath(corePath),
+                AiCoreEndpointResolver.ResolveExecutablePath(reportDirectory));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOWAN_CORE_PATH", previous);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Handshake_accepts_each_application_capability_subset()
     {
         using var document = JsonDocument.Parse(
-            """{"engineVersion":"0.1.0","protocolVersion":"0.1","capabilities":["ai.chat.v1","ai.config.v1"]}""");
+            """{"engineVersion":"0.1.0","protocolVersion":"0.1","contractRevision":1,"capabilities":["ai.chat.v1","ai.config.v1","ai.chat.context.v1","ai.chat.branching.v1","ai.report.v1"]}""");
 
         AiCoreClient.ValidateHandshake(document.RootElement, ["ai.chat.v1"]);
         AiCoreClient.ValidateHandshake(document.RootElement, ["ai.config.v1"]);
+        AiCoreClient.ValidateHandshake(document.RootElement, ["ai.report.v1"]);
     }
 
     [Fact]
     public void Handshake_rejects_missing_capability()
     {
         using var document = JsonDocument.Parse(
-            """{"engineVersion":"0.1.0","protocolVersion":"0.1","capabilities":["ai.chat.v1"]}""");
+            """{"engineVersion":"0.1.0","protocolVersion":"0.1","contractRevision":1,"capabilities":["ai.chat.v1","ai.chat.context.v1","ai.chat.branching.v1"]}""");
 
         var error = Assert.Throws<AiCoreException>(() =>
             AiCoreClient.ValidateHandshake(document.RootElement, ["ai.config.v1"]));
+        Assert.Equal("protocol_mismatch", error.Code);
+    }
+
+    [Fact]
+    public void Handshake_rejects_a_non_initial_contract_revision()
+    {
+        using var document = JsonDocument.Parse(
+            """{"engineVersion":"0.1.0","protocolVersion":"0.1","contractRevision":2,"capabilities":["ai.chat.v1"]}""");
+
+        var error = Assert.Throws<AiCoreException>(() =>
+            AiCoreClient.ValidateHandshake(document.RootElement, ["ai.chat.v1"]));
         Assert.Equal("protocol_mismatch", error.Code);
     }
 
@@ -255,6 +345,62 @@ public sealed class AiSharedTests
     }
 
     [Fact]
+    public void Camel_case_chat_notifications_drive_the_streaming_lifecycle()
+    {
+        var invoker = new SessionInvoker();
+        var session = new AiChatSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
+        session.BeginGeneration();
+        session.AcceptInvocation(new AiChatStarted(
+            "invocation-1", "conversation-1", "assistant-message-1"));
+
+        using var startedDocument = JsonDocument.Parse(
+            """{"invocationId":"invocation-1","conversationId":"conversation-1","assistantMessageId":"assistant-message-1"}""");
+        var started = new AiCoreNotificationEventArgs(
+            AiProtocolNotifications.ChatStarted,
+            startedDocument.RootElement.Clone()).DeserializeParameters<AiChatStarted>();
+        session.AdoptInvocation(started);
+
+        foreach (var payload in new[]
+                 {
+                     """{"invocationId":"invocation-1","delta":"hello "}""",
+                     """{"invocationId":"invocation-1","delta":"world"}"""
+                 })
+        {
+            using var deltaDocument = JsonDocument.Parse(payload);
+            var delta = new AiCoreNotificationEventArgs(
+                AiProtocolNotifications.ChatDelta,
+                deltaDocument.RootElement.Clone()).DeserializeParameters<AiChatDelta>();
+            Assert.Equal(session.State.ActiveInvocationId, delta.InvocationId);
+            session.AppendDelta(delta.Delta);
+        }
+
+        using var completedDocument = JsonDocument.Parse(
+            """{"invocationId":"invocation-1","assistantMessageId":"assistant-message-1","errorCode":null}""");
+        var completed = new AiCoreNotificationEventArgs(
+            AiProtocolNotifications.ChatCompleted,
+            completedDocument.RootElement.Clone()).DeserializeParameters<AiChatFinished>();
+
+        Assert.Equal("hello world", session.State.StreamingContent);
+        Assert.True(session.FinishInvocation(completed.InvocationId));
+        Assert.False(session.State.IsGenerating);
+        Assert.Null(session.State.ActiveInvocationId);
+    }
+
+    [Fact]
+    public void Chat_notification_missing_required_fields_is_an_invalid_response()
+    {
+        using var document = JsonDocument.Parse("""{"delta":"hello"}""");
+        var notification = new AiCoreNotificationEventArgs(
+            AiProtocolNotifications.ChatDelta,
+            document.RootElement.Clone());
+
+        var error = Assert.Throws<AiCoreException>(
+            () => notification.DeserializeParameters<AiChatDelta>());
+
+        Assert.Equal("invalid_response", error.Code);
+    }
+
+    [Fact]
     public async Task Config_session_publishes_refresh_state_and_successful_crud_results()
     {
         var invoker = new SessionInvoker();
@@ -278,8 +424,8 @@ public sealed class AiSharedTests
     {
         var invoker = new SessionInvoker();
         invoker.Models.Add(new AiModelProfile(
-            "model-1", "credential-1", "test-model", "Test model", "custom", false,
-            null, null, "2026-07-16T00:00:00Z", "2026-07-16T00:00:00Z"));
+            "model-1", "credential-1", "test-model", "Test model", "custom", false, false,
+            null, null, false, null, null, "2026-07-16T00:00:00Z", "2026-07-16T00:00:00Z"));
         var session = new AiConfigSession(new AiCoreApi(invoker), new AiConsentCoordinator(invoker));
 
         await session.RefreshAsync();
@@ -526,7 +672,7 @@ public sealed class AiSharedTests
         {
             var id = request.GetProperty("id").GetInt32();
             return request.GetProperty("method").GetString() == "engine.handshake"
-                ? [$"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"engineVersion\":\"0.1.0\",\"protocolVersion\":\"0.1\",\"capabilities\":[\"ai.chat.v1\"]}}}}"]
+                ? [$"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"engineVersion\":\"0.1.0\",\"protocolVersion\":\"0.1\",\"contractRevision\":1,\"capabilities\":[\"ai.chat.v1\",\"ai.chat.context.v1\",\"ai.chat.branching.v1\"]}}}}"]
                 : [
                     "{\"jsonrpc\":\"2.0\",\"method\":\"ai.chat.delta\",\"params\":{\"invocationId\":\"test\",\"delta\":\"x\"}}",
                     $"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":[]}}"

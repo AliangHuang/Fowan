@@ -58,32 +58,38 @@ function Get-DefinitionClosure([string[]]$Names) {
 $timestamp = "2026-01-01T00:00:00Z"
 $channel = [ordered]@{ id = "openai"; kind = "openai_compatible"; displayName = "OpenAI"; defaultBaseUrl = "https://api.openai.com/v1"; builtIn = $true; enabled = $true }
 $credential = [ordered]@{ id = "credential-1"; channelId = "openai"; label = "Primary"; baseUrl = "https://api.openai.com/v1"; secretHint = "••••1234"; enabled = $true; lastTestStatus = $null; lastTestAt = $null; createdAt = $timestamp; updatedAt = $timestamp }
-$model = [ordered]@{ id = "model-1"; credentialId = "credential-1"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini"; source = "custom"; enabled = $true; lastTestStatus = $null; lastTestAt = $null; createdAt = $timestamp; updatedAt = $timestamp }
-$binding = [ordered]@{ featureId = "ai.chat"; credentialId = "credential-1"; modelProfileId = "model-1"; updatedAt = $timestamp }
+$model = [ordered]@{ id = "model-1"; credentialId = "credential-1"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini"; source = "preset"; enabled = $true; thinkingEnabled = $true; thinkingEffortOptions = @("high", "max"); contextWindowTokens = 1048576; maxOutputTokens = 32768; limitsConfigured = $true; lastTestStatus = $null; lastTestAt = $null; createdAt = $timestamp; updatedAt = $timestamp }
+$binding = [ordered]@{ featureId = "ai.chat"; credentialId = "credential-1"; modelProfileId = "model-1"; thinkingEffort = "high"; updatedAt = $timestamp }
 $summary = [ordered]@{ id = "conversation-1"; title = "Conversation"; createdAt = $timestamp; updatedAt = $timestamp }
 $idResult = [ordered]@{ id = "generated-id" }
 $deletedResult = [ordered]@{ deleted = $true }
 $statusResult = [ordered]@{ status = "success" }
 $invocationResult = [ordered]@{ invocationId = "invocation-1"; conversationId = "conversation-1"; assistantMessageId = "message-2" }
+$contextEstimate = [ordered]@{ estimatedInputTokens = 256; safeInputTokens = 963379; contextWindowTokens = 1048576; maxOutputTokens = 32768; usageRatio = 0.000266; action = "ready"; compactedThroughMessageId = $null }
+$messagesPage = [ordered]@{ conversationId = "conversation-1"; activeLeafMessageId = "message-2"; items = @(); nextCursor = $null; hasMore = $false; summary = $null }
+$reportTask = [ordered]@{ title = "完成汇报工具设计"; notes = "已完成主界面概念图"; listName = "产品研发"; level = 1; important = $true; startDate = "2026-07-20"; dueDate = "2026-07-21"; completedAt = "2026-07-21T09:00:00+08:00"; status = "completed" }
+$reportCell = [ordered]@{ value = "周报"; valueKind = "text"; editable = $true }
+$reportDocument = [ordered]@{ format = "text"; blocks = @([ordered]@{ kind = "heading1"; text = "周报"; bold = $true; italic = $false; link = $null; isChecked = $false; table = $null }); sheets = @() }
+$reportOutput = [ordered]@{ document = $reportDocument }
 
 $operations = @(
-    (Operation "engine.handshake" ([ordered]@{ protocolVersion = "0.1"; requiredCapabilities = @("ai.config.v1", "ai.chat.v1") }) "handshakeResult" ([ordered]@{ engineVersion = "0.1.0"; protocolVersion = "0.1"; capabilities = @("ai.config.v1", "ai.chat.v1") })),
+    (Operation "engine.handshake" ([ordered]@{ protocolVersion = "0.1"; contractRevision = 1; requiredCapabilities = @("ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1") }) "handshakeResult" ([ordered]@{ engineVersion = "0.1.0"; protocolVersion = "0.1"; contractRevision = 1; capabilities = @("ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1") })),
     (Operation "ai.channels.list" ([ordered]@{}) "channelsResult" @($channel)),
     (Operation "ai.channels.create" ([ordered]@{ displayName = "Custom"; defaultBaseUrl = "https://api.example.com/v1"; enabled = $true }) "idResult" $idResult),
     (Operation "ai.channels.update" ([ordered]@{ id = "channel-1"; displayName = "Custom"; defaultBaseUrl = "https://api.example.com/v1"; enabled = $true }) "idResult" $idResult),
     (Operation "ai.channels.delete" ([ordered]@{ id = "channel-1" }) "deletedResult" $deletedResult),
     (Operation "ai.credentials.list" ([ordered]@{}) "credentialsResult" @($credential)),
-    (Operation "ai.credentials.upsert" ([ordered]@{ channelId = "openai"; label = "Primary"; baseUrl = "https://api.openai.com/v1"; secret = "example-secret"; enabled = $true }) "idResult" $idResult),
+    (Operation "ai.credentials.upsert" ([ordered]@{ channelId = "openai"; label = "Primary"; baseUrl = "https://api.openai.com/v1"; secret = "example-secret"; enabled = $true; initialModelIds = @("gpt-4.1-mini"); thinkingEnabled = $true }) "idResult" $idResult),
     (Operation "ai.credentials.delete" ([ordered]@{ id = "credential-1" }) "deletedResult" $deletedResult),
     (Operation "ai.credentials.test" ([ordered]@{ credentialId = "credential-1" }) "statusResult" $statusResult),
     (Operation "ai.models.list" ([ordered]@{}) "modelsResult" @($model)),
-    (Operation "ai.models.upsert" ([ordered]@{ credentialId = "credential-1"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini"; source = "custom"; enabled = $true }) "idResult" $idResult),
+    (Operation "ai.models.upsert" ([ordered]@{ credentialId = "credential-1"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini"; source = "preset"; enabled = $true; contextWindowTokens = 1048576; maxOutputTokens = 32768; thinkingEnabled = $true }) "idResult" $idResult),
     (Operation "ai.models.delete" ([ordered]@{ id = "model-1" }) "deletedResult" $deletedResult),
     (Operation "ai.models.test" ([ordered]@{ modelProfileId = "model-1" }) "statusResult" $statusResult),
-    (Operation "ai.models.presets" ([ordered]@{}) "presetsResult" @([ordered]@{ channelId = "openai"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini" })),
-    (Operation "ai.toolFeatures.list" ([ordered]@{}) "toolFeaturesResult" @([ordered]@{ featureId = "ai.chat"; toolId = "ai-chat"; displayName = "AI Chat"; requiredCapabilities = @("chat") })),
+    (Operation "ai.models.presets" ([ordered]@{}) "presetsResult" @([ordered]@{ channelId = "openai"; modelId = "gpt-4.1-mini"; displayName = "GPT 4.1 mini"; contextWindowTokens = 1048576; maxOutputTokens = 32768 })),
+    (Operation "ai.toolFeatures.list" ([ordered]@{}) "toolFeaturesResult" @([ordered]@{ featureId = "ai.chat"; toolId = "ai-chat"; displayName = "AI Chat"; requiredCapabilities = @("ai.chat.v1") }, [ordered]@{ featureId = "ai.report"; toolId = "report"; displayName = "Report"; requiredCapabilities = @("ai.report.v1") })),
     (Operation "ai.bindings.list" ([ordered]@{}) "bindingsResult" @($binding)),
-    (Operation "ai.bindings.upsert" ([ordered]@{ featureId = "ai.chat"; modelProfileId = "model-1" }) "binding" $binding),
+    (Operation "ai.bindings.upsert" ([ordered]@{ featureId = "ai.chat"; modelProfileId = "model-1"; thinkingEffort = "high" }) "binding" $binding),
     (Operation "ai.bindings.delete" ([ordered]@{ featureId = "ai.chat" }) "deletedResult" $deletedResult),
     (Operation "ai.consents.check" ([ordered]@{ endpoint = "https://api.openai.com/v1" }) "consentResult" ([ordered]@{ granted = $false; endpoint = "https://api.openai.com/v1" })),
     (Operation "ai.consents.grant" ([ordered]@{ endpoint = "https://api.openai.com/v1" }) "consentResult" ([ordered]@{ granted = $true; endpoint = "https://api.openai.com/v1" })),
@@ -92,9 +98,15 @@ $operations = @(
     (Operation "ai.conversations.get" ([ordered]@{ id = "conversation-1" }) "conversationDetailResult" ([ordered]@{ id = "conversation-1"; title = "Conversation"; createdAt = $timestamp; updatedAt = $timestamp; messages = @() })),
     (Operation "ai.conversations.rename" ([ordered]@{ id = "conversation-1"; title = "Renamed" }) "renamedResult" ([ordered]@{ renamed = $true })),
     (Operation "ai.conversations.delete" ([ordered]@{ id = "conversation-1" }) "deletedResult" $deletedResult),
-    (Operation "ai.chat.send" ([ordered]@{ conversationId = "conversation-1"; credentialId = "credential-1"; modelProfileId = "model-1"; text = "Hello" }) "invocationResult" $invocationResult),
+    (Operation "ai.conversations.messages.list" ([ordered]@{ conversationId = "conversation-1"; branchLeafMessageId = "message-2"; cursor = $null; limit = 50 }) "messagesPageResult" $messagesPage),
+    (Operation "ai.conversations.branch.select" ([ordered]@{ conversationId = "conversation-1"; leafMessageId = "message-2" }) "branchSelectResult" ([ordered]@{ conversationId = "conversation-1"; activeLeafMessageId = "message-2" })),
+    (Operation "ai.chat.context.estimate" ([ordered]@{ conversationId = "conversation-1"; modelProfileId = "model-1"; branchLeafMessageId = "message-2"; draft = "Hello" }) "contextEstimateResult" $contextEstimate),
+    (Operation "ai.chat.context.compact" ([ordered]@{ conversationId = "conversation-1"; credentialId = "credential-1"; modelProfileId = "model-1"; branchLeafMessageId = "message-2" }) "compactInvocationResult" ([ordered]@{ invocationId = "invocation-2"; conversationId = "conversation-1" })),
+    (Operation "ai.chat.send" ([ordered]@{ conversationId = "conversation-1"; parentMessageId = "message-2"; credentialId = "credential-1"; modelProfileId = "model-1"; text = "Hello" }) "invocationResult" $invocationResult),
     (Operation "ai.chat.cancel" ([ordered]@{ invocationId = "invocation-1" }) "cancelledResult" ([ordered]@{ cancelled = $true })),
-    (Operation "ai.chat.regenerate" ([ordered]@{ conversationId = "conversation-1"; credentialId = "credential-1"; modelProfileId = "model-1" }) "invocationResult" $invocationResult)
+    (Operation "ai.chat.regenerate" ([ordered]@{ conversationId = "conversation-1"; credentialId = "credential-1"; modelProfileId = "model-1"; userMessageId = "message-1" }) "invocationResult" $invocationResult),
+    (Operation "ai.report.generate" ([ordered]@{ reportType = "weekly"; rangeStart = "2026-07-20"; rangeEnd = "2026-07-26"; style = "professional"; customRequirements = "突出完成事项"; templateMode = "text"; template = $reportDocument; example = $null; attempt = 1; candidate = $null; validationFeedback = $null; completedTasks = @($reportTask); unfinishedTasks = @() }) "reportInvocationResult" ([ordered]@{ invocationId = "report-invocation-1" })),
+    (Operation "ai.report.cancel" ([ordered]@{ invocationId = "report-invocation-1" }) "cancelledResult" ([ordered]@{ cancelled = $true }))
 )
 
 $parameterDefinitions = [ordered]@{
@@ -105,15 +117,25 @@ $parameterDefinitions = [ordered]@{
     "ai.toolFeatures.list" = "empty"; "ai.bindings.list" = "empty"; "ai.bindings.upsert" = "bindingUpsertParams"; "ai.bindings.delete" = "featureIdParams"
     "ai.consents.check" = "endpointParams"; "ai.consents.grant" = "endpointParams"
     "ai.conversations.list" = "empty"; "ai.conversations.create" = "conversationCreateParams"; "ai.conversations.get" = "idParams"; "ai.conversations.rename" = "conversationRenameParams"; "ai.conversations.delete" = "idParams"
+    "ai.conversations.messages.list" = "messagesListParams"; "ai.conversations.branch.select" = "branchSelectParams"
+    "ai.chat.context.estimate" = "contextEstimateParams"; "ai.chat.context.compact" = "contextCompactParams"
     "ai.chat.send" = "chatSendParams"; "ai.chat.cancel" = "chatCancelParams"; "ai.chat.regenerate" = "chatRegenerateParams"
+    "ai.report.generate" = "reportGenerateParams"; "ai.report.cancel" = "chatCancelParams"
 }
 
 $notifications = @(
     [ordered]@{ Name = "ai.chat.started"; Params = $invocationResult },
     [ordered]@{ Name = "ai.chat.delta"; Params = [ordered]@{ invocationId = "invocation-1"; delta = "Hello" } },
-    [ordered]@{ Name = "ai.chat.completed"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = $null } },
-    [ordered]@{ Name = "ai.chat.cancelled"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = $null } },
-    [ordered]@{ Name = "ai.chat.failed"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = "provider_unavailable" } }
+    [ordered]@{ Name = "ai.chat.completed"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = $null; requestId = "req-safe-1" } },
+    [ordered]@{ Name = "ai.chat.cancelled"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = $null; requestId = $null } },
+    [ordered]@{ Name = "ai.chat.failed"; Params = [ordered]@{ invocationId = "invocation-1"; assistantMessageId = "message-2"; errorCode = "provider_unavailable"; requestId = "req-safe-1" } },
+    [ordered]@{ Name = "ai.chat.context.compact.started"; Params = [ordered]@{ invocationId = "invocation-2"; conversationId = "conversation-1" } },
+    [ordered]@{ Name = "ai.chat.context.compact.completed"; Params = [ordered]@{ invocationId = "invocation-2"; conversationId = "conversation-1"; summaryId = "summary-1"; throughMessageId = "message-20" } },
+    [ordered]@{ Name = "ai.chat.context.compact.failed"; Params = [ordered]@{ invocationId = "invocation-2"; conversationId = "conversation-1"; errorCode = "provider_unavailable"; requestId = "req-safe-1" } },
+    [ordered]@{ Name = "ai.report.started"; Params = [ordered]@{ invocationId = "report-invocation-1" } },
+    [ordered]@{ Name = "ai.report.completed"; Params = [ordered]@{ invocationId = "report-invocation-1"; output = $reportOutput } },
+    [ordered]@{ Name = "ai.report.cancelled"; Params = [ordered]@{ invocationId = "report-invocation-1"; errorCode = $null; requestId = $null } },
+    [ordered]@{ Name = "ai.report.failed"; Params = [ordered]@{ invocationId = "report-invocation-1"; errorCode = "provider_unavailable"; requestId = "req-safe-1" } }
 )
 
 $errors = @(
@@ -121,7 +143,8 @@ $errors = @(
     "consent_required", "secret_store_unavailable", "secure_state_inconsistent",
     "protected_data_unavailable", "storage_unavailable", "provider_auth_failed",
     "provider_model_not_found", "provider_rate_limited", "provider_content_rejected",
-    "provider_unavailable", "context_limit_exceeded", "timeout", "cancelled", "internal_error"
+    "provider_unavailable", "context_limit_exceeded", "context_compression_required",
+    "message_too_large", "response_too_large", "timeout", "cancelled", "internal_error"
 )
 
 $schemaDirectory = Join-Path $ProtocolRoot "schema/generated"
@@ -192,10 +215,10 @@ foreach ($code in $errors) {
         )
         '$defs' = Get-DefinitionClosure @("errorResponse")
     })
-    $error = [ordered]@{ code = $code; message = "Stable protocol error" }
-    if ($code -eq "consent_required") { $error.data = [ordered]@{ endpoint = "https://api.openai.com/v1" } }
-    if ($code -eq "protocol_mismatch") { $error.data = [ordered]@{ missingCapabilities = @("ai.chat.v1") } }
-    Write-Json (Join-Path $ProtocolRoot "examples/generated/error-$code.json") ([ordered]@{ jsonrpc = "2.0"; id = 1; error = $error })
+    $protocolError = [ordered]@{ code = $code; message = "Stable protocol error" }
+    if ($code -eq "consent_required") { $protocolError.data = [ordered]@{ endpoint = "https://api.openai.com/v1" } }
+    if ($code -eq "protocol_mismatch") { $protocolError.data = [ordered]@{ missingCapabilities = @("ai.chat.context.v1", "ai.chat.branching.v1") } }
+    Write-Json (Join-Path $ProtocolRoot "examples/generated/error-$code.json") ([ordered]@{ jsonrpc = "2.0"; id = 1; error = $protocolError })
     $vectors.Add([ordered]@{ kind = "error"; name = $code; path = "examples/generated/error-$code.json"; schemaRef = $schemaRelative; valid = $true })
 }
 
@@ -217,7 +240,7 @@ $invalidIds = @(
 )
 foreach ($item in $invalidIds) {
     $relativePath = "examples/generated/invalid-$($item.Name).json"
-    Write-Json (Join-Path $ProtocolRoot $relativePath) ([ordered]@{ jsonrpc = "2.0"; id = $item.Id; method = "engine.handshake"; params = [ordered]@{ protocolVersion = "0.1"; requiredCapabilities = @() } })
+    Write-Json (Join-Path $ProtocolRoot $relativePath) ([ordered]@{ jsonrpc = "2.0"; id = $item.Id; method = "engine.handshake"; params = [ordered]@{ protocolVersion = "0.1"; contractRevision = 1; requiredCapabilities = @() } })
     $vectors.Add([ordered]@{ kind = "invalid"; name = $item.Name; path = $relativePath; schemaRef = "schema/generated/request-engine-handshake.schema.json"; valid = $false })
 }
 

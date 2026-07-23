@@ -16,13 +16,19 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\shared\Fowan.Ai.Shared.csproj" />
     <ProjectReference Include="..\..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="..\..\toolbox\Services\ClientSettings.cs" Link="Platform\Windows\ToolboxClientSettings.cs" />
+    <Compile Include="..\..\toolbox\Platform\Windows\AvatarStore.cs" Link="Platform\Windows\ToolboxAvatarStore.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\toolbox\Assets\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\toolbox\Assets\Avatars\*.*" Link="Assets\Avatars\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\..\assets\brand\windows\fowan-ai-chat-app-icon-256.png" Link="Assets\fowan-ai-chat-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\toolbox\Resources\Strings\*.json" Link="Resources\Strings\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Page Include="..\ui\AiLightTheme.xaml" Link="Styles\AiLightTheme.xaml" />

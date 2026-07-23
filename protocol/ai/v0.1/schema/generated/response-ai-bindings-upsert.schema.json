@@ -30,18 +30,29 @@
         "featureId",
         "credentialId",
         "modelProfileId",
+        "thinkingEffort",
         "updatedAt"
       ],
       "additionalProperties": false,
       "properties": {
         "featureId": {
-          "const": "ai.chat"
+          "enum": [
+            "ai.chat",
+            "ai.report"
+          ]
         },
         "credentialId": {
           "type": "string"
         },
         "modelProfileId": {
           "type": "string"
+        },
+        "thinkingEffort": {
+          "enum": [
+            "high",
+            "max",
+            null
+          ]
         },
         "updatedAt": {
           "type": "string"

@@ -1,10 +1,38 @@
 using Fowan.Windows.Services;
+using System.Text.Json;
 
 namespace Fowan.Windows.Platform.Windows;
 
 internal static class AvatarStore
 {
     public static IReadOnlyList<string> ImageExtensions { get; } = [".png", ".jpg", ".jpeg", ".bmp", ".gif"];
+    private static readonly JsonSerializerOptions ProfileReadJsonOptions = new(JsonSerializerDefaults.Web);
+
+    public static string ResolveCurrentProfileAvatar(string? localApplicationDataPath = null)
+    {
+        try
+        {
+            var settingsPath = Path.Combine(
+                string.IsNullOrWhiteSpace(localApplicationDataPath)
+                    ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+                    : localApplicationDataPath,
+                "Fowan",
+                "client-settings.json");
+            if (File.Exists(settingsPath))
+            {
+                var settings = JsonSerializer.Deserialize<ClientSettings>(
+                    File.ReadAllText(settingsPath),
+                    ProfileReadJsonOptions);
+                return Resolve(settings?.AvatarPath ?? string.Empty);
+            }
+        }
+        catch
+        {
+            // Fall through to the bundled default avatar.
+        }
+
+        return Resolve(string.Empty);
+    }
 
     public static string Resolve(string configuredPath)
     {

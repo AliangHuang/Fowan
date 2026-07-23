@@ -35,7 +35,9 @@
       "required": [
         "channelId",
         "modelId",
-        "displayName"
+        "displayName",
+        "contextWindowTokens",
+        "maxOutputTokens"
       ],
       "additionalProperties": false,
       "properties": {
@@ -47,6 +49,14 @@
         },
         "displayName": {
           "type": "string"
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 2048
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     }

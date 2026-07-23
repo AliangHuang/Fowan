@@ -37,11 +37,21 @@
       "additionalProperties": false,
       "properties": {
         "featureId": {
-          "const": "ai.chat"
+          "enum": [
+            "ai.chat",
+            "ai.report"
+          ]
         },
         "modelProfileId": {
           "type": "string",
           "minLength": 1
+        },
+        "thinkingEffort": {
+          "enum": [
+            "high",
+            "max",
+            null
+          ]
         }
       }
     }

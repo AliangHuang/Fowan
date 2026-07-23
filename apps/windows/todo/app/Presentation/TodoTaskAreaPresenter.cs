@@ -104,6 +104,19 @@ internal sealed class TodoTaskAreaPresenter
             ShowRecycleBin();
             return;
         }
+
+        if (_query().IsFilteringActive)
+        {
+            var filtered = _query().FilteredNodes(viewId).ToList();
+            _summary.Text = $"{filtered.Count} 项";
+            AddRowsOrEmpty(
+                filtered,
+                "没有符合筛选条件的任务",
+                completed: false,
+                useTaskCompletion: true);
+            return;
+        }
+
         var active = _query().ActiveNodes(viewId).ToList();
         var completed = _query().CompletedNodes(viewId).ToList();
         if (viewId == TodoViewIds.Completed)
@@ -112,7 +125,13 @@ internal sealed class TodoTaskAreaPresenter
             AddRowsOrEmpty(completed, "还没有已完成任务", completed: true);
             return;
         }
-        _summary.Text = $"{active.Count} 项";
+        if (viewId == TodoViewIds.Uncompleted)
+        {
+            _summary.Text = $"{active.Count} 项";
+            AddRowsOrEmpty(active, "还没有未完成任务", completed: false);
+            return;
+        }
+        _summary.Text = $"{(viewId == TodoViewIds.All ? active.Count + completed.Count : active.Count)} 项";
         var section = new StackPanel { Spacing = 8 };
         _activeSection = section;
         AddRowsOrEmpty(active, "当前没有待办任务", completed: false, section);
@@ -149,7 +168,8 @@ internal sealed class TodoTaskAreaPresenter
         string emptyText,
         bool completed,
         Panel? target = null,
-        bool recycleBin = false)
+        bool recycleBin = false,
+        bool useTaskCompletion = false)
     {
         target ??= _content;
         if (nodes.Count == 0)
@@ -161,7 +181,7 @@ internal sealed class TodoTaskAreaPresenter
         {
             target.Children.Add(_listView!.Row(
                 node.Task,
-                recycleBin ? node.Task.IsCompleted : completed,
+                recycleBin || useTaskCompletion ? node.Task.IsCompleted : completed,
                 node.Depth,
                 recycleBin));
         }

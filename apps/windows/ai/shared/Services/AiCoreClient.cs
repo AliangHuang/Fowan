@@ -6,6 +6,11 @@ using System.Text.Json.Nodes;
 
 namespace Fowan.Ai.Shared.Services;
 
+internal static class AiCoreJson
+{
+    internal static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web);
+}
+
 public sealed class AiCoreException(string code, string message, JsonElement? details = null) : Exception(message)
 {
     public string Code { get; } = code;
@@ -21,6 +26,48 @@ public sealed class AiCoreNotificationEventArgs(string method, JsonElement param
 {
     public string Method { get; } = method;
     public JsonElement Parameters { get; } = parameters;
+
+    public T DeserializeParameters<T>() where T : class
+    {
+        try
+        {
+            var value = Parameters.Deserialize<T>(AiCoreJson.Options);
+            if (value is null || !HasRequiredFields(value))
+            {
+                throw InvalidParameters();
+            }
+            return value;
+        }
+        catch (JsonException)
+        {
+            throw InvalidParameters();
+        }
+    }
+
+    private static bool HasRequiredFields<T>(T value) where T : class => value switch
+    {
+        AiChatStarted started =>
+            HasText(started.InvocationId) &&
+            HasText(started.ConversationId) &&
+            HasText(started.AssistantMessageId),
+        AiChatDelta delta => HasText(delta.InvocationId) && delta.Delta is not null,
+        AiChatFinished finished =>
+            HasText(finished.InvocationId) &&
+            HasText(finished.AssistantMessageId),
+        AiCompactStarted started => HasText(started.InvocationId) && HasText(started.ConversationId),
+        AiCompactCompleted completed => HasText(completed.InvocationId) && HasText(completed.ConversationId) &&
+            HasText(completed.SummaryId) && HasText(completed.ThroughMessageId),
+        AiCompactFailed failed => HasText(failed.InvocationId) && HasText(failed.ConversationId) && HasText(failed.ErrorCode),
+        AiReportCompleted completed => HasText(completed.InvocationId) && completed.Output is not null,
+        AiReportFinished finished => HasText(finished.InvocationId),
+        _ => true
+    };
+
+    private static bool HasText(string? value) => !string.IsNullOrWhiteSpace(value);
+
+    private AiCoreException InvalidParameters() => new(
+        "invalid_response",
+        $"Fowan Core returned invalid parameters for '{Method}'.");
 }
 
 public interface IAiCoreInvoker
@@ -33,7 +80,6 @@ public interface IAiCoreInvoker
 
 public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
@@ -105,6 +151,7 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
                 var handshake = await InvokeAsync<JsonElement>(AiProtocolMethods.EngineHandshake, new
                 {
                     protocolVersion = AiProtocolContract.Version,
+                    contractRevision = AiProtocolContract.ContractRevision,
                     requiredCapabilities = required
                 }, cancellationToken);
                 ValidateHandshake(handshake, required);
@@ -147,7 +194,7 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
                 ["jsonrpc"] = "2.0",
                 ["id"] = id,
                 ["method"] = method,
-                ["params"] = JsonSerializer.SerializeToNode(parameters, JsonOptions)
+                ["params"] = JsonSerializer.SerializeToNode(parameters, AiCoreJson.Options)
             };
             await WriteFrameAsync(request, cancellationToken);
             var result = await completion.Task.WaitAsync(cancellationToken);
@@ -156,7 +203,7 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
                 return (T)(object)result;
             }
 
-            return result.Deserialize<T>(JsonOptions) ??
+            return result.Deserialize<T>(AiCoreJson.Options) ??
                 throw new AiCoreException("invalid_response", "Fowan Core returned an empty response.");
         }
         finally
@@ -314,7 +361,7 @@ public sealed class AiCoreClient : IAsyncDisposable, IAiCoreInvoker
         try
         {
             var pipe = _pipe ?? throw new EndOfStreamException();
-            await ContentLengthFrameCodec.WriteAsync(pipe, message, JsonOptions, cancellationToken);
+            await ContentLengthFrameCodec.WriteAsync(pipe, message, AiCoreJson.Options, cancellationToken);
         }
         finally
         {

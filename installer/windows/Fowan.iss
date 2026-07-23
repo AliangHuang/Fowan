@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.1.4"
+#define AppVersion "0.2.0"
 #endif
 
 #ifndef SourceDir
@@ -38,7 +38,7 @@ UsePreviousAppDir=yes
 LicenseFile=privacy-zh-CN.txt
 OutputDir={#OutputDir}
 OutputBaseFilename=FowanSetup-{#AppVersion}-win-x64
-SetupIconFile=..\..\assets\brand\windows\fowan.ico
+SetupIconFile=..\..\apps\windows\toolbox\Assets\fowan.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes

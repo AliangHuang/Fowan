@@ -5,6 +5,9 @@ namespace Fowan.Ai.Chat.Windows.Platform.Windows;
 internal static class NativeWindowMethods
 {
     [DllImport("user32.dll")]
+    internal static extern uint GetDpiForWindow(nint windowHandle);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint windowHandle);
 }

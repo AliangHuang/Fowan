@@ -16,7 +16,11 @@ public enum TodoChangeSet
 
 public sealed class TodoWorkspace : ITodoCommands
 {
+    private const int HistoryLimit = 100;
+
     private readonly TodoPersistenceController _persistence;
+    private readonly List<WorkspaceHistoryState> _undoHistory = [];
+    private readonly List<WorkspaceHistoryState> _redoHistory = [];
     private TodoData _committedData;
     private TodoSettings _committedSettings;
 
@@ -39,17 +43,23 @@ public sealed class TodoWorkspace : ITodoCommands
 
     public string DefaultListId => _persistence.DefaultListId;
 
+    public bool CanUndo => _undoHistory.Count > 0;
+
+    public bool CanRedo => _redoHistory.Count > 0;
+
     public event EventHandler<TodoChangeSet>? Changed;
 
     public TodoData LoadData()
     {
         Data = _persistence.LoadData();
+        ClearHistory();
         return Data;
     }
 
     public TodoSettings LoadSettings()
     {
         Settings = _persistence.LoadSettings();
+        ClearHistory();
         return Settings;
     }
 
@@ -59,15 +69,20 @@ public sealed class TodoWorkspace : ITodoCommands
         Settings = _persistence.LoadSettings();
         _committedData = Clone(Data);
         _committedSettings = Clone(Settings);
+        ClearHistory();
         Publish(TodoChangeSet.All);
     }
 
-    public void SaveData()
+    public void SaveData() => SaveData(history: null);
+
+    private void SaveData(WorkspaceHistoryState? history)
     {
         try
         {
             _persistence.SaveData(Data);
             _committedData = Clone(Data);
+            if (history is not null) AddHistory(_undoHistory, history);
+            if (history is not null) _redoHistory.Clear();
         }
         catch
         {
@@ -104,7 +119,9 @@ public sealed class TodoWorkspace : ITodoCommands
         SaveSettings();
     }
 
-    public void SaveAll()
+    public void SaveAll() => SaveAll(history: null);
+
+    private void SaveAll(WorkspaceHistoryState? history)
     {
         var priorData = Clone(_committedData);
         var priorSettings = Clone(_committedSettings);
@@ -114,6 +131,8 @@ public sealed class TodoWorkspace : ITodoCommands
             _persistence.SaveSettings(Settings);
             _committedData = Clone(Data);
             _committedSettings = Clone(Settings);
+            if (history is not null) AddHistory(_undoHistory, history);
+            if (history is not null) _redoHistory.Clear();
         }
         catch (Exception error)
         {
@@ -135,6 +154,46 @@ public sealed class TodoWorkspace : ITodoCommands
         Publish(TodoChangeSet.All);
     }
 
+    public bool Undo()
+    {
+        if (!TryTakeHistory(_undoHistory, out var prior)) return false;
+
+        var current = CaptureHistoryState();
+        try
+        {
+            RestoreHistoryState(prior);
+            SaveAll();
+            AddHistory(_redoHistory, current);
+            return true;
+        }
+        catch
+        {
+            RestoreHistoryState(current);
+            AddHistory(_undoHistory, prior);
+            throw;
+        }
+    }
+
+    public bool Redo()
+    {
+        if (!TryTakeHistory(_redoHistory, out var next)) return false;
+
+        var current = CaptureHistoryState();
+        try
+        {
+            RestoreHistoryState(next);
+            SaveAll();
+            AddHistory(_undoHistory, current);
+            return true;
+        }
+        catch
+        {
+            RestoreHistoryState(current);
+            AddHistory(_redoHistory, next);
+            throw;
+        }
+    }
+
     public bool UpdateData(Func<TodoData, TodoSettings, bool> update)
     {
         var changed = _persistence.UpdateData(update);
@@ -154,6 +213,7 @@ public sealed class TodoWorkspace : ITodoCommands
 
     public int SetTaskCompleted(string taskId, bool completed, bool includeDescendants)
     {
+        var history = CaptureHistoryState();
         var changed = TodoTaskCommands.SetCompleted(
             Data,
             taskId,
@@ -162,18 +222,19 @@ public sealed class TodoWorkspace : ITodoCommands
             DateTimeOffset.Now);
         if (changed > 0)
         {
-            SaveData();
+            SaveData(history);
         }
         return changed;
     }
 
     public bool ToggleTaskImportant(string taskId)
     {
+        var history = CaptureHistoryState();
         if (!TodoTaskCommands.ToggleImportant(Data, taskId, DateTimeOffset.Now))
         {
             return false;
         }
-        SaveData();
+        SaveData(history);
         return true;
     }
 
@@ -184,10 +245,24 @@ public sealed class TodoWorkspace : ITodoCommands
         DateTime startDate,
         DateTime? dueDate,
         string? parentTaskId = null,
-        string? notes = null)
+        string? notes = null,
+        TodoRecurrenceRule? recurrence = null)
     {
+        var history = CaptureHistoryState();
         var now = DateTimeOffset.Now;
         parentTaskId = NormalizeParentTaskId(parentTaskId);
+        var normalizedRecurrence = parentTaskId is null ? TodoRecurrenceRules.Normalize(recurrence) : null;
+        var originalStartDate = startDate.Date;
+        var normalizedStartDate = normalizedRecurrence is null
+            ? originalStartDate
+            : TodoRecurrenceRules.FirstOccurrenceOnOrAfter(normalizedRecurrence, originalStartDate);
+        var normalizedDueDate = normalizedRecurrence is null
+            ? dueDate?.Date
+            : TodoRecurrenceRules.DueDateForOccurrence(
+                normalizedRecurrence,
+                normalizedStartDate,
+                originalStartDate,
+                dueDate);
         var task = new TodoTask
         {
             Id = CreateTaskId(),
@@ -195,28 +270,60 @@ public sealed class TodoWorkspace : ITodoCommands
             ListId = ListExists(listId) ? listId : DefaultList(),
             ParentTaskId = parentTaskId,
             IsImportant = isImportant,
-            StartDate = startDate.Date,
-            DueDate = dueDate?.Date,
+            StartDate = normalizedStartDate,
+            DueDate = normalizedDueDate,
+            Recurrence = TodoRecurrenceRules.Clone(normalizedRecurrence),
             Notes = notes?.Trim() ?? string.Empty,
             CreatedAt = now,
             UpdatedAt = now
         };
         Data.Tasks.Add(task);
         InsertAsFirstChild(task);
-        SaveAll();
+        SaveAll(history);
         return State.Tasks.First(item => item.Id == task.Id);
+    }
+
+    public int CreateDueRecurringTasks(DateTime? throughDate = null)
+    {
+        var created = 0;
+        TodoData? updatedData = null;
+        if (!_persistence.UpdateData((latestData, _) =>
+            {
+                created = TodoRecurringTaskScheduler.CreateDueTasks(
+                    latestData,
+                    throughDate?.Date ?? DateTime.Today,
+                    CreateTaskId,
+                    DateTimeOffset.Now);
+                if (created > 0) updatedData = Clone(latestData);
+                return created > 0;
+            }))
+        {
+            return 0;
+        }
+
+        Data = updatedData!;
+        _committedData = Clone(Data);
+        Publish(TodoChangeSet.Tasks | TodoChangeSet.Lists);
+        return created;
     }
 
     public TodoListSnapshot AddList(string name)
     {
+        var normalized = name.Trim();
+        if (normalized.Length == 0 || TodoQuery.HasListName(Data, normalized))
+        {
+            throw new ArgumentException("A task list with the same name already exists.", nameof(name));
+        }
+
+        var history = CaptureHistoryState();
         var list = new TodoList
         {
             Id = CreateListId(),
-            Name = name.Trim(),
+            Name = normalized,
             CreatedAt = DateTimeOffset.Now
         };
         Data.Lists.Add(list);
-        SaveData();
+        SaveData(history);
         return State.Lists.First(item => item.Id == list.Id);
     }
 
@@ -224,12 +331,14 @@ public sealed class TodoWorkspace : ITodoCommands
     {
         var list = FindList(listId);
         var normalized = name.Trim();
-        if (list is null || normalized.Length == 0 || string.Equals(list.Name, normalized, StringComparison.Ordinal))
+        if (list is null || normalized.Length == 0 || string.Equals(list.Name, normalized, StringComparison.Ordinal) ||
+            TodoQuery.HasListName(Data, normalized, listId))
         {
             return false;
         }
+        var history = CaptureHistoryState();
         list.Name = normalized;
-        SaveData();
+        SaveData(history);
         return true;
     }
 
@@ -240,6 +349,7 @@ public sealed class TodoWorkspace : ITodoCommands
         {
             return false;
         }
+        var history = CaptureHistoryState();
         var now = DateTimeOffset.Now;
         var fallbackListId = DefaultList();
         foreach (var task in Data.Tasks.Where(task =>
@@ -249,7 +359,7 @@ public sealed class TodoWorkspace : ITodoCommands
             task.UpdatedAt = now;
         }
         Data.Lists.Remove(list);
-        SaveData();
+        SaveData(history);
         return true;
     }
 
@@ -259,8 +369,9 @@ public sealed class TodoWorkspace : ITodoCommands
         if (list is null) return false;
         var normalized = TodoListColorIds.Normalize(colorId, list.Id);
         if (string.Equals(list.ColorId, normalized, StringComparison.Ordinal)) return false;
+        var history = CaptureHistoryState();
         list.ColorId = normalized;
-        SaveData();
+        SaveData(history);
         return true;
     }
 
@@ -328,46 +439,51 @@ public sealed class TodoWorkspace : ITodoCommands
 
     public bool DeleteTaskTree(string taskId)
     {
+        var history = CaptureHistoryState();
         var treeIds = TodoRecycleBin.TaskTreeIds(Data, taskId);
         if (!TodoRecycleBin.DeleteTaskTree(Data, Settings, taskId)) return false;
         if (!Settings.IsRecycleBinEnabled) Settings.CollapsedTaskIds.RemoveAll(treeIds.Contains);
-        SaveAll();
+        SaveAll(history);
         return true;
     }
 
     public bool RestoreTaskTree(string taskId)
     {
+        var history = CaptureHistoryState();
         if (!TodoRecycleBin.RestoreTaskTree(Data, taskId)) return false;
-        SaveData();
+        SaveData(history);
         return true;
     }
 
     public bool PermanentlyDeleteTaskTree(string taskId)
     {
+        var history = CaptureHistoryState();
         if (!TodoRecycleBin.PermanentlyDeleteTaskTree(Data, taskId)) return false;
-        SaveData();
+        SaveData(history);
         return true;
     }
 
     public int RestoreCompleted(IEnumerable<string> taskIds)
     {
+        var history = CaptureHistoryState();
         var changed = 0;
         foreach (var taskId in taskIds.Distinct(StringComparer.Ordinal))
         {
             changed += TodoTaskCommands.SetCompleted(Data, taskId, false, false, DateTimeOffset.Now);
         }
-        if (changed > 0) SaveData();
+        if (changed > 0) SaveData(history);
         return changed;
     }
 
     public int DeleteTaskTrees(IEnumerable<string> taskIds)
     {
+        var history = CaptureHistoryState();
         var changed = 0;
         foreach (var taskId in taskIds.Distinct(StringComparer.Ordinal).ToList())
         {
             if (DeleteTaskTreeWithoutSaving(taskId)) changed++;
         }
-        if (changed > 0) SaveAll();
+        if (changed > 0) SaveAll(history);
         return changed;
     }
 
@@ -382,6 +498,7 @@ public sealed class TodoWorkspace : ITodoCommands
         string targetId,
         TodoTaskDropPlacement placement)
     {
+        var history = CaptureHistoryState();
         if (!TodoTaskDropController.TryApply(
                 Data,
                 Settings,
@@ -392,7 +509,7 @@ public sealed class TodoWorkspace : ITodoCommands
         {
             return false;
         }
-        SaveAll();
+        SaveAll(history);
         return true;
     }
 
@@ -458,10 +575,11 @@ public sealed class TodoWorkspace : ITodoCommands
 
     private bool UpdateTask(string taskId, Func<TodoTask, bool> update)
     {
+        var history = CaptureHistoryState();
         var task = Data.Tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal));
         if (task is null || !update(task)) return false;
         task.UpdatedAt = DateTimeOffset.Now;
-        SaveData();
+        SaveData(history);
         return true;
     }
 
@@ -508,6 +626,42 @@ public sealed class TodoWorkspace : ITodoCommands
 
     private void Publish(TodoChangeSet changes) => Changed?.Invoke(this, changes);
 
+    private WorkspaceHistoryState CaptureHistoryState() => new(Clone(Data), [.. Settings.CollapsedTaskIds]);
+
+    private void RestoreHistoryState(WorkspaceHistoryState state)
+    {
+        Data = Clone(state.Data);
+        Settings.CollapsedTaskIds = [.. state.CollapsedTaskIds];
+    }
+
+    private static bool TryTakeHistory(List<WorkspaceHistoryState> history, out WorkspaceHistoryState state)
+    {
+        if (history.Count == 0)
+        {
+            state = default!;
+            return false;
+        }
+
+        var index = history.Count - 1;
+        state = history[index];
+        history.RemoveAt(index);
+        return true;
+    }
+
+    private static void AddHistory(List<WorkspaceHistoryState> history, WorkspaceHistoryState state)
+    {
+        history.Add(state);
+        if (history.Count > HistoryLimit) history.RemoveAt(0);
+    }
+
+    private void ClearHistory()
+    {
+        _undoHistory.Clear();
+        _redoHistory.Clear();
+    }
+
+    private sealed record WorkspaceHistoryState(TodoData Data, List<string> CollapsedTaskIds);
+
     private static TodoData Clone(TodoData value) => new()
     {
         SchemaVersion = value.SchemaVersion,
@@ -529,6 +683,8 @@ public sealed class TodoWorkspace : ITodoCommands
             IsImportant = task.IsImportant,
             StartDate = task.StartDate,
             DueDate = task.DueDate,
+            Recurrence = TodoRecurrenceRules.Clone(task.Recurrence),
+            RecurrenceSourceTaskId = task.RecurrenceSourceTaskId,
             IsCompleted = task.IsCompleted,
             CompletedAt = task.CompletedAt,
             DeletedAt = task.DeletedAt,
@@ -547,6 +703,10 @@ public sealed class TodoWorkspace : ITodoCommands
         IsStickyModeEnabled = value.IsStickyModeEnabled,
         IsStickyTopmost = value.IsStickyTopmost,
         IsStickyCompletedExpanded = value.IsStickyCompletedExpanded,
+        IsStickyTitleHidden = value.IsStickyTitleHidden,
+        IsStickyAddTaskMinimized = value.IsStickyAddTaskMinimized,
+        IsStickyMenuAutoHideEnabled = value.IsStickyMenuAutoHideEnabled,
+        StickyTitleFontSize = value.StickyTitleFontSize,
         StickyOpacity = value.StickyOpacity,
         StickyScale = value.StickyScale,
         StickyLeft = value.StickyLeft,

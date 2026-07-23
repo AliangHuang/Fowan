@@ -14,6 +14,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace Fowan.Todo.Sticky.Windows;
 
@@ -28,6 +29,8 @@ public sealed class StickyWindow : Window
     private const double BaseWidth = 408;
     private const double BaseHeight = 568;
     private const double FloatingWindowSize = 52;
+    private const double MenuBarHeight = 55;
+    private const int MenuHideGracePeriodMilliseconds = 160;
     private const double TaskDropEdgeRatio = 0.28;
     private readonly TodoWorkspace _workspace = TodoWorkspace.CreateDefault();
     private readonly StickyWindowCommands _commands;
@@ -43,6 +46,7 @@ public sealed class StickyWindow : Window
     private readonly StickyDisplayGeometryController _displayGeometry;
     private readonly StickyNativeWindowController _nativeWindow;
     private readonly StickyChildWindowCoordinator _childWindows;
+    private StickyMenuWindowCoordinator? _menuWindows;
     private readonly StickyTaskListPresenter _taskListPresenter;
     private readonly StickyShellBuilder _shellBuilder;
     private readonly StickyAppearanceController _appearance;
@@ -59,9 +63,8 @@ public sealed class StickyWindow : Window
     private Border _popupDismissOverlay = new();
     private Border _addRowBorder = new();
     private Border _taskDivider = new();
-    private FrameworkElement _dragHandle = new Grid();
+    private FrameworkElement _titleArea = new Grid();
     private FrameworkElement _brandIcon = new Grid();
-    private Button _settingsButton = new();
     private Button _addTaskButton = new();
     private TextBlock _titleText = new();
     private TextBlock _countText = new();
@@ -76,6 +79,14 @@ public sealed class StickyWindow : Window
     private bool _isClosingFromCoordinatorShutdown;
     private bool _isApplyingWindowMode;
     private bool _hasAppliedInitialWindowMode;
+    private readonly HashSet<Window> _pointerOverStickyAuxiliaryWindows = [];
+    private bool _isPointerOverMainWindow;
+    private bool _isPointerStateUpdatePending;
+    private bool _isMenuHidden;
+    private bool _acceptFloatingTaskbarRestore;
+    private bool _isFloatingTaskbarRestorePending;
+    private readonly DispatcherTimer _menuHideTimer;
+    private readonly DispatcherTimer _recurringTaskTimer;
 
     public StickyWindow(string[] args)
         : this(args, new WindowsStickyMainProcessCoordinator(new WindowsProcessLauncher()))
@@ -88,20 +99,23 @@ public sealed class StickyWindow : Window
         _mainExePath = ParseMainExePath(args);
         _commands = new StickyWindowCommands(_workspace);
         _workspace.Reload();
+        _commands.CreateDueRecurringTasks();
         _palette = new StickyThemePalette(() => _workspace.State.ToQuerySettings());
         _controls = new StickyControlFactory(() => _workspace.State.ToQuerySettings(), _palette);
         _shellBuilder = new StickyShellBuilder(
             this, _commands, () => _workspace.State.ToQuerySettings(), _palette, _controls, _scaleTransform,
             OnHeaderDragMouseLeftButtonDown, OnWindowDragMouseLeftButtonDown,
             ReturnToMain, ToggleAdjustmentWindow, CloseStickyChildWindows,
-            () => SynchronizeStickyChildWindows(reposition: false), AddTaskFromInput,
+            () => SynchronizeStickyWindows(reposition: false), AddTaskFromInput,
             () => ShowAddTaskWindow(), FocusInlineAddBox, UpdateAddPlaceholder, RefreshTasks);
         _childWindows = new StickyChildWindowCoordinator(
             this,
             () => _workspace.State.ToQuerySettings(),
             () => _workspace.State.ToQueryData(),
             () => _popupDismissOverlay,
-            FindTask);
+            FindTask,
+            SetStickyChildPointerState,
+            visible => _menuWindows?.SetDismissOverlayVisible(visible));
         _taskCommands = new StickyTaskCommandCoordinator(_workspace, RefreshAll, ShowConfirmation);
         _taskInteractions = new StickyTaskInteractionController(
             this, _workspace, _taskCommands, () => _workspace.State.ToQueryData(), () => _addBox,
@@ -160,8 +174,8 @@ public sealed class StickyWindow : Window
             this,
             _workspace,
             () => _workspace.State.ToQuerySettings(),
-            () => _root,
-            () => _dragHandle);
+            MenuFootprint,
+            () => _root);
         _appearance = new StickyAppearanceController(
             this, _commands, () => _workspace.State.ToQuerySettings(), _palette, _scaleTransform,
             () => _shell, () => _addRowBorder, () => _taskDivider, () => _titleText,
@@ -169,7 +183,7 @@ public sealed class StickyWindow : Window
             _displayGeometry.CurrentMonitorSizeDip,
             save => _displayGeometry.Enforce(save),
             _displayGeometry.SaveGeometry,
-            RefreshTasks, () => SynchronizeStickyChildWindows(reposition: false),
+            RefreshTasks, () => SynchronizeStickyWindows(reposition: false),
             BuildUi, RefreshAll, UpdatePopupDismissOverlay);
         _floatingMode = new StickyFloatingModeController(
             this,
@@ -177,7 +191,9 @@ public sealed class StickyWindow : Window
             () => _brandIcon,
             _displayGeometry.DeviceScale,
             _displayGeometry.CurrentMonitorSizeDip,
+            MenuFootprint,
             CloseStickyChildWindows,
+            () => _menuWindows?.HideForOwnerTransition(),
             BuildUi,
             ApplyStoredSettings,
             RefreshAll,
@@ -196,11 +212,27 @@ public sealed class StickyWindow : Window
         _nativeWindow = new StickyNativeWindowController(
             this,
             () => _workspace.State.Settings.IsStickyFloatingModeEnabled,
+            RestoreFromExternalActivation,
             () => _windowDrag.IsCandidate,
             () => _windowDrag.CompleteFromExternal(allowFloatingClickRestore: true),
             () => _floatingMode.TryEnter(),
             () => _displayGeometry.Enforce(save: true),
-            () => SynchronizeStickyChildWindows(reposition: true));
+            () => SynchronizeStickyWindows(reposition: true),
+            SynchronizeForDpiChange);
+        _menuHideTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(MenuHideGracePeriodMilliseconds)
+        };
+        _menuHideTimer.Tick += (_, _) => ConfirmMenuHideAfterPointerLeaves();
+        _recurringTaskTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromHours(1)
+        };
+        _recurringTaskTimer.Tick += (_, _) =>
+        {
+            if (_commands.CreateDueRecurringTasks() > 0) RefreshTasks();
+        };
+        _recurringTaskTimer.Start();
         PurgeExpiredRecycleBin();
 
         ConfigureWindow();
@@ -230,14 +262,24 @@ public sealed class StickyWindow : Window
             UpdateMinimumWindowSize(clampCurrentSize: false);
             var initialMaxSize = CurrentMonitorSizeDip();
             Width = Math.Clamp(_workspace.State.Settings.StickyWidth ?? BaseWidth * _workspace.State.Settings.StickyScale, MinWidth, initialMaxSize.Width);
-            Height = Math.Clamp(_workspace.State.Settings.StickyHeight ?? BaseHeight * _workspace.State.Settings.StickyScale, MinHeight, initialMaxSize.Height);
+            var expandedHeight = _workspace.State.Settings.StickyHeight ?? BaseHeight * _workspace.State.Settings.StickyScale;
+            var bodyGeometry = TodoStickyPlacement.BodyGeometryFromExpanded(0, expandedHeight, MenuFootprint());
+            Height = Math.Clamp(
+                bodyGeometry.Height,
+                MinHeight,
+                Math.Max(MinHeight, initialMaxSize.Height - MenuFootprint()));
         }
 
         if (_workspace.State.Settings.StickyLeft.HasValue && _workspace.State.Settings.StickyTop.HasValue)
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = _workspace.State.Settings.StickyLeft.Value;
-            Top = _workspace.State.Settings.StickyTop.Value;
+            Top = _workspace.State.Settings.IsStickyFloatingModeEnabled
+                ? _workspace.State.Settings.StickyTop.Value
+                : TodoStickyPlacement.BodyGeometryFromExpanded(
+                    _workspace.State.Settings.StickyTop.Value,
+                    0,
+                    MenuFootprint()).Top;
         }
         else
         {
@@ -256,12 +298,52 @@ public sealed class StickyWindow : Window
             ApplyCurrentWindowMode(save: false);
             _hasAppliedInitialWindowMode = true;
         };
-        Loaded += (_, _) => ApplyCurrentWindowMode(save: true);
+        Loaded += (_, _) =>
+        {
+            _isPointerOverMainWindow = IsMouseOver;
+            ApplyCurrentWindowMode(save: true);
+            ApplyStickyPresentationPreferences();
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ContextIdle,
+                new Action(() => _acceptFloatingTaskbarRestore = true));
+        };
+        ContentRendered += (_, _) =>
+        {
+            EnsureMenuWindow(rebuild: false);
+            ApplyStickyPresentationPreferences();
+        };
+        MouseEnter += (_, _) => SetStickyMainPointerState(true);
+        MouseLeave += (_, _) => SetStickyMainPointerState(false);
         AddHandler(Mouse.PreviewMouseMoveEvent, new MouseEventHandler(OnWindowDragMouseMove), handledEventsToo: true);
         AddHandler(Mouse.PreviewMouseUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
         AddHandler(PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
         AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnWindowDragMouseLeftButtonUp), handledEventsToo: true);
         LostMouseCapture += OnWindowDragLostMouseCapture;
+        Activated += (_, _) =>
+        {
+            if (_acceptFloatingTaskbarRestore && _workspace.State.Settings.IsStickyFloatingModeEnabled)
+            {
+                RestoreFromExternalActivation();
+            }
+        };
+        StateChanged += (_, _) =>
+        {
+            if (!_acceptFloatingTaskbarRestore || _isFloatingTaskbarRestorePending ||
+                WindowState != WindowState.Minimized || !_workspace.State.Settings.IsStickyFloatingModeEnabled)
+            {
+                return;
+            }
+
+            _isFloatingTaskbarRestorePending = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                _isFloatingTaskbarRestorePending = false;
+                if (WindowState == WindowState.Minimized && _workspace.State.Settings.IsStickyFloatingModeEnabled)
+                {
+                    RestoreFromExternalActivation();
+                }
+            }));
+        };
         Deactivated += (_, _) =>
         {
             _windowDrag.CompleteFromExternal(allowFloatingClickRestore: false);
@@ -284,7 +366,7 @@ public sealed class StickyWindow : Window
             {
                 SaveGeometry();
             }
-            SynchronizeStickyChildWindows(reposition: true);
+            SynchronizeStickyWindows(reposition: true);
         };
         SizeChanged += (_, _) =>
         {
@@ -301,11 +383,14 @@ public sealed class StickyWindow : Window
             }
 
             SaveGeometry();
-            SynchronizeStickyChildWindows(reposition: true);
+            SynchronizeStickyWindows(reposition: true);
         };
         Closed += (_, _) =>
         {
+            _menuHideTimer.Stop();
+            _recurringTaskTimer.Stop();
             _source?.RemoveHook(_nativeWindow.WndProc);
+            _menuWindows?.Close();
             CloseStickyChildWindows();
         };
         Closing += (_, _) =>
@@ -345,9 +430,8 @@ public sealed class StickyWindow : Window
         _popupDismissOverlay = view.DismissOverlay;
         _addRowBorder = view.AddRow;
         _taskDivider = view.TaskDivider;
-        _dragHandle = view.DragHandle;
+        _titleArea = view.TitleArea;
         _brandIcon = view.BrandIcon;
-        _settingsButton = view.SettingsButton;
         _addTaskButton = view.AddTaskButton;
         _titleText = view.TitleText;
         _countText = view.CountText;
@@ -358,6 +442,35 @@ public sealed class StickyWindow : Window
         _completedTasks = view.CompletedTasks;
         _completedTaskSection = view.CompletedTaskSection;
         _completedToggle = view.CompletedToggle;
+
+        if (_workspace.State.Settings.IsStickyFloatingModeEnabled)
+        {
+            _menuWindows?.ApplyPresentation(showMenu: false);
+        }
+        else
+        {
+            EnsureMenuWindow(rebuild: true);
+        }
+
+        ApplyStickyPresentationPreferences();
+        UpdatePopupDismissOverlay();
+    }
+
+    private void EnsureMenuWindow(bool rebuild)
+    {
+        if (!IsVisible || _workspace.State.Settings.IsStickyFloatingModeEnabled) return;
+        if (_menuWindows is null)
+        {
+            _menuWindows = new StickyMenuWindowCoordinator(
+                this,
+                _shellBuilder,
+                () => _workspace.State.ToQuerySettings(),
+                () => _workspace.State.Settings.IsStickyFloatingModeEnabled,
+                SetStickyChildPointerState);
+            return;
+        }
+
+        if (rebuild) _menuWindows.Rebuild();
     }
 
     private bool HasOpenStickyChildWindow() => _childWindows.HasOpenWindow();
@@ -377,6 +490,7 @@ public sealed class StickyWindow : Window
     private void RefreshAll()
     {
         _commands.Reload();
+        _commands.CreateDueRecurringTasks();
         PurgeExpiredRecycleBin();
 
         RefreshTasks();
@@ -388,6 +502,15 @@ public sealed class StickyWindow : Window
     private bool AddTaskFromInput() => _taskInteractions.AddFromInput();
     internal bool AddTask(string title, string? parentTaskId = null, string? notes = null) =>
         _taskInteractions.Add(title, parentTaskId is null ? null : _workspace.State.ToQueryData().Tasks.FirstOrDefault(task => task.Id == parentTaskId), notes);
+    internal bool AddTask(
+        string title,
+        string listId,
+        bool isImportant,
+        DateTime startDate,
+        DateTime? dueDate,
+        string? notes = null,
+        TodoRecurrenceRule? recurrence = null) =>
+        _taskCommands.Add(title, listId, isImportant, startDate, dueDate, notes: notes, recurrence: recurrence);
     private void FocusInlineAddBox() => _taskInteractions.FocusInlineAdd();
 
     private void ToggleTaskCompleted(TodoTask task)
@@ -429,13 +552,65 @@ public sealed class StickyWindow : Window
 
     internal void PositionConfirmWindow(Window confirmWindow) => _childWindows.PositionCentered(confirmWindow);
 
-    private void SynchronizeStickyChildWindows(bool reposition) => _childWindows.Synchronize(reposition);
+    private void SynchronizeStickyWindows(bool reposition)
+    {
+        _childWindows.Synchronize(reposition);
+        _menuWindows?.Synchronize(!_isMenuHidden);
+    }
+
+    private void SynchronizeForDpiChange()
+    {
+        if (!_hasAppliedInitialWindowMode || _isApplyingWindowMode || _floatingMode.IsApplying)
+        {
+            return;
+        }
+
+        if (!_workspace.State.Settings.IsStickyFloatingModeEnabled)
+        {
+            EnforceWindowDisplayConstraints(save: false);
+        }
+
+        SynchronizeStickyWindows(reposition: true);
+    }
     private void CloseStickyChildWindows() => _childWindows.CloseAll();
     private void UpdatePopupDismissOverlay() => _childWindows.RefreshDismissOverlay();
 
-    internal void SetStickyOpacity(double opacity) => _appearance.SetOpacity(opacity);
+    internal void SetStickyOpacity(double opacity)
+    {
+        _appearance.SetOpacity(opacity);
+        _menuWindows?.Rebuild();
+        SynchronizeStickyWindows(reposition: false);
+    }
     internal void SetStickyTheme(string theme) => _appearance.SetTheme(theme);
     internal void ApplyScaleFromSlider(double sliderValue) => _appearance.ApplyScale(sliderValue);
+    internal void SetStickyTitleHidden(bool hidden)
+    {
+        if (!_commands.SetStickyTitleHidden(hidden)) return;
+        ApplyStickyPresentationPreferences();
+        SynchronizeStickyWindows(reposition: false);
+    }
+
+    internal void SetStickyTitleFontSize(double fontSize)
+    {
+        if (!_commands.SetStickyTitleFontSize(fontSize)) return;
+        _titleText.FontSize = Settings.StickyTitleFontSize;
+        SynchronizeStickyWindows(reposition: false);
+    }
+
+    internal void SetStickyAddTaskMinimized(bool minimized)
+    {
+        if (!_commands.SetStickyAddTaskMinimized(minimized)) return;
+        ApplyStickyPresentationPreferences();
+        SynchronizeStickyWindows(reposition: false);
+    }
+
+    internal void SetStickyMenuAutoHideEnabled(bool enabled)
+    {
+        if (!_commands.SetStickyMenuAutoHideEnabled(enabled)) return;
+        _isPointerOverMainWindow = IsMouseOver;
+        QueueStickyPointerStateUpdate();
+        SynchronizeStickyWindows(reposition: false);
+    }
 
     private void ApplyCurrentWindowMode(bool save) => _floatingMode.ApplyCurrent(save);
     private void UpdateMinimumWindowSize(bool clampCurrentSize) => _displayGeometry.UpdateMinimumWindowSize(clampCurrentSize);
@@ -444,16 +619,139 @@ public sealed class StickyWindow : Window
     private (double Width, double Height) CurrentMonitorSizeDip() => _displayGeometry.CurrentMonitorSizeDip();
     private void SaveGeometry() => _displayGeometry.SaveGeometry();
 
+    private void SetStickyMainPointerState(bool isOver)
+    {
+        _isPointerOverMainWindow = isOver;
+        QueueStickyPointerStateUpdate();
+    }
+
+    internal void SetStickyChildPointerState(Window childWindow, bool isOver)
+    {
+        if (isOver)
+        {
+            _pointerOverStickyAuxiliaryWindows.Add(childWindow);
+        }
+        else
+        {
+            _pointerOverStickyAuxiliaryWindows.Remove(childWindow);
+        }
+
+        QueueStickyPointerStateUpdate();
+    }
+
+    private void QueueStickyPointerStateUpdate()
+    {
+        if (_isReturningToMain || !IsVisible)
+        {
+            _menuHideTimer.Stop();
+            QueueMenuPresentationUpdate();
+            return;
+        }
+
+        if (ShouldKeepMenuVisible())
+        {
+            _menuHideTimer.Stop();
+            QueueMenuPresentationUpdate();
+            return;
+        }
+
+        _menuHideTimer.Stop();
+        _menuHideTimer.Start();
+    }
+
+    private void ConfirmMenuHideAfterPointerLeaves()
+    {
+        _menuHideTimer.Stop();
+        QueueMenuPresentationUpdate();
+    }
+
+    private void QueueMenuPresentationUpdate()
+    {
+        if (_isPointerStateUpdatePending) return;
+        _isPointerStateUpdatePending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            _isPointerStateUpdatePending = false;
+            ApplyMenuPresentationForCurrentPointerState();
+        }));
+    }
+
+    private void ApplyStickyPresentationPreferences()
+    {
+        var settings = _workspace.State.Settings;
+        _titleArea.Visibility = settings.IsStickyTitleHidden ? Visibility.Collapsed : Visibility.Visible;
+        _addRowBorder.Visibility = settings.IsStickyAddTaskMinimized ? Visibility.Collapsed : Visibility.Visible;
+
+        ApplyMenuPresentationForCurrentPointerState();
+    }
+
+    private void ApplyMenuPresentationForCurrentPointerState()
+    {
+        var settings = _workspace.State.Settings;
+
+        if (_isReturningToMain || !IsVisible)
+        {
+            _isMenuHidden = true;
+            _menuWindows?.ApplyPresentation(showMenu: false);
+            return;
+        }
+
+        if (settings.IsStickyFloatingModeEnabled)
+        {
+            _isMenuHidden = false;
+            _menuWindows?.ApplyPresentation(showMenu: false);
+            return;
+        }
+
+        if (settings.IsStickyMenuAutoHideEnabled && _menuHideTimer.IsEnabled && !ShouldKeepMenuVisible())
+        {
+            return;
+        }
+
+        ApplyMenuVisibility(ShouldKeepMenuVisible());
+    }
+
+    private void ApplyMenuVisibility(bool showMenu)
+    {
+        var shouldHideMenu = !showMenu;
+        _isMenuHidden = shouldHideMenu;
+        _shell.CornerRadius = showMenu
+            ? new CornerRadius(0, 0, 8, 8)
+            : new CornerRadius(8);
+        _menuWindows?.ApplyPresentation(showMenu);
+    }
+
+    private bool IsPointerOverStickySurface() =>
+        _isPointerOverMainWindow ||
+        _pointerOverStickyAuxiliaryWindows.Count > 0 ||
+        HasOpenStickyChildWindow();
+
+    private bool ShouldKeepMenuVisible() =>
+        !_workspace.State.Settings.IsStickyMenuAutoHideEnabled ||
+        IsPointerOverStickySurface();
+
+    private double MenuFootprint() =>
+        (MenuBarHeight - StickyShellBuilder.MenuBodyOverlap) * _workspace.State.Settings.StickyScale;
+
     private void ReturnToMain()
     {
         _isReturningToMain = true;
+        _menuHideTimer.Stop();
         _commands.SetStickyModeEnabled(false);
         SaveGeometry();
 
-        _mainProcesses.TryActivate(ResolveMainExePath());
-
         CloseStickyChildWindows();
+        _menuWindows?.HideForOwnerTransition();
         Hide();
+        if (!_mainProcesses.TryActivate(ResolveMainExePath()))
+        {
+            Show();
+            _commands.SetStickyModeEnabled(true);
+            _isReturningToMain = false;
+            ApplyMenuPresentationForCurrentPointerState();
+            return;
+        }
+
         _isReturningToMain = false;
     }
 
@@ -474,7 +772,11 @@ public sealed class StickyWindow : Window
 
             RefreshAll();
         }
-        else
+        if (_workspace.State.Settings.IsStickyFloatingModeEnabled)
+        {
+            _floatingMode.Exit();
+        }
+        else if (!wasMinimized)
         {
             ReloadSettingsAndRefresh();
         }
@@ -483,6 +785,9 @@ public sealed class StickyWindow : Window
         {
             Show();
         }
+
+        _isPointerOverMainWindow = IsMouseOver;
+        ApplyStickyPresentationPreferences();
 
         Activate();
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -501,6 +806,7 @@ public sealed class StickyWindow : Window
     private void ReloadSettingsAndRefresh()
     {
         _commands.Reload();
+        _commands.CreateDueRecurringTasks();
         PurgeExpiredRecycleBin();
 
         Topmost = _workspace.State.Settings.IsStickyFloatingModeEnabled || _workspace.State.Settings.IsStickyTopmost;
@@ -513,6 +819,7 @@ public sealed class StickyWindow : Window
         {
             ApplyCurrentWindowMode(save: false);
         }
+        ApplyStickyPresentationPreferences();
     }
 
     private void PurgeExpiredRecycleBin()

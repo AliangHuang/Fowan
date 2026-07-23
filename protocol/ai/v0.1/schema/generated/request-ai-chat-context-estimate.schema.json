@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.chat.context.estimate"
+    },
+    "params": {
+      "$ref": "#/$defs/contextEstimateParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "contextEstimateParams": {
+      "type": "object",
+      "required": [
+        "modelProfileId",
+        "draft"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProfileId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branchLeafMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -10,18 +10,25 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Globalization;
 using Windows.Graphics;
 using Windows.UI;
+using Windows.UI.Core;
+using Windows.System;
 
 namespace Fowan.Ai.Chat.Windows;
 
 public sealed partial class ChatWindow : Window
 {
+    private const int DesignWindowWidth = 1920;
+    private const int DesignWindowHeight = 1080;
+
     private readonly AiLocalizationService _loc = new();
     private readonly IAiApplicationLauncher _applicationLauncher;
     private readonly AiChatSession _controller;
@@ -36,28 +43,48 @@ public sealed partial class ChatWindow : Window
     private Grid _root = new();
     private ListView _conversationList = new();
     private TextBox _conversationSearch = new();
-    private StackPanel _messagePanel = new();
-    private ScrollViewer _messageScroll = new();
+    private ListView _messagePanel = new();
     private ComboBox _credentialBox = new();
     private ComboBox _modelBox = new();
     private TextBox _inputBox = new();
-    private Button _sendButton = new();
-    private Button _stopButton = new();
-    private Button _regenerateButton = new();
+    private Border _composerBorder = new();
+    private Button _primaryActionButton = new();
+    private FontIcon _primaryActionIcon = new();
+    private readonly List<Button> _regenerateMessageButtons = [];
     private Border _statusBar = new();
     private TextBlock _statusText = new();
+    private TextBlock _contextUsageText = new();
+    private CancellationTokenSource? _estimateCts;
     private TextBlock? _streamingText;
     private ChatVisualFixture? _visualFixtureData = null;
     private int _conversationSelectionVersion;
     private int _notificationRefreshQueued;
     private bool _suppressConversationSelection;
+    private string? _pendingCompressionDraft;
+    private string? _pendingCompressionConversationId;
+    private string? _pendingCompressionModelId;
+    private string? _pendingCompressionBranchLeafId;
+    private string? _activeBranchLeafMessageId;
+    private readonly List<AiChatMessage> _loadedMessages = [];
+    private string? _nextMessageCursor;
+    private bool _hasMoreMessages;
+    private TaskCompletionSource<bool>? _terminalCompletion;
+    private Brush _composerRestingBorderBrush = new SolidColorBrush(Colors.Transparent);
+    private Brush _composerFocusedBorderBrush = new SolidColorBrush(Colors.Transparent);
 
     internal ChatWindow(bool visualFixture = false)
     {
         _visualFixture = visualFixture;
         _applicationLauncher = new WindowsAiApplicationLauncher();
         _controller = AiChatCompositionRoot.CreateSession();
-        _messageView = new ChatMessageView(L, _clipboard);
+        _controller.StateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateLifecycleControls);
+        _messageView = new ChatMessageView(
+            L,
+            _clipboard,
+            RegenerateMessageAsync,
+            SelectBranchAsync,
+            button => _regenerateMessageButtons.Add(button),
+            AiChatCompositionRoot.LoadCurrentToolboxAvatar());
         _uiDispatcher = new DispatcherQueueUiDispatcher(DispatcherQueue);
         _dialogs = new ChatDialogPresenter(L, () => _root.XamlRoot);
         _statusPresenter = new ChatStatusPresenter(L, () => _controller.State.Channels, () => _statusBar, () => _statusText);
@@ -109,9 +136,56 @@ public sealed partial class ChatWindow : Window
 
     private Task RenameConversationAsync() => _conversationCoordinator.RenameAsync();
 
-    private Task DeleteConversationAsync() => _conversationCoordinator.DeleteAsync();
+    private async Task DeleteConversationAsync()
+    {
+        if (await StopGenerationBeforeNavigationAsync()) await _conversationCoordinator.DeleteAsync();
+    }
 
-    private async Task RegenerateAsync()
+    private async Task RegenerateMessageAsync(AiChatMessage message)
+    {
+        if (_visualFixture ||
+            _controller.State.LifecycleState != AiChatLifecycleState.Idle ||
+            message.Role != "assistant" ||
+            string.IsNullOrWhiteSpace(message.ParentMessageId))
+        {
+            return;
+        }
+
+        if (HasSubsequentMessages(message) && !await _dialogs.ConfirmRegenerateAfterMessageAsync())
+        {
+            return;
+        }
+
+        await RegenerateAsync(message.ParentMessageId);
+    }
+
+    private bool HasSubsequentMessages(AiChatMessage message)
+    {
+        var messagesById = _loadedMessages.ToDictionary(item => item.Id, StringComparer.Ordinal);
+        return _loadedMessages.Any(candidate =>
+            candidate.Id != message.Id && IsDescendantOf(candidate, message.Id, messagesById));
+    }
+
+    private static bool IsDescendantOf(AiChatMessage message, string ancestorId,
+        IReadOnlyDictionary<string, AiChatMessage> messagesById)
+    {
+        var parentId = message.ParentMessageId;
+        while (!string.IsNullOrWhiteSpace(parentId))
+        {
+            if (parentId == ancestorId)
+            {
+                return true;
+            }
+            if (!messagesById.TryGetValue(parentId, out var parent))
+            {
+                return false;
+            }
+            parentId = parent.ParentMessageId;
+        }
+        return false;
+    }
+
+    private async Task RegenerateAsync(string userMessageId)
     {
         if (_visualFixture) return;
         if (_controller.State.CurrentConversationId is null ||
@@ -128,18 +202,20 @@ public sealed partial class ChatWindow : Window
         }
 
         _controller.BeginGeneration();
+        _terminalCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         HideChatEmptyState();
         var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
         _streamingText = assistant.Tag as TextBlock;
-        _messagePanel.Children.Add(assistant);
-        SetGenerating(true);
+        _messagePanel.Items.Add(assistant);
+        UpdateLifecycleControls();
         try
         {
             var execution = await _controller.RegenerateAsync(
                 credential,
                 model,
                 _controller.State.CurrentConversationId,
-                ConfirmConsentAsync);
+                ConfirmConsentAsync,
+                userMessageId);
             if (!execution.Executed)
             {
                 StopGenerationAfterLocalFailure();
@@ -167,10 +243,22 @@ public sealed partial class ChatWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new SizeInt32(1600, 900));
         if (_visualFixture)
         {
+            appWindow.Resize(new SizeInt32(1600, 900));
             appWindow.Move(new PointInt32(0, 0));
+        }
+        else
+        {
+            var scale = Math.Clamp(NativeWindowMethods.GetDpiForWindow(hwnd) / 96.0, 1.0, 3.0);
+            var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+            var workArea = displayArea.WorkArea;
+            var width = Math.Min(workArea.Width, (int)Math.Round(DesignWindowWidth * scale));
+            var height = Math.Min(workArea.Height, (int)Math.Round(DesignWindowHeight * scale));
+            appWindow.Resize(new SizeInt32(width, height));
+            appWindow.Move(new PointInt32(
+                workArea.X + Math.Max(0, (workArea.Width - width) / 2),
+                workArea.Y + Math.Max(0, (workArea.Height - height) / 2)));
         }
         if (TitleBarDragRegion is not null)
         {
@@ -203,15 +291,15 @@ public sealed partial class ChatWindow : Window
         _conversationList = ConversationListView;
         _conversationSearch = ConversationSearchBox;
         _messagePanel = MessageStackPanel;
-        _messageScroll = MessageScrollViewer;
         _credentialBox = CredentialComboBox;
         _modelBox = ModelComboBox;
         _inputBox = InputTextBox;
-        _sendButton = SendButton;
-        _stopButton = StopButton;
-        _regenerateButton = RegenerateButton;
+        _composerBorder = ComposerBorder;
+        _primaryActionButton = PrimaryActionButton;
+        _primaryActionIcon = PrimaryActionIcon;
         _statusBar = StatusBorder;
         _statusText = StatusTextBlock;
+        _contextUsageText = ContextUsageTextBlock;
         _root.Loaded += (_, _) => UpdateToolbarLayout(_root.ActualWidth);
         _root.SizeChanged += (_, args) => UpdateToolbarLayout(args.NewSize.Width);
 
@@ -221,17 +309,71 @@ public sealed partial class ChatWindow : Window
         _conversationSearch.TextChanged += (_, _) => FilterConversations();
         _conversationList.SelectionChanged += async (_, args) => await SelectConversationAsync(args);
         _credentialBox.SelectionChanged += (_, _) => RefreshChatModels();
-        NewChatButton.Click += (_, _) => StartNewConversation();
+        _modelBox.SelectionChanged += (_, _) => _ = UpdateContextEstimateAsync();
+        _inputBox.TextChanged += (_, _) => _ = UpdateContextEstimateAsync();
+        _inputBox.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(InputBox_KeyDown), true);
+        _inputBox.GotFocus += (_, _) => SetComposerFocus(true);
+        _inputBox.LostFocus += (_, _) => SetComposerFocus(false);
+        ComposerInputHost.Tapped += (_, _) => _inputBox.Focus(FocusState.Pointer);
+        _composerRestingBorderBrush = (Brush)Application.Current.Resources["AiBorderBrush"];
+        _composerFocusedBorderBrush = (Brush)Application.Current.Resources["AiPrimaryBrush"];
+        NewChatButton.Click += async (_, _) => { if (await StopGenerationBeforeNavigationAsync()) StartNewConversation(); };
         OpenConfigButton.Click += (_, _) =>
         {
             try { _applicationLauncher.Launch(AiApplication.Config); }
             catch (Exception exception) { ShowError(exception); }
         };
-        _regenerateButton.Click += async (_, _) => await RegenerateAsync();
-        _stopButton.Click += async (_, _) => await StopAsync();
-        _sendButton.Click += async (_, _) => await SendAsync();
+        _primaryActionButton.Click += async (_, _) => await ExecutePrimaryActionAsync();
         ChatEmptyStateConfigButton.Click += (_, _) => OpenConfigurationForEmptyState();
         CloseStatusButton.Click += (_, _) => _statusBar.Visibility = Visibility.Collapsed;
+    }
+
+    private async void InputBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter) return;
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (shift) return;
+        e.Handled = true;
+        if (_controller.State.LifecycleState != AiChatLifecycleState.Idle) return;
+        await SendAsync();
+    }
+
+    private Task ExecutePrimaryActionAsync() => _controller.State.LifecycleState switch
+    {
+        AiChatLifecycleState.Generating or AiChatLifecycleState.Compacting => StopAsync(),
+        AiChatLifecycleState.Idle => SendAsync(),
+        _ => Task.CompletedTask
+    };
+
+    private void SetComposerFocus(bool focused) =>
+        _composerBorder.BorderBrush = focused ? _composerFocusedBorderBrush : _composerRestingBorderBrush;
+
+    private async Task UpdateContextEstimateAsync()
+    {
+        _estimateCts?.Cancel();
+        _estimateCts?.Dispose();
+        _estimateCts = new CancellationTokenSource();
+        var cancellationToken = _estimateCts.Token;
+        try
+        {
+            await Task.Delay(300, cancellationToken);
+            if (_visualFixture || _modelBox.SelectedItem is not AiModelProfile model) return;
+            if (_controller.State.LifecycleState != AiChatLifecycleState.Idle) return;
+            if (!model.LimitsConfigured)
+            {
+                _contextUsageText.Text = "限制待配置，补全后才能发送";
+                _contextUsageText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Colors.DarkOrange);
+                return;
+            }
+            var estimate = await _controller.EstimateContextAsync(model, _inputBox.Text,
+                _activeBranchLeafMessageId, cancellationToken);
+            _contextUsageText.Text = $"约 {estimate.EstimatedInputTokens:N0} / {estimate.ContextWindowTokens:N0} Token";
+            _contextUsageText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                estimate.Action is "warning" or "compression_required" or "too_large" ? Colors.DarkOrange : Colors.SlateGray);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { _contextUsageText.Text = exception.Message; }
     }
 
     private void UpdateToolbarLayout(double windowWidth)
@@ -306,14 +448,14 @@ public sealed partial class ChatWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         ChatEmptyStateConfigButton.Tag = state == AiChatEmptyStateKind.ModelRequired ? "models" : "credentials";
-        MessageScrollViewer.Visibility = Visibility.Collapsed;
+        MessageStackPanel.Visibility = Visibility.Collapsed;
         ChatEmptyState.Visibility = Visibility.Visible;
     }
 
     private void HideChatEmptyState()
     {
         ChatEmptyState.Visibility = Visibility.Collapsed;
-        MessageScrollViewer.Visibility = Visibility.Visible;
+        MessageStackPanel.Visibility = Visibility.Visible;
     }
 
     private void OpenConfigurationForEmptyState()
@@ -360,8 +502,12 @@ public sealed partial class ChatWindow : Window
         if (_visualFixture) return;
         _conversationSelectionVersion++;
         _controller.StartNewConversation();
+        _activeBranchLeafMessageId = null;
         _conversationList.SelectedItem = null;
-        _messagePanel.Children.Clear();
+        _messagePanel.Items.Clear();
+        _loadedMessages.Clear();
+        _nextMessageCursor = null;
+        _hasMoreMessages = false;
         ShowChatEmptyState();
         _inputBox.Focus(FocusState.Programmatic);
     }
@@ -374,17 +520,18 @@ public sealed partial class ChatWindow : Window
         {
             return;
         }
+        if (!await StopGenerationBeforeNavigationAsync()) return;
 
         var selectionVersion = ++_conversationSelectionVersion;
         try
         {
-            var conversation = await _controller.GetConversationAsync(selected.Id);
+            var page = await _controller.ListMessagesAsync(selected.Id);
             if (selectionVersion != _conversationSelectionVersion)
             {
                 return;
             }
-            _controller.SelectConversation(conversation.Id);
-            RenderMessages(conversation.Messages);
+            _controller.SelectConversation(selected.Id);
+            ApplyMessagePage(page, true);
         }
         catch (Exception exception)
         {
@@ -392,16 +539,39 @@ public sealed partial class ChatWindow : Window
         }
     }
 
-    private void RenderMessages(IEnumerable<AiChatMessage> messages)
+    private void RenderMessages(IEnumerable<AiChatMessage> messages, AiConversationSummaryRecord? summary = null,
+        string? activeLeafMessageId = null)
     {
-        _messagePanel.Children.Clear();
+        _messagePanel.Items.Clear();
+        _regenerateMessageButtons.Clear();
         var timeline = messages.ToList();
+        _activeBranchLeafMessageId = activeLeafMessageId;
         if (timeline.Count == 0)
         {
             ShowChatEmptyState();
             return;
         }
         HideChatEmptyState();
+        if (_hasMoreMessages)
+        {
+            var loadMore = new Button
+            {
+                Content = "加载更早消息",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Padding = new Thickness(16, 6, 16, 6)
+            };
+            loadMore.Click += async (_, _) => await LoadMoreMessagesAsync(loadMore);
+            _messagePanel.Items.Add(loadMore);
+        }
+        if (summary is not null)
+        {
+            _messagePanel.Items.Add(new Expander
+            {
+                Header = "较早对话摘要（本地加密保存）",
+                Content = new TextBlock { Text = summary.Content, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            });
+        }
         var renderedVariants = new HashSet<string>(StringComparer.Ordinal);
         foreach (var message in timeline)
         {
@@ -415,14 +585,15 @@ public sealed partial class ChatWindow : Window
                     .Where(item => item.Role == "assistant" && item.ParentMessageId == message.ParentMessageId)
                     .OrderBy(item => item.VariantIndex)
                     .ToList();
-                _messagePanel.Children.Add(_messageView.VariantGroup(variants));
+                var selectedVariantId = variants.FirstOrDefault(variant =>
+                    variant.Id == activeLeafMessageId || timeline.Any(item =>
+                        item.Role == "user" && item.ParentMessageId == variant.Id))?.Id;
+                _messagePanel.Items.Add(_messageView.VariantGroup(variants, selectedVariantId));
                 continue;
             }
-            _messagePanel.Children.Add(_messageView.Bubble(message));
+            _messagePanel.Items.Add(_messageView.Bubble(message));
         }
-        _regenerateButton.Visibility = timeline.Any(item => item.Role == "assistant")
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        UpdateLifecycleControls();
         ScrollToEnd();
     }
 
@@ -438,19 +609,46 @@ public sealed partial class ChatWindow : Window
         }
 
         var text = _inputBox.Text.Trim();
+        if (!model.LimitsConfigured)
+        {
+            _statusPresenter.ShowMessage("模型限制待配置，请先在配置中心补全。", ChatMessageSeverity.Warning);
+            return;
+        }
+        var estimate = await _controller.EstimateContextAsync(model, text, _activeBranchLeafMessageId);
+        if (estimate.Action == "compression_required")
+        {
+            if (_controller.State.CurrentConversationId is null || !await _dialogs.ConfirmCompressionAsync()) return;
+            if (!await _controller.EnsureConsentAsync(credential.BaseUrl, ConfirmConsentAsync)) return;
+            _pendingCompressionDraft = text;
+            _pendingCompressionConversationId = _controller.State.CurrentConversationId;
+            _pendingCompressionModelId = model.Id;
+            _pendingCompressionBranchLeafId = _activeBranchLeafMessageId;
+            await _controller.CompactAsync(credential, model, _pendingCompressionConversationId,
+                _activeBranchLeafMessageId);
+            _terminalCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            UpdateLifecycleControls();
+            _statusPresenter.ShowMessage("正在压缩较早对话，可点击停止取消。", ChatMessageSeverity.Warning);
+            return;
+        }
+        if (estimate.Action == "too_large")
+        {
+            _statusPresenter.ShowMessage("单条消息无法装入当前模型，请新建对话或选择更大窗口模型。", ChatMessageSeverity.Warning);
+            return;
+        }
         if (!await _controller.EnsureConsentAsync(credential.BaseUrl, ConfirmConsentAsync))
         {
             return;
         }
         _inputBox.Text = string.Empty;
         HideChatEmptyState();
-        _messagePanel.Children.Add(_messageView.Bubble("user", text, null));
+        _messagePanel.Items.Add(_messageView.Bubble("user", text, null));
         _controller.BeginGeneration();
+        _terminalCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var assistant = _messageView.Bubble("assistant", string.Empty, $"{_statusPresenter.ChannelName(credential.ChannelId)} · {model.ModelId}");
         _streamingText = assistant.Tag as TextBlock;
-        _messagePanel.Children.Add(assistant);
+        _messagePanel.Items.Add(assistant);
         ScrollToEnd();
-        SetGenerating(true);
+        UpdateLifecycleControls();
         try
         {
             var execution = await _controller.SendAsync(
@@ -458,7 +656,8 @@ public sealed partial class ChatWindow : Window
                 model,
                 _controller.State.CurrentConversationId,
                 text,
-                ConfirmConsentAsync);
+                ConfirmConsentAsync,
+                _activeBranchLeafMessageId);
             if (!execution.Executed)
             {
                 StopGenerationAfterLocalFailure();
@@ -506,20 +705,21 @@ public sealed partial class ChatWindow : Window
             switch (args.Method)
             {
                 case AiProtocolNotifications.ChatDelta:
-                    var delta = args.Parameters.Deserialize<AiChatDelta>();
-                    if (_controller.State.ActiveInvocationId is null && _sendButton.IsEnabled == false && delta is not null)
+                    var delta = args.DeserializeParameters<AiChatDelta>();
+                    if (_controller.State.ActiveInvocationId is null &&
+                        _controller.State.LifecycleState == AiChatLifecycleState.Generating)
                     {
                         _controller.AdoptInvocation(delta.InvocationId);
                     }
-                    if (delta is not null && delta.InvocationId == _controller.State.ActiveInvocationId && _streamingText is not null)
+                    if (delta.InvocationId == _controller.State.ActiveInvocationId && _streamingText is not null)
                     {
                         _streamingText.Text = _controller.AppendDelta(delta.Delta);
                         ScrollToEnd();
                     }
                     break;
                 case AiProtocolNotifications.ChatStarted:
-                    var started = args.Parameters.Deserialize<AiChatStarted>();
-                    if (started is not null && _sendButton.IsEnabled == false)
+                    var started = args.DeserializeParameters<AiChatStarted>();
+                    if (_controller.State.LifecycleState == AiChatLifecycleState.Generating)
                     {
                         _controller.AdoptInvocation(started);
                     }
@@ -527,15 +727,39 @@ public sealed partial class ChatWindow : Window
                 case AiProtocolNotifications.ChatCompleted:
                 case AiProtocolNotifications.ChatCancelled:
                 case AiProtocolNotifications.ChatFailed:
-                    var finished = args.Parameters.Deserialize<AiChatFinished>();
-                    if (finished is not null && _controller.FinishInvocation(finished.InvocationId))
+                    var finished = args.DeserializeParameters<AiChatFinished>();
+                    if (_controller.FinishInvocation(finished.InvocationId))
                     {
-                        SetGenerating(false);
+                        _terminalCompletion?.TrySetResult(true);
+                        UpdateLifecycleControls();
                         if (args.Method == AiProtocolNotifications.ChatFailed)
                         {
                             _statusPresenter.ShowMessage(_statusPresenter.ErrorText(finished.ErrorCode), ChatMessageSeverity.Error);
                         }
                         QueueNotificationRefresh();
+                    }
+                    break;
+                case AiProtocolNotifications.ContextCompactStarted:
+                    var compactStarted = args.DeserializeParameters<AiCompactStarted>();
+                    _controller.AdoptInvocation(compactStarted.InvocationId);
+                    break;
+                case AiProtocolNotifications.ContextCompactCompleted:
+                    var compactCompleted = args.DeserializeParameters<AiCompactCompleted>();
+                    if (_controller.State.ActiveInvocationId == compactCompleted.InvocationId)
+                    {
+                        _terminalCompletion?.TrySetResult(true);
+                        _controller.CompleteInvocation();
+                        UpdateLifecycleControls();
+                        DispatcherQueue.TryEnqueue(async () => await ContinueAfterCompressionAsync());
+                    }
+                    break;
+                case AiProtocolNotifications.ContextCompactFailed:
+                    var compactFailed = args.DeserializeParameters<AiCompactFailed>();
+                    if (_controller.State.ActiveInvocationId == compactFailed.InvocationId)
+                    {
+                        _terminalCompletion?.TrySetResult(true);
+                        _controller.CompleteInvocation(); UpdateLifecycleControls();
+                        _statusPresenter.ShowMessage(_statusPresenter.ErrorText(compactFailed.ErrorCode), ChatMessageSeverity.Error);
                     }
                     break;
             }
@@ -547,10 +771,55 @@ public sealed partial class ChatWindow : Window
         }
     }
 
+    private async Task ContinueAfterCompressionAsync()
+    {
+        var draft = _pendingCompressionDraft;
+        var unchanged = draft is not null && _inputBox.Text.Trim() == draft &&
+            _controller.State.CurrentConversationId == _pendingCompressionConversationId &&
+            (_modelBox.SelectedItem as AiModelProfile)?.Id == _pendingCompressionModelId &&
+            _activeBranchLeafMessageId == _pendingCompressionBranchLeafId;
+        _pendingCompressionDraft = _pendingCompressionConversationId = _pendingCompressionModelId =
+            _pendingCompressionBranchLeafId = null;
+        if (unchanged) await SendAsync();
+        else _statusPresenter.ShowMessage("压缩已完成；由于会话、模型或草稿已变化，未自动发送。", ChatMessageSeverity.Warning);
+    }
+
+    private async Task<bool> StopGenerationBeforeNavigationAsync()
+    {
+        var invocationId = _controller.State.ActiveInvocationId;
+        if (invocationId is null) return true;
+        if (!await _dialogs.ConfirmStopGenerationAsync()) return false;
+        try
+        {
+            await _controller.CancelAsync(invocationId);
+            if (_terminalCompletion is not null)
+            {
+                await _terminalCompletion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ShowError(exception);
+            return false;
+        }
+    }
+
     private async Task RefreshConversationsAsync()
     {
         await _controller.RefreshConversationsAsync();
         FilterConversations();
+    }
+
+    private async Task SelectBranchAsync(string leafMessageId)
+    {
+        if (_controller.State.CurrentConversationId is not { } conversationId) return;
+        try
+        {
+            await _controller.SelectBranchAsync(conversationId, leafMessageId);
+            await RefreshAndRenderCurrentConversationAsync();
+        }
+        catch (Exception exception) { ShowError(exception); }
     }
 
     private async Task RefreshAndRenderCurrentConversationAsync()
@@ -558,8 +827,42 @@ public sealed partial class ChatWindow : Window
         await RefreshConversationsAsync();
         if (_controller.State.CurrentConversationId is not null)
         {
-            var conversation = await _controller.GetConversationAsync(_controller.State.CurrentConversationId);
-            RenderMessages(conversation.Messages);
+            var page = await _controller.ListMessagesAsync(_controller.State.CurrentConversationId);
+            ApplyMessagePage(page, true);
+        }
+    }
+
+    private void ApplyMessagePage(AiMessagePage page, bool reset)
+    {
+        if (reset)
+        {
+            _loadedMessages.Clear();
+            _loadedMessages.AddRange(page.Items);
+        }
+        else
+        {
+            var known = _loadedMessages.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            _loadedMessages.InsertRange(0, page.Items.Where(item => known.Add(item.Id)));
+        }
+        _nextMessageCursor = page.NextCursor;
+        _hasMoreMessages = page.HasMore;
+        RenderMessages(_loadedMessages, page.Summary, page.ActiveLeafMessageId);
+    }
+
+    private async Task LoadMoreMessagesAsync(Button button)
+    {
+        if (_controller.State.CurrentConversationId is not { } conversationId ||
+            !_hasMoreMessages || _nextMessageCursor is null) return;
+        button.IsEnabled = false;
+        try
+        {
+            var page = await _controller.ListMessagesAsync(conversationId, _nextMessageCursor);
+            ApplyMessagePage(page, false);
+        }
+        catch (Exception exception)
+        {
+            button.IsEnabled = true;
+            ShowError(exception);
         }
     }
 
@@ -620,15 +923,22 @@ public sealed partial class ChatWindow : Window
         }
     }
 
-    private void SetGenerating(bool generating)
+    private void UpdateLifecycleControls()
     {
-        _sendButton.IsEnabled = !generating;
-        _regenerateButton.IsEnabled = !generating;
-        _stopButton.IsEnabled = generating;
-        _regenerateButton.Visibility = generating || _controller.State.CurrentConversationId is not null
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        if (!generating)
+        var state = _controller.State.LifecycleState;
+        var busy = state != AiChatLifecycleState.Idle;
+        var stoppable = state is AiChatLifecycleState.Compacting or AiChatLifecycleState.Generating;
+        var showsStop = stoppable || state == AiChatLifecycleState.Cancelling;
+        _primaryActionButton.IsEnabled = stoppable || state == AiChatLifecycleState.Idle;
+        _primaryActionIcon.Glyph = showsStop ? "\uE71A" : "\uE724";
+        var actionName = L(showsStop ? "AI_Stop" : "AI_Send");
+        AutomationProperties.SetName(_primaryActionButton, actionName);
+        ToolTipService.SetToolTip(_primaryActionButton, actionName);
+        foreach (var button in _regenerateMessageButtons)
+        {
+            button.IsEnabled = !busy;
+        }
+        if (!busy)
         {
             _streamingText = null;
         }
@@ -640,13 +950,16 @@ public sealed partial class ChatWindow : Window
         {
             _controller.CompleteInvocation();
         }
-        SetGenerating(false);
+        UpdateLifecycleControls();
     }
 
     private void ScrollToEnd()
     {
-        _messageScroll.UpdateLayout();
-        _messageScroll.ChangeView(null, _messageScroll.ScrollableHeight, null, true);
+        if (_messagePanel.Items.Count > 0)
+        {
+            _messagePanel.UpdateLayout();
+            _messagePanel.ScrollIntoView(_messagePanel.Items[^1], ScrollIntoViewAlignment.Leading);
+        }
     }
 
     private void ShowError(Exception exception) => _statusPresenter.ShowError(exception);
@@ -662,8 +975,7 @@ public sealed partial class ChatWindow : Window
         FilterConversations();
         _conversationList.SelectedItem = _visualFixtureData.Conversations[0];
         RenderMessages(_visualFixtureData.Messages);
-        _regenerateButton.Visibility = Visibility.Collapsed;
-        _stopButton.IsEnabled = true;
+        UpdateLifecycleControls();
 #else
         throw new InvalidOperationException("The visual fixture is available only in Debug builds.");
 #endif

@@ -9,20 +9,26 @@ namespace Fowan.Todo.Sticky.Windows.Presentation;
 internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
 {
     private const double BaseWindowWidth = 358;
-    private const double BaseWindowHeight = 168;
+    private const double BaseWindowHeight = 290;
 
     private readonly StickyWindow _owner;
     private readonly ScaleTransform _windowScale = new(1, 1);
     private readonly Border _panel = new();
     private readonly TextBlock _opacityValue = new();
     private readonly TextBlock _scaleValue = new();
+    private readonly TextBlock _titleFontSizeValue = new();
     private readonly Slider _opacitySlider = new();
     private readonly Slider _scaleSlider = new();
+    private readonly Slider _titleFontSizeSlider = new();
     private readonly Button _resetOpacityButton = new();
     private readonly Button _resetScaleButton = new();
+    private readonly Button _resetTitleFontSizeButton = new();
     private readonly Button _systemThemeButton = new();
     private readonly Button _lightThemeButton = new();
     private readonly Button _darkThemeButton = new();
+    private readonly Button _hideTitleButton = new();
+    private readonly Button _compactAddButton = new();
+    private readonly Button _autoHideMenuButton = new();
     private bool _isSynchronizing;
 
     public StickyAdjustmentWindow(StickyWindow owner)
@@ -61,6 +67,10 @@ internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
         _panel.Padding = new Thickness(12);
 
         var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -139,9 +149,52 @@ internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
         Grid.SetColumn(_resetScaleButton, 3);
         grid.Children.Add(_resetScaleButton);
 
+        var titleFontSizeLabel = _owner.SmallLabel("标题字号");
+        titleFontSizeLabel.Margin = new Thickness(0, 10, 0, 0);
+        Grid.SetRow(titleFontSizeLabel, 2);
+        grid.Children.Add(titleFontSizeLabel);
+        _titleFontSizeSlider.Minimum = TodoSettings.MinStickyTitleFontSize;
+        _titleFontSizeSlider.Maximum = TodoSettings.MaxStickyTitleFontSize;
+        _titleFontSizeSlider.TickFrequency = 1;
+        _titleFontSizeSlider.IsSnapToTickEnabled = true;
+        _titleFontSizeSlider.Value = _owner.Settings.StickyTitleFontSize;
+        _titleFontSizeSlider.Margin = new Thickness(0, 10, 0, 0);
+        ApplySliderTheme(_titleFontSizeSlider);
+        _titleFontSizeSlider.ValueChanged += (_, _) =>
+        {
+            if (!_isSynchronizing)
+            {
+                _owner.SetStickyTitleFontSize(_titleFontSizeSlider.Value);
+            }
+
+            _titleFontSizeValue.Text = $"{Math.Round(_owner.Settings.StickyTitleFontSize):0}px";
+        };
+        Grid.SetRow(_titleFontSizeSlider, 2);
+        Grid.SetColumn(_titleFontSizeSlider, 1);
+        grid.Children.Add(_titleFontSizeSlider);
+        _titleFontSizeValue.Text = $"{Math.Round(_owner.Settings.StickyTitleFontSize):0}px";
+        _titleFontSizeValue.Foreground = _owner.SecondaryTextBrush();
+        _titleFontSizeValue.FontSize = 12;
+        _titleFontSizeValue.Margin = new Thickness(0, 10, 0, 0);
+        _titleFontSizeValue.VerticalAlignment = VerticalAlignment.Center;
+        _titleFontSizeValue.TextAlignment = TextAlignment.Right;
+        Grid.SetRow(_titleFontSizeValue, 2);
+        Grid.SetColumn(_titleFontSizeValue, 2);
+        grid.Children.Add(_titleFontSizeValue);
+
+        ConfigureResetButton(_resetTitleFontSizeButton, topMargin: 10);
+        _resetTitleFontSizeButton.Click += (_, _) =>
+        {
+            _titleFontSizeSlider.Value = TodoSettings.DefaultStickyTitleFontSize;
+            _owner.SetStickyTitleFontSize(TodoSettings.DefaultStickyTitleFontSize);
+        };
+        Grid.SetRow(_resetTitleFontSizeButton, 2);
+        Grid.SetColumn(_resetTitleFontSizeButton, 3);
+        grid.Children.Add(_resetTitleFontSizeButton);
+
         var themeLabel = _owner.SmallLabel("主题");
         themeLabel.Margin = new Thickness(0, 12, 0, 0);
-        Grid.SetRow(themeLabel, 2);
+        Grid.SetRow(themeLabel, 3);
         grid.Children.Add(themeLabel);
 
         var themeButtons = new UniformGrid
@@ -158,10 +211,17 @@ internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
         themeButtons.Children.Add(_systemThemeButton);
         themeButtons.Children.Add(_lightThemeButton);
         themeButtons.Children.Add(_darkThemeButton);
-        Grid.SetRow(themeButtons, 2);
+        Grid.SetRow(themeButtons, 3);
         Grid.SetColumn(themeButtons, 1);
         Grid.SetColumnSpan(themeButtons, 3);
         grid.Children.Add(themeButtons);
+
+        AddPreferenceRow(grid, "隐藏今日任务标题", _hideTitleButton, 4, 12);
+        _hideTitleButton.Click += (_, _) => _owner.SetStickyTitleHidden(!_owner.Settings.IsStickyTitleHidden);
+        AddPreferenceRow(grid, "最小化添加任务", _compactAddButton, 5, 6);
+        _compactAddButton.Click += (_, _) => _owner.SetStickyAddTaskMinimized(!_owner.Settings.IsStickyAddTaskMinimized);
+        AddPreferenceRow(grid, "自动隐藏菜单栏", _autoHideMenuButton, 6, 6);
+        _autoHideMenuButton.Click += (_, _) => _owner.SetStickyMenuAutoHideEnabled(!_owner.Settings.IsStickyMenuAutoHideEnabled);
 
         _panel.Child = grid;
         scaleHost.Children.Add(_panel);
@@ -183,17 +243,25 @@ internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
             _panel.BorderBrush = _owner.Brush(0xDCE7EA, Math.Clamp(_owner.Settings.StickyOpacity + 0.14, 0.0, 1.0));
             _opacitySlider.Value = _owner.Settings.StickyOpacity * 100;
             _scaleSlider.Value = _owner.Settings.StickyScale * 100;
+            _titleFontSizeSlider.Value = _owner.Settings.StickyTitleFontSize;
             _opacityValue.Text = $"{Math.Round(_owner.Settings.StickyOpacity * 100):0}%";
             _scaleValue.Text = $"{Math.Round(_owner.Settings.StickyScale * 100):0}%";
+            _titleFontSizeValue.Text = $"{Math.Round(_owner.Settings.StickyTitleFontSize):0}px";
             _opacityValue.Foreground = _owner.SecondaryTextBrush();
             _scaleValue.Foreground = _owner.SecondaryTextBrush();
+            _titleFontSizeValue.Foreground = _owner.SecondaryTextBrush();
             ApplySliderTheme(_opacitySlider);
             ApplySliderTheme(_scaleSlider);
+            ApplySliderTheme(_titleFontSizeSlider);
             ConfigureResetButton(_resetOpacityButton, topMargin: 0);
             ConfigureResetButton(_resetScaleButton, topMargin: 10);
+            ConfigureResetButton(_resetTitleFontSizeButton, topMargin: 10);
             ConfigureThemeButton(_systemThemeButton, "系统", TodoThemeIds.System);
             ConfigureThemeButton(_lightThemeButton, "浅色", TodoThemeIds.Light);
             ConfigureThemeButton(_darkThemeButton, "深色", TodoThemeIds.Dark);
+            ConfigurePreferenceButton(_hideTitleButton, "隐藏今日任务标题", _owner.Settings.IsStickyTitleHidden);
+            ConfigurePreferenceButton(_compactAddButton, "最小化添加任务", _owner.Settings.IsStickyAddTaskMinimized);
+            ConfigurePreferenceButton(_autoHideMenuButton, "自动隐藏菜单栏", _owner.Settings.IsStickyMenuAutoHideEnabled);
         }
         finally
         {
@@ -248,5 +316,38 @@ internal sealed class StickyAdjustmentWindow : Window, IStickyChildWindow
         button.Background = Brushes.Transparent;
         button.VerticalAlignment = VerticalAlignment.Center;
         button.Template = _owner.ButtonTemplate(new CornerRadius(7), Brushes.Transparent, _owner.Brush(0xEEF9FA));
+    }
+
+    private void AddPreferenceRow(Grid grid, string label, Button button, int row, double topMargin)
+    {
+        var labelText = _owner.SmallLabel(label);
+        labelText.Margin = new Thickness(0, topMargin, 0, 0);
+        Grid.SetRow(labelText, row);
+        Grid.SetColumnSpan(labelText, 3);
+        grid.Children.Add(labelText);
+
+        button.Margin = new Thickness(4, topMargin, 0, 0);
+        Grid.SetRow(button, row);
+        Grid.SetColumn(button, 3);
+        grid.Children.Add(button);
+    }
+
+    private void ConfigurePreferenceButton(Button button, string label, bool enabled)
+    {
+        button.Width = 38;
+        button.Height = 24;
+        button.Padding = new Thickness(0);
+        button.BorderThickness = new Thickness(0);
+        button.FocusVisualStyle = null;
+        button.Content = enabled ? "开" : "关";
+        button.FontSize = 11;
+        button.FontWeight = FontWeights.SemiBold;
+        button.Foreground = enabled ? Brushes.White : _owner.SecondaryTextBrush();
+        button.Background = enabled ? _owner.AccentBrush() : _owner.Brush(0xE7EEF0);
+        button.Template = _owner.ButtonTemplate(
+            new CornerRadius(12),
+            enabled ? _owner.AccentBrush() : _owner.Brush(0xE7EEF0),
+            enabled ? _owner.AccentDarkBrush() : _owner.Brush(0xDCE7EA));
+        System.Windows.Automation.AutomationProperties.SetName(button, $"{label}: {(enabled ? "已开启" : "已关闭")}");
     }
 }

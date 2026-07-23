@@ -9,9 +9,14 @@ internal sealed class TodoFilterController(TodoDialogService dialogs, TodoThemeP
     public TodoDateRangeFilter? DateRange { get; private set; }
     public string? ListId { get; private set; }
     public int MaximumDepth { get; private set; } = TodoQuery.MaxTaskTreeDepth;
+    public TodoCompletionFilter CompletionFilter { get; private set; } = TodoCompletionFilter.All;
+    public bool FilterParentTasks { get; private set; }
 
     public bool IsActive => DateRange is { IsValid: true } ||
-        !string.IsNullOrWhiteSpace(ListId) || MaximumDepth < TodoQuery.MaxTaskTreeDepth;
+        !string.IsNullOrWhiteSpace(ListId) ||
+        MaximumDepth < TodoQuery.MaxTaskTreeDepth ||
+        CompletionFilter != TodoCompletionFilter.All ||
+        FilterParentTasks;
 
     public async Task ShowAsync(
         IEnumerable<TodoList> lists,
@@ -22,17 +27,30 @@ internal sealed class TodoFilterController(TodoDialogService dialogs, TodoThemeP
         Action saveSettings,
         Action refresh)
     {
-        var selection = await dialogs.ShowFilterAsync(lists, ListId, MaximumDepth, DateRange);
+        var selection = await dialogs.ShowFilterAsync(
+            lists,
+            ListId,
+            MaximumDepth,
+            DateRange,
+            CompletionFilter,
+            FilterParentTasks);
         if (selection is null) return;
-        MaximumDepth = selection.MaximumDepth;
-        DateRange = selection.DateRange;
-        ListId = selection.ListId;
         if (selection.Clear)
         {
+            Clear();
             refresh();
             return;
         }
-        if (DateRange is not null || ListId is not null) setView(TodoViewIds.All);
+
+        MaximumDepth = selection.MaximumDepth;
+        DateRange = selection.DateRange;
+        ListId = selection.ListId;
+        CompletionFilter = selection.CompletionFilter;
+        FilterParentTasks = selection.FilterParentTasks;
+        if (IsActive)
+        {
+            setView(TodoViewIds.All);
+        }
         selectTask(firstTask(currentView())?.Id);
         saveSettings();
         refresh();
@@ -42,6 +60,9 @@ internal sealed class TodoFilterController(TodoDialogService dialogs, TodoThemeP
     {
         DateRange = null;
         ListId = null;
+        MaximumDepth = TodoQuery.MaxTaskTreeDepth;
+        CompletionFilter = TodoCompletionFilter.All;
+        FilterParentTasks = false;
     }
 
     public void StyleButton(Button button)

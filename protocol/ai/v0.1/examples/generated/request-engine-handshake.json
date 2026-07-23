@@ -4,9 +4,13 @@
   "method": "engine.handshake",
   "params": {
     "protocolVersion": "0.1",
+    "contractRevision": 1,
     "requiredCapabilities": [
       "ai.config.v1",
-      "ai.chat.v1"
+      "ai.chat.v1",
+      "ai.chat.context.v1",
+      "ai.chat.branching.v1",
+      "ai.report.v1"
     ]
   }
 }

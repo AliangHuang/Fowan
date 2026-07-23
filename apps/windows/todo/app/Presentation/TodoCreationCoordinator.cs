@@ -49,7 +49,10 @@ internal sealed class TodoCreationCoordinator(
 
     public async Task ShowAddListAsync()
     {
-        var name = await dialogs.ShowListNameAsync("新建清单", "创建");
+        var name = await dialogs.ShowListNameAsync(
+            "新建清单",
+            "创建",
+            isNameTaken: candidate => TodoQuery.HasListName(snapshot().ToQueryData(), candidate));
         if (name is null) return;
         var list = commands.AddList(name);
         setView(TodoViewIds.List(list.Id));
@@ -59,7 +62,11 @@ internal sealed class TodoCreationCoordinator(
 
     public async Task ShowRenameListAsync(TodoList list)
     {
-        var name = await dialogs.ShowListNameAsync("重命名清单", "保存", list.Name);
+        var name = await dialogs.ShowListNameAsync(
+            "重命名清单",
+            "保存",
+            list.Name,
+            candidate => TodoQuery.HasListName(snapshot().ToQueryData(), candidate, list.Id));
         if (name is not null && commands.RenameList(list.Id, name)) refreshAfterMutation();
     }
 
@@ -82,7 +89,7 @@ internal sealed class TodoCreationCoordinator(
 
     private void Add(TodoTaskDraft draft) => Add(
         draft.Title, draft.ListId, draft.IsImportant, draft.StartDate,
-        draft.DueDate, draft.ParentTaskId, draft.Notes);
+        draft.DueDate, draft.ParentTaskId, draft.Notes, draft.Recurrence);
 
     private void Add(
         string title,
@@ -91,9 +98,10 @@ internal sealed class TodoCreationCoordinator(
         DateTime startDate,
         DateTime? dueDate,
         string? parentTaskId = null,
-        string? notes = null)
+        string? notes = null,
+        TodoRecurrenceRule? recurrence = null)
     {
-        var task = commands.AddTask(title, listId, important, startDate, dueDate, parentTaskId, notes);
+        var task = commands.AddTask(title, listId, important, startDate, dueDate, parentTaskId, notes, recurrence);
         selectTask(task.Id);
         if (currentView() == TodoViewIds.Completed) setView(TodoViewIds.All);
         refreshAfterMutation();

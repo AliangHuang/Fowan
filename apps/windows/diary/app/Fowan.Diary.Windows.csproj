@@ -7,7 +7,7 @@
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Diary.Windows.Dev</AssemblyName>
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Diary.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>..\..\..\..\assets\brand\windows\fowan.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\toolbox\Assets\fowan.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSdkBootstrapInitialize>
@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\..\..\assets\brand\windows\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\toolbox\Assets\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\..\assets\brand\windows\fowan-app-icon-256.png" Link="Assets\fowan-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -9,19 +9,38 @@ internal sealed class StickyTaskCommandCoordinator(
     Action refresh,
     Action<string, string, string, Action> confirm)
 {
-    public bool Add(string title, TodoTask? parent = null, string? notes = null)
+    public bool Add(string title, TodoTask? parent = null, string? notes = null) =>
+        Add(
+            title,
+            TodoQuery.DefaultListId(workspace.Data),
+            isImportant: false,
+            DateTime.Today,
+            dueDate: null,
+            parent,
+            notes);
+
+    public bool Add(
+        string title,
+        string listId,
+        bool isImportant,
+        DateTime startDate,
+        DateTime? dueDate,
+        TodoTask? parent = null,
+        string? notes = null,
+        TodoRecurrenceRule? recurrence = null)
     {
         var normalized = title.Trim();
         if (normalized.Length == 0 || (parent is not null && !TodoQuery.CanAddChild(workspace.Data, parent)))
             return false;
         workspace.AddTask(
             normalized,
-            parent?.ListId ?? TodoQuery.DefaultListId(workspace.Data),
-            parent?.IsImportant ?? false,
-            parent?.StartDate.Date ?? DateTime.Today,
-            parent?.DueDate,
+            parent?.ListId ?? listId,
+            parent?.IsImportant ?? isImportant,
+            parent?.StartDate.Date ?? startDate,
+            parent?.DueDate ?? dueDate,
             parent?.Id,
-            notes);
+            notes,
+            recurrence);
         refresh();
         return true;
     }

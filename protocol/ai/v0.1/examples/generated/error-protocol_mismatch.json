@@ -6,7 +6,8 @@
     "message": "Stable protocol error",
     "data": {
       "missingCapabilities": [
-        "ai.chat.v1"
+        "ai.chat.context.v1",
+        "ai.chat.branching.v1"
       ]
     }
   }

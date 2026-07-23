@@ -39,6 +39,11 @@
         "displayName",
         "source",
         "enabled",
+        "thinkingEnabled",
+        "thinkingEffortOptions",
+        "contextWindowTokens",
+        "maxOutputTokens",
+        "limitsConfigured",
         "lastTestStatus",
         "lastTestAt",
         "createdAt",
@@ -62,6 +67,36 @@
           "type": "string"
         },
         "enabled": {
+          "type": "boolean"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingEffortOptions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "high",
+              "max"
+            ]
+          }
+        },
+        "contextWindowTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 2048
+        },
+        "maxOutputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "limitsConfigured": {
           "type": "boolean"
         },
         "lastTestStatus": {

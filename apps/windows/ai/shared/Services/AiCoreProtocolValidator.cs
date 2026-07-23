@@ -10,13 +10,17 @@ internal static class AiCoreProtocolValidator
         IEnumerable<string> requiredCapabilities)
     {
         if (handshake.ValueKind != JsonValueKind.Object ||
-            handshake.EnumerateObject().Count() != 3 ||
+            handshake.EnumerateObject().Count() != 4 ||
             !handshake.TryGetProperty("engineVersion", out var engineVersion) ||
             engineVersion.ValueKind != JsonValueKind.String ||
             string.IsNullOrWhiteSpace(engineVersion.GetString()) ||
             !handshake.TryGetProperty("protocolVersion", out var protocolVersion) ||
             protocolVersion.ValueKind != JsonValueKind.String ||
             protocolVersion.GetString() != AiProtocolContract.Version ||
+            !handshake.TryGetProperty("contractRevision", out var contractRevision) ||
+            contractRevision.ValueKind != JsonValueKind.Number ||
+            !contractRevision.TryGetInt32(out var revision) ||
+            revision != AiProtocolContract.ContractRevision ||
             !handshake.TryGetProperty("capabilities", out var capabilityList) ||
             capabilityList.ValueKind != JsonValueKind.Array)
         {

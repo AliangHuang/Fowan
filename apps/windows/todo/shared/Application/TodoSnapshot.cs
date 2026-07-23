@@ -20,6 +20,8 @@ public sealed record TodoTaskSnapshot(
     bool IsImportant,
     DateTime StartDate,
     DateTime? DueDate,
+    TodoRecurrenceRule? Recurrence,
+    string? RecurrenceSourceTaskId,
     bool IsCompleted,
     DateTimeOffset? CompletedAt,
     DateTimeOffset? DeletedAt,
@@ -35,6 +37,10 @@ public sealed record TodoSettingsSnapshot(
     bool IsStickyModeEnabled,
     bool IsStickyTopmost,
     bool IsStickyCompletedExpanded,
+    bool IsStickyTitleHidden,
+    bool IsStickyAddTaskMinimized,
+    bool IsStickyMenuAutoHideEnabled,
+    double StickyTitleFontSize,
     double StickyOpacity,
     double StickyScale,
     double? StickyLeft,
@@ -60,13 +66,18 @@ public sealed record TodoSnapshot(
         data.Lists.Select(item => new TodoListSnapshot(item.Id, item.Name, item.ColorId, item.CreatedAt)).ToImmutableArray(),
         data.Tasks.Select(item => new TodoTaskSnapshot(
             item.Id, item.Title, item.Notes, item.ListId, item.ParentTaskId, item.SortOrder,
-            item.IsImportant, item.StartDate, item.DueDate, item.IsCompleted, item.CompletedAt,
+            item.IsImportant, item.StartDate, item.DueDate,
+            TodoRecurrenceRules.Clone(item.Recurrence), item.RecurrenceSourceTaskId,
+            item.IsCompleted, item.CompletedAt,
             item.DeletedAt, item.CreatedAt, item.UpdatedAt)).ToImmutableArray(),
         new TodoSettingsSnapshot(
             settings.Theme, settings.CurrentViewId, settings.SelectedTaskId,
             settings.CollapsedTaskIds.ToImmutableHashSet(StringComparer.Ordinal),
             settings.IsCompletedExpanded, settings.IsStickyModeEnabled, settings.IsStickyTopmost,
-            settings.IsStickyCompletedExpanded, settings.StickyOpacity, settings.StickyScale,
+            settings.IsStickyCompletedExpanded, settings.IsStickyTitleHidden,
+            settings.IsStickyAddTaskMinimized, settings.IsStickyMenuAutoHideEnabled,
+            settings.StickyTitleFontSize,
+            settings.StickyOpacity, settings.StickyScale,
             settings.StickyLeft, settings.StickyTop, settings.StickyWidth, settings.StickyHeight,
             settings.IsStickyFloatingModeEnabled, settings.StickyFloatingEdge,
             settings.StickyFloatingTop, settings.HasCompletedMainOnboarding,
@@ -94,6 +105,8 @@ public sealed record TodoSnapshot(
             IsImportant = item.IsImportant,
             StartDate = item.StartDate,
             DueDate = item.DueDate,
+            Recurrence = TodoRecurrenceRules.Clone(item.Recurrence),
+            RecurrenceSourceTaskId = item.RecurrenceSourceTaskId,
             IsCompleted = item.IsCompleted,
             CompletedAt = item.CompletedAt,
             DeletedAt = item.DeletedAt,
@@ -112,6 +125,10 @@ public sealed record TodoSnapshot(
         IsStickyModeEnabled = Settings.IsStickyModeEnabled,
         IsStickyTopmost = Settings.IsStickyTopmost,
         IsStickyCompletedExpanded = Settings.IsStickyCompletedExpanded,
+        IsStickyTitleHidden = Settings.IsStickyTitleHidden,
+        IsStickyAddTaskMinimized = Settings.IsStickyAddTaskMinimized,
+        IsStickyMenuAutoHideEnabled = Settings.IsStickyMenuAutoHideEnabled,
+        StickyTitleFontSize = Settings.StickyTitleFontSize,
         StickyOpacity = Settings.StickyOpacity,
         StickyScale = Settings.StickyScale,
         StickyLeft = Settings.StickyLeft,
@@ -134,7 +151,7 @@ public interface ITodoCommands
     int SetTaskCompleted(string taskId, bool completed, bool includeDescendants);
     bool ToggleTaskImportant(string taskId);
     TodoTaskSnapshot AddTask(string title, string listId, bool isImportant, DateTime startDate,
-        DateTime? dueDate, string? parentTaskId = null, string? notes = null);
+        DateTime? dueDate, string? parentTaskId = null, string? notes = null, TodoRecurrenceRule? recurrence = null);
     TodoListSnapshot AddList(string name);
     bool RenameList(string listId, string name);
     bool DeleteList(string listId);

@@ -35,4 +35,16 @@ internal static class TodoStickyPlacement
     {
         return sourceTop + sourceHeight / 2 - targetHeight / 2;
     }
+
+    internal static (double Top, double Height) BodyGeometryFromExpanded(
+        double expandedTop,
+        double expandedHeight,
+        double menuHeight) =>
+        (expandedTop + menuHeight, expandedHeight - menuHeight);
+
+    internal static (double Top, double Height) ExpandedGeometryFromBody(
+        double bodyTop,
+        double bodyHeight,
+        double menuHeight) =>
+        (bodyTop - menuHeight, bodyHeight + menuHeight);
 }

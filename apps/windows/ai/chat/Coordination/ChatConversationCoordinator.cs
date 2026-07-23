@@ -35,6 +35,7 @@ internal sealed class ChatConversationCoordinator(
     {
         var selected = selectedConversation();
         if (selected is null) return;
+        if (!await dialogs.ConfirmDeleteConversationAsync()) return;
         try
         {
             await session.DeleteConversationAsync(selected.Id);

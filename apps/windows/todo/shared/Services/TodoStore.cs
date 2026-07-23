@@ -205,7 +205,7 @@ public sealed class TodoStore : ITodoRepository
 
     private static void NormalizeData(TodoData data)
     {
-        data.SchemaVersion = 5;
+        data.SchemaVersion = 1;
         data.Lists ??= [];
         data.Tasks ??= [];
 
@@ -266,6 +266,10 @@ public sealed class TodoStore : ITodoRepository
 
             task.StartDate = task.StartDate == default ? DateTime.Today : task.StartDate.Date;
             task.DueDate = task.DueDate?.Date;
+            task.Recurrence = TodoRecurrenceRules.Normalize(task.Recurrence);
+            task.RecurrenceSourceTaskId = task.Recurrence is null && !string.IsNullOrWhiteSpace(task.RecurrenceSourceTaskId)
+                ? task.RecurrenceSourceTaskId.Trim()
+                : null;
             if (task.IsCompleted && task.CompletedAt is null)
             {
                 task.CompletedAt = task.UpdatedAt;
@@ -413,6 +417,16 @@ public sealed class TodoStore : ITodoRepository
             settings.StickyScale,
             TodoSettings.MinStickyScale,
             TodoSettings.MaxStickyScale);
+
+        if (double.IsNaN(settings.StickyTitleFontSize) || double.IsInfinity(settings.StickyTitleFontSize))
+        {
+            settings.StickyTitleFontSize = TodoSettings.DefaultStickyTitleFontSize;
+        }
+
+        settings.StickyTitleFontSize = Math.Clamp(
+            Math.Round(settings.StickyTitleFontSize),
+            TodoSettings.MinStickyTitleFontSize,
+            TodoSettings.MaxStickyTitleFontSize);
 
         settings.StickyWidth = NormalizeFinite(settings.StickyWidth);
         settings.StickyHeight = NormalizeFinite(settings.StickyHeight);
