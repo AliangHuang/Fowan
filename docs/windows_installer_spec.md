@@ -2,7 +2,7 @@
 
 ## 目标
 
-Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。首版安装包采用离线全量 `.exe` 安装器，自带 .NET Runtime 和 Windows App SDK 依赖，用户不需要在新电脑上手动安装运行库。
+Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。自 0.2.1 起，安装包采用离线全量 `.exe` 安装器，并在整套工具间共享一份 .NET Desktop Runtime、Windows App Runtime 和 Visual C++ Runtime；用户不需要手动准备运行库。自 0.2.2 起仅发布安装包，不再提供免安装压缩包。
 
 首版不使用 MSIX，不做在线依赖下载，也不内置代码签名流程。正式外发前应对安装包进行 Authenticode 签名，降低 Windows SmartScreen 拦截概率。
 
@@ -14,8 +14,9 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - 安装向导必须显示安装目录选择页，允许用户自定义安装目录。
 - 安装向导必须显示隐私协议页，用户同意后才能继续安装。
 - 安装向导必须询问是否创建桌面快捷方式，默认勾选创建。
-- 安装器必须随包携带并静默安装 Microsoft Visual C++ Redistributable x64；如果目标机器已安装 x64 v14 运行库，可以跳过安装。
-- 自包含发布时 WinUI 项目不得启用 Windows App SDK bootstrapper；必须依赖随应用发布的 Undocked RegFree WinRT 初始化，避免干净机器因缺少系统级 Windows App Runtime 在进入应用代码前失败。
+- 安装器必须随包携带并在整套工具间共享 Microsoft Visual C++ Redistributable x64、.NET 8 Desktop Runtime x64 和 Windows App Runtime 2.2 x64。
+- .NET 8 Desktop Runtime 缺失时必须静默安装；Windows App Runtime 必须通过其官方安装器完成注册；VC++ x64 v14 已存在时可以跳过安装。
+- 框架依赖的 WinUI 项目必须保持 Windows App SDK bootstrapper 配置，使其加载安装器注册的 Windows App Runtime。
 - 第一版只生成 `win-x64` 安装包。
 
 ## 程序目录布局
@@ -158,25 +159,22 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.4
+.\scripts\package-windows.ps1 -Version 0.2.2 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
-输出安装包：
+成功发布后，版本目录只保留安装包、更新清单和 SHA-256 校验清单：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.4-win-x64.exe
-out\installer\windows\win-x64\fowan-update.json
+publish\windows\win-x64\0.2.2\FowanSetup-0.2.2-win-x64.exe
+publish\windows\win-x64\0.2.2\fowan-update.json
+publish\windows\win-x64\0.2.2\SHA256SUMS.txt
 ```
 
-如果当前机器没有安装 Inno Setup 编译器，脚本仍应生成安装 staging 目录，并提示安装 Inno Setup 后重新运行。
+如果当前机器没有安装 Inno Setup 编译器，正式发布整体失败；脚本清理隔离 staging，且不创建不完整的版本目录。
 
-打包脚本必须同时生成当前版本的更新日志 staging 输出：
+发布前脚本按版本号检查 `publish\windows\win-x64\`，最多保留最新四个版本。为新版本腾出位置时，最旧版本会先移入隔离 staging；只有新版本原子写入成功后才永久清理，失败会自动恢复旧版本。
 
-```text
-out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt
-out\installer\windows\win-x64\app\ReleaseNotes\toolbox.md
-out\installer\windows\win-x64\app\ReleaseNotes\todo.md
-```
+打包脚本在 `build/staging/` 中生成应用树和更新日志，并将更新日志放入安装包。发布目录不保留应用树、运行库或安装器 staging。
 
 GitHub Release 自动更新发布要求：
 
@@ -186,18 +184,12 @@ GitHub Release 自动更新发布要求：
 - 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
 - 客户端必须校验 `installerSha256` 后才能启动安装器。
 
-打包脚本会从 Microsoft 官方固定链接下载 Visual C++ Redistributable x64 到：
-
-```text
-out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe
-```
-
-下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation。安装器会把该运行库打入最终 setup exe。
+打包脚本会从 Microsoft 官方链接下载 .NET 8 Desktop Runtime x64、Windows App Runtime 2.2 x64 和 Visual C++ Redistributable x64 到隔离 staging。下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation；安装器会把这些运行库打入最终 setup exe。
 
 ## 验收场景
 
-- 干净 Windows 10 19041+ 或 Windows 11 机器上安装成功，无需手动安装 .NET Runtime 或 Windows App SDK。
-- 干净机器缺少 Visual C++ Redistributable 时，安装器自动静默安装该运行库。
+- 干净 Windows 10 19041+ 或 Windows 11 机器上安装成功，无需手动安装运行库。
+- 干净机器缺少 .NET 8 Desktop Runtime、Windows App Runtime 或 Visual C++ Redistributable 时，安装器自动安装这些共享运行库。
 - 安装时必须同意隐私协议。
 - 安装时可以自定义安装目录。
 - 安装时可以选择创建或不创建桌面快捷方式。

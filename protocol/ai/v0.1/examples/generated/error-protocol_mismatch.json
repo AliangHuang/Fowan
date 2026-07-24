@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": "protocol_mismatch",
+    "message": "Stable protocol error",
+    "data": {
+      "missingCapabilities": [
+        "ai.chat.context.v1",
+        "ai.chat.branching.v1"
+      ]
+    }
+  }
+}

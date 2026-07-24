@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>Fowan.Windows</RootNamespace>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Windows</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\fowan.ico</ApplicationIcon>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\assets\brand\windows\fowan-ai-chat-app-icon-256.png" Link="Assets\fowan-ai-chat-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\assets\brand\windows\fowan-ai-config-app-icon-256.png" Link="Assets\fowan-ai-config-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Resources\Strings\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

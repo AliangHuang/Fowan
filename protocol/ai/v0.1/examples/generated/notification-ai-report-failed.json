@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.report.failed",
+  "params": {
+    "invocationId": "report-invocation-1",
+    "errorCode": "provider_unavailable",
+    "requestId": "req-safe-1"
+  }
+}

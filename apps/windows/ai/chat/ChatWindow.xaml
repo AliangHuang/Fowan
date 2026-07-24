@@ -1,0 +1,155 @@
+<Window
+    x:Class="Fowan.Ai.Chat.Windows.ChatWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RootLayout" RequestedTheme="Light" Background="{StaticResource AiPageBrush}">
+        <Grid.Resources>
+        <Style x:Key="ComposerPrimaryActionButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource AiPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AiPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="Root">
+                            <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}" />
+                            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="1" CornerRadius="{TemplateBinding CornerRadius}" IsHitTestVisible="False" Opacity="0" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Surface" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource AiPrimaryHoverBrush}" />
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Surface" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource AiPrimaryHoverBrush}" />
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity" To="0.45" Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused" />
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TitleBarDragRegion" Grid.Row="0" Background="{StaticResource AiCardBrush}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="343" /><ColumnDefinition Width="*" /><ColumnDefinition Width="142" /></Grid.ColumnDefinitions>
+            <StackPanel Margin="20,0,0,0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Image Width="34" Height="34" Source="Assets/fowan-ai-chat-app-icon-256.png" />
+                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Fowan AI 对话" VerticalAlignment="Center" />
+                <Border Padding="10,5" Background="#FFF1F4F8" CornerRadius="7"><TextBlock FontSize="14" Foreground="{StaticResource AiPrimaryBrush}" Text="对话" /></Border>
+            </StackPanel>
+            <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="0,0,0,1" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="343" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{StaticResource AiSidebarBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="0,0,1,0">
+                <Grid Padding="26,18,18,18">
+                    <Grid.RowDefinitions><RowDefinition Height="46" /><RowDefinition Height="16" /><RowDefinition Height="42" /><RowDefinition Height="16" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Button x:Name="NewChatButton" Grid.Row="0" Style="{StaticResource AiPrimaryButtonStyle}" HorizontalAlignment="Stretch" Height="46" HorizontalContentAlignment="Stretch">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1" /><ColumnDefinition Width="34" /></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE710;" FontSize="18" /><TextBlock Foreground="White" FontSize="16" Text="新建对话" /></StackPanel><Border Grid.Column="1" Background="#55FFFFFF" /><FontIcon Grid.Column="2" FontFamily="Segoe Fluent Icons" Glyph="&#xE70D;" FontSize="13" HorizontalAlignment="Right" /></Grid>
+                    </Button>
+                    <TextBox x:Name="ConversationSearchBox" Grid.Row="2" Style="{StaticResource AiTextBoxStyle}" PlaceholderText="搜索对话" />
+                    <ListView x:Name="ConversationListView" Grid.Row="4" Style="{StaticResource AiListViewStyle}" SelectionMode="Single">
+                        <ListView.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Margin="0,10,0,8" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AiSecondaryTextBrush}" Text="{Binding Label}" /></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListView.GroupStyle>
+                        <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,0,4" /><Setter Property="MinHeight" Value="58" /></Style></ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate><DataTemplate><Border Padding="10,8" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="9"><Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Border Width="32" Height="32" Background="{StaticResource AiSelectionBrush}" CornerRadius="16" VerticalAlignment="Top"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="15" /></Border><StackPanel Grid.Column="1" Spacing="3"><Grid><TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" /><TextBlock HorizontalAlignment="Right" FontSize="12" Foreground="{StaticResource AiMutedTextBrush}" Text="{Binding DisplayUpdatedAt}" MaxWidth="46" /></Grid><TextBlock FontSize="13" Foreground="{StaticResource AiSecondaryTextBrush}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" /></StackPanel></Grid><Border.ContextFlyout><MenuFlyout><MenuFlyoutItem Text="重命名" Click="RenameConversationMenuItem_Click" /><MenuFlyoutItem Text="删除" Click="DeleteConversationMenuItem_Click" /></MenuFlyout></Border.ContextFlyout></Border></DataTemplate></ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="1" Background="{StaticResource AiPageBrush}">
+                <Grid.RowDefinitions><RowDefinition Height="86" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid Grid.Row="0" Padding="28,16,28,14" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="CredentialLabelColumn" Width="42" />
+                        <ColumnDefinition x:Name="CredentialColumn" Width="*" />
+                        <ColumnDefinition x:Name="LinkColumn" Width="28" />
+                        <ColumnDefinition x:Name="ModelLabelColumn" Width="42" />
+                        <ColumnDefinition x:Name="ModelColumn" Width="*" />
+                        <ColumnDefinition x:Name="ToolbarSpacerColumn" Width="0" />
+                        <ColumnDefinition x:Name="OpenConfigColumn" Width="48" />
+                        <ColumnDefinition x:Name="PrivacyColumn" Width="0" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="CredentialLabel" Text="密钥" VerticalAlignment="Center" />
+                    <ComboBox x:Name="CredentialComboBox" Grid.Column="1" Style="{StaticResource AiComboBoxStyle}" MinWidth="0" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayLabel" />
+                    <FontIcon x:Name="CredentialLinkIcon" Grid.Column="2" FontFamily="Segoe Fluent Icons" Glyph="&#xE71B;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ModelLabel" Grid.Column="3" Text="模型" VerticalAlignment="Center" />
+                    <ComboBox x:Name="ModelComboBox" Grid.Column="4" Style="{StaticResource AiComboBoxStyle}" MinWidth="0" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayLabel" />
+                    <Button x:Name="OpenConfigButton" Grid.Column="6" Style="{StaticResource AiOutlineButtonStyle}" Padding="12,0" HorizontalContentAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                            <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE713;" FontSize="18" />
+                            <TextBlock x:Name="OpenConfigText" Foreground="{StaticResource AiPrimaryBrush}" Text="打开 AI 配置中心" />
+                            <FontIcon x:Name="OpenConfigExternalIcon" FontFamily="Segoe Fluent Icons" Glyph="&#xE8A7;" FontSize="14" />
+                        </StackPanel>
+                    </Button>
+                    <StackPanel x:Name="PrivacyNotice" Grid.Column="7" Visibility="Collapsed" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEA18;" Foreground="{StaticResource AiSecondaryTextBrush}" FontSize="17" />
+                        <TextBlock Style="{StaticResource AiBodyTextStyle}" Text="历史仅保存在本机" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="92,0,92,0"><ListView x:Name="MessageStackPanel" SelectionMode="None" IsItemClickEnabled="False" Padding="0,4,0,12" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0,0,0,14" /></Style></ListView.ItemContainerStyle></ListView><StackPanel x:Name="ChatEmptyState" Visibility="Collapsed" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12"><Border Width="62" Height="62" CornerRadius="31" Background="{StaticResource AiSelectionBrush}"><FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8BD;" Foreground="{StaticResource AiPrimaryBrush}" FontSize="27" /></Border><TextBlock x:Name="ChatEmptyStateTitle" Style="{StaticResource AiTitleTextStyle}" FontSize="23" HorizontalAlignment="Center" /><TextBlock x:Name="ChatEmptyStateDescription" Style="{StaticResource AiBodyTextStyle}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" /><Button x:Name="ChatEmptyStateConfigButton" Visibility="Collapsed" Style="{StaticResource AiOutlineButtonStyle}" Content="打开 AI 配置中心" HorizontalAlignment="Center" /></StackPanel></Grid>
+
+                <Border x:Name="ComposerBorder" Grid.Row="2" Margin="92,0,92,20" MinHeight="104" Background="{StaticResource AiCardBrush}" BorderBrush="{StaticResource AiBorderBrush}" BorderThickness="1" CornerRadius="14">
+                    <Grid Padding="16,8,14,8">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="52" /></Grid.RowDefinitions>
+                        <Grid x:Name="ComposerInputHost" Background="Transparent">
+                            <TextBox x:Name="InputTextBox" MinHeight="36" MaxHeight="144" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" PlaceholderText="输入消息；Enter 发送，Shift + Enter 换行" Background="Transparent" BorderThickness="0" UseSystemFocusVisuals="False" FontSize="15" Padding="0" VerticalAlignment="Top">
+                                <TextBox.Resources>
+                                    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                    <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                                    <Thickness x:Key="TextControlBorderThemeThicknessPointerOver">0</Thickness>
+                                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                </TextBox.Resources>
+                            </TextBox>
+                        </Grid>
+                        <Grid Grid.Row="1" Margin="0,4,0,0">
+                            <TextBlock x:Name="ContextUsageTextBlock" VerticalAlignment="Center" Foreground="{StaticResource AiSecondaryTextBrush}" Text="选择模型后显示上下文占用" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button x:Name="PrimaryActionButton" Style="{StaticResource ComposerPrimaryActionButtonStyle}" Width="40" MinWidth="40" Height="40" Padding="0" CornerRadius="20" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" VerticalAlignment="Center">
+                                    <FontIcon x:Name="PrimaryActionIcon" FontFamily="Segoe Fluent Icons" Glyph="&#xE724;" FontSize="16" Foreground="White" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+        <Border x:Name="StatusBorder" Grid.RowSpan="2" Visibility="Collapsed" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="370,76,24,0" Padding="14,10" CornerRadius="8" Background="#FFFFF4E5" BorderBrush="#FFF3C16B" BorderThickness="1"><Grid><TextBlock x:Name="StatusTextBlock" TextWrapping="Wrap" /><Button x:Name="CloseStatusButton" HorizontalAlignment="Right" Style="{StaticResource AiButtonStyle}" Height="30" Width="30" Padding="0" Content="×" /></Grid></Border>
+    </Grid>
+</Window>

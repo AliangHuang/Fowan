@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Diary.Shared</RootNamespace>
+    <AssemblyName>Fowan.Diary.Shared</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\todo\contracts\Fowan.Todo.Contracts.csproj" />
+  </ItemGroup>
+</Project>

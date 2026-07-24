@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "error": {
+    "code": "consent_required",
+    "message": "Endpoint consent is required before provider access",
+    "data": { "endpoint": "https://api.example.com/v1" }
+  }
+}

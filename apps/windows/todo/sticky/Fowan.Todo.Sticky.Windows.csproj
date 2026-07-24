@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Todo.Sticky.Windows</RootNamespace>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Todo.Sticky.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Todo.Sticky.Windows</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\app\Assets\fowan-todo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\shared\Fowan.Todo.Shared.csproj" />
+    <ProjectReference Include="..\..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\app\Assets\fowan-todo.ico" Link="Assets\fowan-todo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\app\Assets\fowan-todo-app-icon-256.png" Link="Assets\fowan-todo-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

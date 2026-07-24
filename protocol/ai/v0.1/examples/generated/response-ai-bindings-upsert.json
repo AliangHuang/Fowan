@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "result": {
+    "featureId": "ai.chat",
+    "credentialId": "credential-1",
+    "modelProfileId": "model-1",
+    "thinkingEffort": "high",
+    "updatedAt": "2026-01-01T00:00:00Z"
+  }
+}

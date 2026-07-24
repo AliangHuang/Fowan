@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "engineVersion": "0.1.0",
+    "protocolVersion": "0.1",
+    "contractRevision": 1,
+    "capabilities": [
+      "ai.config.v1",
+      "ai.chat.v1",
+      "ai.chat.context.v1",
+      "ai.chat.branching.v1",
+      "ai.report.v1"
+    ]
+  }
+}

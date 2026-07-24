@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 22,
+  "method": "ai.conversations.create",
+  "params": {
+    "title": "Conversation"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 26,
+  "result": {
+    "conversationId": "conversation-1",
+    "activeLeafMessageId": "message-2",
+    "items": [],
+    "nextCursor": null,
+    "hasMore": false,
+    "summary": null
+  }
+}

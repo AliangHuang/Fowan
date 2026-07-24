@@ -2,18 +2,23 @@
   <PropertyGroup>
     <FowanTargetFramework>net8.0-windows10.0.19041.0</FowanTargetFramework>
     <FowanWindowsAppSdkVersion>2.2.0</FowanWindowsAppSdkVersion>
-    <FowanVersion Condition="'$(FowanVersion)' == ''">0.1.4</FowanVersion>
-    <FowanAssemblyVersion Condition="'$(FowanAssemblyVersion)' == ''">0.1.4.0</FowanAssemblyVersion>
+    <FowanVersion Condition="'$(FowanVersion)' == ''">0.2.2</FowanVersion>
+    <FowanAssemblyVersion Condition="'$(FowanAssemblyVersion)' == ''">0.2.2.0</FowanAssemblyVersion>
     <Version>$(FowanVersion)</Version>
     <PackageVersion>$(FowanVersion)</PackageVersion>
     <AssemblyVersion>$(FowanAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(FowanAssemblyVersion)</FileVersion>
     <InformationalVersion>$(FowanVersion)</InformationalVersion>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <BaseOutputPath>$(RepositoryRoot)build\msbuild\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(RepositoryRoot)build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <Product>Fowan</Product>
     <Company>Fowan</Company>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <FowanDevelopmentRuntime Condition="'$(FowanDevelopmentRuntime)' == ''">false</FowanDevelopmentRuntime>
+    <DefineConstants Condition="'$(FowanDevelopmentRuntime)' == 'true'">$(DefineConstants);FOWAN_DEVELOPMENT_RUNTIME</DefineConstants>
   </PropertyGroup>
 </Project>

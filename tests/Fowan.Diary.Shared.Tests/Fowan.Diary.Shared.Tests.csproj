@@ -14,6 +14,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\apps\windows-diary-shared\Fowan.Diary.Shared.csproj" />
+    <ProjectReference Include="..\..\apps\windows\diary\shared\Fowan.Diary.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\fixtures\diary-visual\diary-data.json" Link="fixtures\diary-data.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

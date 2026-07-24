@@ -6,8 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$configurationName = $Configuration.ToLowerInvariant()
-$exe = Join-Path $repoRoot "out/windows/$configurationName/Fowan.Windows.exe"
+$exe = Join-Path $repoRoot "build/windows/win-x64/app/Fowan.Windows.Dev.exe"
 
 if (-not (Test-Path -LiteralPath $exe)) {
     & (Join-Path $PSScriptRoot "build-windows.ps1") -Configuration $Configuration

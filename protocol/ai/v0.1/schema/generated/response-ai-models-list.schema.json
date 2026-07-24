@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "result": {
+      "$ref": "#/$defs/modelsResult"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "modelsResult": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/model"
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "id",
+        "credentialId",
+        "modelId",
+        "displayName",
+        "source",
+        "enabled",
+        "thinkingEnabled",
+        "thinkingEffortOptions",
+        "contextWindowTokens",
+        "maxOutputTokens",
+        "limitsConfigured",
+        "lastTestStatus",
+        "lastTestAt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "credentialId": {
+          "type": "string"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "thinkingEnabled": {
+          "type": "boolean"
+        },
+        "thinkingEffortOptions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "high",
+              "max"
+            ]
+          }
+        },
+        "contextWindowTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 2048
+        },
+        "maxOutputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "limitsConfigured": {
+          "type": "boolean"
+        },
+        "lastTestStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastTestAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -14,21 +14,21 @@ if ([string]::IsNullOrWhiteSpace($ConceptPath)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ActualPath)) {
-    $latest = Get-ChildItem -Path (Join-Path $repoRoot "out/screenshots") `
+    $latest = Get-ChildItem -Path (Join-Path $repoRoot "build/test/screenshots") `
         -Filter "fowan-diary-visual-parity-v*.png" `
         -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 
     if ($null -eq $latest) {
-        throw "No Diary visual parity screenshot found under out/screenshots. Pass -ActualPath explicitly."
+        throw "No Diary visual parity screenshot found under build/test/screenshots. Pass -ActualPath explicitly."
     }
 
     $ActualPath = $latest.FullName
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $OutputRoot = Join-Path $repoRoot "out/screenshots/visual-qa"
+    $OutputRoot = Join-Path $repoRoot "build/test/visual-qa/diary"
 }
 
 $helper = Join-Path $PSScriptRoot "visual-qa/compare_diary_visual.py"
@@ -42,7 +42,7 @@ foreach ($path in @($ConceptPath, $ActualPath)) {
     }
 }
 
-$venvRoot = Join-Path $repoRoot "out/visual-qa/.venv"
+$venvRoot = Join-Path $repoRoot "build/test/visual-qa/.venv"
 $pythonExe = Join-Path $venvRoot "Scripts/python.exe"
 $basePython = "python"
 

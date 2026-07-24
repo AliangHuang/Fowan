@@ -457,22 +457,22 @@ C#
 目录职责：
 
 ```text
-apps/windows/
+apps/windows/toolbox/
   工具箱主客户端，只负责展示 Todo 入口并启动 Todo 工具。
 
-apps/windows-todo/
+apps/windows/todo/app/
   独立 Todo 主窗口应用。
 
-apps/windows-todo-shared/
+apps/windows/todo/contracts/ 与 apps/windows/todo/shared/
   Todo 共享模型、存储路径、数据读写和业务服务。
 
-apps/windows-todo-sticky/
+apps/windows/todo/sticky/
   独立 Sticky 便签 shell，用于直接启动便签模式。
 ```
 
 开发约定：
 
-- 不把 Todo 业务 UI 并入 `apps/windows`。
+- 不把 Todo 业务 UI 并入 `apps/windows/toolbox`。
 - 不改变 Todo 可执行文件名、namespace、assembly name 或项目引用。
 - 正式版 Todo 数据固定保存到 `%LOCALAPPDATA%\Fowan\Todo`，不再按 workspace 分流。
 - 便签 shell 独立存在，以满足直接进入便签模式和避免主窗口闪烁的要求。

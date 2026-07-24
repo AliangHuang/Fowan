@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 24,
+  "method": "ai.conversations.rename",
+  "params": {
+    "id": "conversation-1",
+    "title": "Renamed"
+  }
+}

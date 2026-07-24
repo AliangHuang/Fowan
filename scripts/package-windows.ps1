@@ -14,23 +14,33 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-output.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$installerRoot = Join-Path $repoRoot "out/installer/windows/$RuntimeIdentifier"
+$publishRuntimeRoot = Join-Path $repoRoot "publish/windows/$RuntimeIdentifier"
+$publishVersionRoot = Join-Path $publishRuntimeRoot $Version
+$installerRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-delivery"
+$retentionRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-retention"
+$retentionPending = $false
 $appStage = Join-Path $installerRoot "app"
 $prereqRoot = Join-Path $installerRoot "prerequisites"
 $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
-$windowsProject = Join-Path $repoRoot "apps/windows/Fowan.Windows.csproj"
-$todoProject = Join-Path $repoRoot "apps/windows-todo/Fowan.Todo.Windows.csproj"
-$stickyProject = Join-Path $repoRoot "apps/windows-todo-sticky/Fowan.Todo.Sticky.Windows.csproj"
-$diaryProject = Join-Path $repoRoot "apps/windows-diary/Fowan.Diary.Windows.csproj"
-$aiChatProject = Join-Path $repoRoot "apps/windows-ai-chat/Fowan.Ai.Chat.Windows.csproj"
-$aiConfigProject = Join-Path $repoRoot "apps/windows-ai-config/Fowan.Ai.Config.Windows.csproj"
+$dotNetDesktopRuntimePath = Join-Path $prereqRoot "windowsdesktop-runtime-8-x64.exe"
+$windowsAppRuntimeInstallerPath = Join-Path $prereqRoot "WindowsAppRuntimeInstall-x64.exe"
+$windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
+$todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
+$stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
+$diaryProject = Join-Path $repoRoot "apps/windows/diary/app/Fowan.Diary.Windows.csproj"
+$reportProject = Join-Path $repoRoot "apps/windows/report/app/Fowan.Report.Windows.csproj"
+$aiChatProject = Join-Path $repoRoot "apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj"
+$aiConfigProject = Join-Path $repoRoot "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
 $dotnet = if (Test-Path -LiteralPath $localDotnet) { $localDotnet } else { "dotnet" }
 $vcRedistUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
+$dotNetDesktopRuntimeUrl = "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe"
+$windowsAppRuntimeInstallerUrl = "https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe"
 $assemblyVersion = if ($Version.Split('.').Count -eq 3) { "$Version.0" } else { $Version }
 
 function Assert-PathInside {
@@ -57,16 +67,17 @@ function Publish-FowanProject {
         [string]$Output
     )
 
+    $dotnetOutput = ConvertTo-DotnetOutputDirectory -Path $Output
     & $dotnet publish $Project `
         -c $Configuration `
         -r $RuntimeIdentifier `
-        --self-contained true `
+        --self-contained false `
         -p:WindowsPackageType=None `
-        -p:WindowsAppSDKSelfContained=true `
+        -p:WindowsAppSDKSelfContained=false `
         -p:FowanVersion=$Version `
         -p:FowanAssemblyVersion=$assemblyVersion `
         -p:PublishSingleFile=false `
-        -o $Output `
+        -o $dotnetOutput `
         --nologo
 
     if ($LASTEXITCODE -ne 0) {
@@ -139,6 +150,21 @@ function Write-ReleaseNotes {
             Id = "diary"
             Title = "Diary"
             Path = Join-Path $changelogRoot "tools/diary/CHANGELOG.md"
+        },
+        @{
+            Id = "report"
+            Title = "Report"
+            Path = Join-Path $changelogRoot "tools/report/CHANGELOG.md"
+        },
+        @{
+            Id = "ai-chat"
+            Title = "AI Chat"
+            Path = Join-Path $changelogRoot "tools/ai-chat/CHANGELOG.md"
+        },
+        @{
+            Id = "ai-config"
+            Title = "AI Configuration"
+            Path = Join-Path $changelogRoot "tools/ai-config/CHANGELOG.md"
         }
     )
 
@@ -209,6 +235,7 @@ function Resolve-Iscc {
     }
 
     $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs/Inno Setup 6/ISCC.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe"),
         (Join-Path $env:ProgramFiles "Inno Setup 6/ISCC.exe")
     )
@@ -247,32 +274,69 @@ function Save-Download {
     }
 }
 
-function Ensure-VcRedist {
-    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
+function Assert-MicrosoftSignature {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
 
-    if (-not (Test-Path -LiteralPath $vcRedistPath -PathType Leaf)) {
-        Write-Host "Downloading Microsoft Visual C++ Redistributable x64..."
-        Save-Download -Url $vcRedistUrl -Output $vcRedistPath
-    }
-
-    $signature = Get-AuthenticodeSignature -LiteralPath $vcRedistPath
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne "Valid" -or
         $signature.SignerCertificate.Subject -notlike "*Microsoft Corporation*") {
-        throw "Visual C++ Redistributable signature validation failed: $vcRedistPath"
+        throw "$Description signature validation failed: $Path"
     }
 }
 
-$outRoot = Join-Path $repoRoot "out"
-Assert-PathInside -Path $installerRoot -Root $outRoot
-New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
-Ensure-VcRedist
+function Ensure-MicrosoftPrerequisite {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Output,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
 
-if (Test-Path -LiteralPath $appStage) {
-    Assert-PathInside -Path $appStage -Root $installerRoot
-    Remove-Item -LiteralPath $appStage -Recurse -Force
+    if (-not (Test-Path -LiteralPath $Output -PathType Leaf)) {
+        Write-Host "Downloading $Description..."
+        Save-Download -Url $Url -Output $Output
+    }
+
+    Assert-MicrosoftSignature -Path $Output -Description $Description
 }
 
-New-Item -ItemType Directory -Force -Path $appStage | Out-Null
+function Ensure-RuntimePrerequisites {
+    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
+
+    Ensure-MicrosoftPrerequisite -Url $vcRedistUrl -Output $vcRedistPath -Description "Microsoft Visual C++ Redistributable x64"
+    Ensure-MicrosoftPrerequisite -Url $dotNetDesktopRuntimeUrl -Output $dotNetDesktopRuntimePath -Description ".NET 8 Desktop Runtime x64"
+    Ensure-MicrosoftPrerequisite -Url $windowsAppRuntimeInstallerUrl -Output $windowsAppRuntimeInstallerPath -Description "Windows App Runtime 2.2 x64"
+}
+
+function Write-ChecksumManifest {
+    param([Parameter(Mandatory = $true)][string]$OutputRoot)
+
+    $files = @(
+        "FowanSetup-$Version-$RuntimeIdentifier.exe",
+        "fowan-update.json"
+    )
+    $lines = foreach ($file in $files) {
+        $path = Join-Path $OutputRoot $file
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Release delivery is missing required file: $path"
+        }
+        "{0} *{1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant(), $file
+    }
+    $path = Join-Path $OutputRoot "SHA256SUMS.txt"
+    [IO.File]::WriteAllLines($path, $lines, [Text.UTF8Encoding]::new($false))
+    return $path
+}
+
+try {
+$deliveryStage = $installerRoot
+Ensure-RuntimePrerequisites
 
 if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
@@ -282,17 +346,32 @@ $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
 New-Item -ItemType Directory -Force -Path $diaryStage | Out-Null
+$reportStage = Join-Path $appStage "Tools/Report"
+New-Item -ItemType Directory -Force -Path $reportStage | Out-Null
 $aiChatStage = Join-Path $appStage "Tools/AI/Chat"
 New-Item -ItemType Directory -Force -Path $aiChatStage | Out-Null
 $aiConfigStage = Join-Path $appStage "Tools/AI/Config"
 New-Item -ItemType Directory -Force -Path $aiConfigStage | Out-Null
 
-Publish-FowanProject -Project $windowsProject -Output $appStage
-Publish-FowanProject -Project $todoProject -Output $todoStage
-Publish-FowanProject -Project $stickyProject -Output $todoStage
-Publish-FowanProject -Project $diaryProject -Output $diaryStage
-Publish-FowanProject -Project $aiChatProject -Output $aiChatStage
-Publish-FowanProject -Project $aiConfigProject -Output $aiConfigStage
+$publishTargets = @(
+    @{ Project = $windowsProject; Destination = $appStage; Component = "publish-toolbox" },
+    @{ Project = $todoProject; Destination = $todoStage; Component = "publish-todo" },
+    @{ Project = $stickyProject; Destination = $todoStage; Component = "publish-sticky" },
+    @{ Project = $diaryProject; Destination = $diaryStage; Component = "publish-diary" },
+    @{ Project = $reportProject; Destination = $reportStage; Component = "publish-report" },
+    @{ Project = $aiChatProject; Destination = $aiChatStage; Component = "publish-ai-chat" },
+    @{ Project = $aiConfigProject; Destination = $aiConfigStage; Component = "publish-ai-config" }
+)
+foreach ($target in $publishTargets) {
+    $projectStage = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component $target.Component
+    try {
+        Publish-FowanProject -Project $target.Project -Output $projectStage
+        Copy-BuildDirectoryContent -Source $projectStage -Destination $target.Destination
+    }
+    finally {
+        Remove-IsolatedBuildDirectory -Path $projectStage
+    }
+}
 $coreStage = Join-Path $appStage "Core"
 New-Item -ItemType Directory -Force -Path $coreStage | Out-Null
 Copy-Item -LiteralPath $CoreArtifactPath -Destination (Join-Path $coreStage "fowan-core.exe") -Force
@@ -302,6 +381,7 @@ $requiredExecutables = @(
     (Join-Path $todoStage "Fowan.Todo.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
     (Join-Path $diaryStage "Fowan.Diary.Windows.exe"),
+    (Join-Path $reportStage "Fowan.Report.Windows.exe"),
     (Join-Path $aiChatStage "Fowan.Ai.Chat.Windows.exe"),
     (Join-Path $aiConfigStage "Fowan.Ai.Config.Windows.exe"),
     (Join-Path $coreStage "fowan-core.exe")
@@ -325,7 +405,7 @@ Write-Host "Files: $fileCount"
 Write-Host "Size: $sizeMb MB"
 
 if ($SkipInstaller) {
-    Write-Host "Skipping installer compilation because -SkipInstaller was specified."
+    Write-Host "Package preflight completed; -SkipInstaller does not create an incomplete publish directory."
     exit 0
 }
 
@@ -335,9 +415,7 @@ if (-not (Test-Path -LiteralPath $issPath -PathType Leaf)) {
 
 $iscc = Resolve-Iscc
 if (-not $iscc) {
-    Write-Warning "Inno Setup compiler ISCC.exe was not found. Install Inno Setup 6, then rerun this script to build the setup .exe."
-    Write-Host "Staging output is ready: $appStage"
-    exit 0
+    throw "Inno Setup compiler ISCC.exe was not found. A publish directory is created only after the installer succeeds."
 }
 
 & $iscc `
@@ -345,6 +423,8 @@ if (-not $iscc) {
     "/DSourceDir=$appStage" `
     "/DReleaseNotesPath=$releaseNotesPath" `
     "/DVcRedistPath=$vcRedistPath" `
+    "/DDotNetDesktopRuntimePath=$dotNetDesktopRuntimePath" `
+    "/DWindowsAppRuntimeInstallerPath=$windowsAppRuntimeInstallerPath" `
     "/DOutputDir=$installerRoot" `
     $issPath
 
@@ -363,5 +443,40 @@ $updateManifestPath = Write-UpdateManifest `
     -ReleaseRepository $ReleaseRepository `
     -OutputRoot $installerRoot
 
-Write-Host "Fowan Windows installer: $setupExe"
-Write-Host "Update manifest: $updateManifestPath"
+Remove-Item -LiteralPath $appStage -Recurse -Force
+Remove-Item -LiteralPath $prereqRoot -Recurse -Force
+$checksumPath = Write-ChecksumManifest -OutputRoot $installerRoot
+$retentionPending = $true
+$expiredVersions = @(Move-ExpiredPublishDirectories `
+    -PublishRoot $publishRuntimeRoot `
+    -ReleaseVersion $Version `
+    -RetentionRoot $retentionRoot `
+    -MaximumVersionCount 4)
+if ($expiredVersions.Count -gt 0) {
+    Write-Host "Publish retention removed before release: $($expiredVersions.Name -join ', ')"
+}
+Install-IsolatedBuildDirectory -StagingDirectory $deliveryStage -Destination $publishVersionRoot -AllowedOutputRoot $publishRuntimeRoot
+$retentionPending = $false
+Remove-IsolatedBuildDirectory -Path $retentionRoot
+
+Write-Host "Fowan Windows installer: $(Join-Path $publishVersionRoot (Split-Path -Leaf $setupExe))"
+Write-Host "Update manifest: $(Join-Path $publishVersionRoot (Split-Path -Leaf $updateManifestPath))"
+Write-Host "Checksums: $(Join-Path $publishVersionRoot (Split-Path -Leaf $checksumPath))"
+}
+catch {
+    $publishError = $_
+    if ($retentionPending) {
+        try {
+            Restore-ExpiredPublishDirectories -PublishRoot $publishRuntimeRoot -RetentionRoot $retentionRoot
+            $retentionPending = $false
+        }
+        catch {
+            throw "Publishing failed and retained versions could not be restored. Publish error: $($publishError.Exception.Message) Restore error: $($_.Exception.Message)"
+        }
+    }
+    throw $publishError
+}
+finally {
+    Remove-IsolatedBuildDirectory -Path $retentionRoot
+    Remove-IsolatedBuildDirectory -Path $installerRoot
+}

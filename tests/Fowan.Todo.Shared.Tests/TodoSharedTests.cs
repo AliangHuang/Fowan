@@ -1,5 +1,7 @@
 using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Shared.Application;
 using Fowan.Todo.Shared.Services;
+using System.Text.Json;
 using Xunit;
 
 namespace Fowan.Todo.Shared.Tests;
@@ -7,6 +9,218 @@ namespace Fowan.Todo.Shared.Tests;
 public sealed class TodoSharedTests : IDisposable
 {
     private readonly string _rootPath = Path.Combine(Path.GetTempPath(), "Fowan.Todo.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void PersistenceControllerUsesInjectedRepositoryForBothWindows()
+    {
+        var repository = new MemoryTodoRepository();
+        var controller = new TodoPersistenceController(repository);
+        var data = controller.LoadData();
+        var settings = controller.LoadSettings();
+
+        controller.SaveData(data);
+        controller.SaveSettings(settings);
+        var updated = controller.UpdateData((_, _) => true);
+
+        Assert.Same(data, repository.SavedData);
+        Assert.Same(settings, repository.SavedSettings);
+        Assert.True(updated);
+    }
+
+    [Fact]
+    public void WorkspaceOwnsStateAndPersistsTaskCommandsBeforePublishingChanges()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Tasks.Add(Task("root"));
+        var workspace = new TodoWorkspace(repository);
+        var changes = new List<TodoChangeSet>();
+        workspace.Changed += (_, change) => changes.Add(change);
+
+        var changed = workspace.SetTaskCompleted("root", completed: true, includeDescendants: false);
+
+        Assert.Equal(1, changed);
+        Assert.True(workspace.Data.Tasks[0].IsCompleted);
+        Assert.Same(workspace.Data, repository.SavedData);
+        Assert.Contains(TodoChangeSet.Tasks | TodoChangeSet.Lists, changes);
+    }
+
+    [Fact]
+    public void WorkspaceDropCommandPersistsDataAndSettingsAsOneUseCase()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Tasks.Add(Task("root"));
+        repository.Data.Tasks.Add(Task("sibling"));
+        var workspace = new TodoWorkspace(repository);
+
+        var changed = workspace.TryApplyTaskDrop(
+            "sibling",
+            "root",
+            TodoTaskDropPlacement.Child);
+
+        Assert.True(changed);
+        Assert.Equal("root", workspace.Data.Tasks.Single(task => task.Id == "sibling").ParentTaskId);
+        Assert.Same(workspace.Data, repository.SavedData);
+        Assert.Same(workspace.Settings, repository.SavedSettings);
+    }
+
+    [Fact]
+    public void WorkspaceUndoAndRedoRestoreTaskChangesAndInvalidateRedoAfterNewChange()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Tasks.Add(Task("root"));
+        var workspace = new TodoWorkspace(repository);
+
+        Assert.True(workspace.UpdateTaskTitle("root", "Renamed task"));
+        Assert.True(workspace.CanUndo);
+        Assert.False(workspace.CanRedo);
+        Assert.Equal("Renamed task", workspace.Data.Tasks.Single().Title);
+
+        Assert.True(workspace.Undo());
+        Assert.Equal("root", workspace.Data.Tasks.Single().Title);
+        Assert.False(workspace.CanUndo);
+        Assert.True(workspace.CanRedo);
+
+        Assert.True(workspace.Redo());
+        Assert.Equal("Renamed task", workspace.Data.Tasks.Single().Title);
+        Assert.True(workspace.CanUndo);
+        Assert.False(workspace.CanRedo);
+
+        Assert.True(workspace.Undo());
+        Assert.True(workspace.ToggleTaskImportant("root"));
+        Assert.True(workspace.Data.Tasks.Single().IsImportant);
+        Assert.False(workspace.CanRedo);
+    }
+
+    [Fact]
+    public void RecurringTasksCreateEachDueWeeklyOccurrenceOnlyOnce()
+    {
+        var template = Task("weekly-template", startDate: new DateTime(2026, 7, 6));
+        template.Recurrence = new TodoRecurrenceRule
+        {
+            Frequency = TodoRecurrenceFrequencies.Weekly,
+            Weekdays = [DayOfWeek.Monday, DayOfWeek.Wednesday]
+        };
+        var data = Data(template);
+        var nextId = 0;
+
+        var created = TodoRecurringTaskScheduler.CreateDueTasks(
+            data,
+            new DateTime(2026, 7, 13),
+            () => $"generated-{++nextId}",
+            new DateTimeOffset(2026, 7, 13, 9, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal(2, created);
+        Assert.Equal(
+            [new DateTime(2026, 7, 6), new DateTime(2026, 7, 8), new DateTime(2026, 7, 13)],
+            data.Tasks.OrderBy(task => task.StartDate).Select(task => task.StartDate));
+        Assert.All(data.Tasks.Where(task => task.Id != template.Id), task =>
+        {
+            Assert.Equal(template.Id, task.RecurrenceSourceTaskId);
+            Assert.Null(task.Recurrence);
+        });
+        Assert.Equal(0, TodoRecurringTaskScheduler.CreateDueTasks(
+            data,
+            new DateTime(2026, 7, 13),
+            () => $"generated-{++nextId}",
+            DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public void MonthlyRecurrenceKeepsOnlyDaysOneThroughTwentyEightAndAlignsTheFirstTask()
+    {
+        var normalized = TodoRecurrenceRules.Normalize(new TodoRecurrenceRule
+        {
+            Frequency = TodoRecurrenceFrequencies.Monthly,
+            MonthDays = [0, 1, 28, 29, 31]
+        });
+
+        Assert.NotNull(normalized);
+        Assert.Equal([1, 28], normalized.MonthDays);
+        Assert.Equal(
+            new DateTime(2026, 8, 1),
+            TodoRecurrenceRules.FirstOccurrenceOnOrAfter(
+                new TodoRecurrenceRule
+                {
+                    Frequency = TodoRecurrenceFrequencies.Monthly,
+                    MonthDays = [1]
+                },
+                new DateTime(2026, 7, 22)));
+        Assert.Equal(
+            new DateTime(2026, 8, 5),
+            TodoRecurrenceRules.DueDateForOccurrence(
+                new TodoRecurrenceRule
+                {
+                    Frequency = TodoRecurrenceFrequencies.Monthly,
+                    MonthDays = [20],
+                    MonthlyDueDay = 5
+                },
+                new DateTime(2026, 7, 20),
+                new DateTime(2026, 7, 20),
+                null));
+    }
+
+    [Fact]
+    public void WeeklyRecurrenceUsesConfiguredStartAndDueWeekdaysForEveryOccurrence()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Lists.Add(new TodoList { Id = TodoStore.DefaultListId, Name = "Inbox" });
+        var workspace = new TodoWorkspace(repository);
+        var recurrence = new TodoRecurrenceRule
+        {
+            Frequency = TodoRecurrenceFrequencies.Weekly,
+            Weekdays = [DayOfWeek.Monday],
+            WeeklyDueDay = DayOfWeek.Friday
+        };
+
+        var template = workspace.AddTask(
+            "Weekly review",
+            TodoStore.DefaultListId,
+            false,
+            new DateTime(2026, 7, 7),
+            null,
+            recurrence: recurrence);
+
+        Assert.Equal(new DateTime(2026, 7, 13), template.StartDate);
+        Assert.Equal(new DateTime(2026, 7, 17), template.DueDate);
+
+        Assert.Equal(1, workspace.CreateDueRecurringTasks(new DateTime(2026, 7, 20)));
+        var generated = Assert.Single(workspace.Data.Tasks, task => task.RecurrenceSourceTaskId == template.Id);
+        Assert.Equal(new DateTime(2026, 7, 20), generated.StartDate);
+        Assert.Equal(new DateTime(2026, 7, 24), generated.DueDate);
+    }
+
+    [Fact]
+    public void RecurringViewShowsOnlyRepeatTemplatesNotGeneratedInstances()
+    {
+        var template = Task("template");
+        template.Recurrence = new TodoRecurrenceRule
+        {
+            Frequency = TodoRecurrenceFrequencies.Weekly,
+            Weekdays = [DayOfWeek.Monday]
+        };
+        var generated = Task("generated");
+        generated.RecurrenceSourceTaskId = template.Id;
+        var data = Data(template, generated, Task("ordinary"));
+
+        Assert.Equal([template.Id], TodoQuery.ActiveTasksForView(data, TodoViewIds.Recurring).Select(task => task.Id));
+        Assert.True(TodoQuery.IsKnownView(data, TodoViewIds.Recurring));
+        Assert.Equal("循环任务", TodoQuery.ViewTitle(data, TodoViewIds.Recurring));
+    }
+
+    [Fact]
+    public void VersionOneGoldenFixturePreservesEveryExistingFieldAndValue()
+    {
+        Directory.CreateDirectory(_rootPath);
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "fixtures", "todo-data.json");
+        var dataPath = Path.Combine(_rootPath, TodoStoragePaths.DataFileName);
+        File.Copy(fixturePath, dataPath);
+        var original = File.ReadAllText(dataPath);
+        var store = new TodoStore(_rootPath);
+
+        store.SaveData(store.LoadData());
+
+        AssertJsonSubset(original, File.ReadAllText(dataPath));
+    }
 
     [Fact]
     public void OldJsonDataIsMigratedAndRecycleBinSettingsDefaultOn()
@@ -31,7 +245,7 @@ public sealed class TodoSharedTests : IDisposable
         var data = store.LoadData();
         var settings = store.LoadSettings();
 
-        Assert.Equal(5, data.SchemaVersion);
+        Assert.Equal(1, data.SchemaVersion);
         Assert.Contains(data.Lists, list => list.Id == TodoStore.DefaultListId && list.ColorId == TodoListColorIds.Cyan);
         var task = Assert.Single(data.Tasks);
         Assert.Equal("Legacy task", task.Title);
@@ -81,6 +295,44 @@ public sealed class TodoSharedTests : IDisposable
     }
 
     [Fact]
+    public void StickyPresentationSettingsRoundTripAndDefaultToVisible()
+    {
+        var store = new TodoStore(_rootPath);
+        store.SaveSettings(new TodoSettings
+        {
+            IsStickyTitleHidden = true,
+            IsStickyAddTaskMinimized = true,
+            IsStickyMenuAutoHideEnabled = true,
+            StickyTitleFontSize = TodoSettings.MaxStickyTitleFontSize
+        });
+
+        var persisted = store.LoadSettings();
+        Assert.True(persisted.IsStickyTitleHidden);
+        Assert.True(persisted.IsStickyAddTaskMinimized);
+        Assert.True(persisted.IsStickyMenuAutoHideEnabled);
+        Assert.Equal(TodoSettings.MaxStickyTitleFontSize, persisted.StickyTitleFontSize);
+
+        File.WriteAllText(Path.Combine(_rootPath, TodoStoragePaths.SettingsFileName), """
+        { "stickyTitleFontSize": 99 }
+        """);
+        var clamped = store.LoadSettings();
+        Assert.Equal(TodoSettings.MaxStickyTitleFontSize, clamped.StickyTitleFontSize);
+
+        File.WriteAllText(Path.Combine(_rootPath, TodoStoragePaths.SettingsFileName), """
+        { "stickyTitleFontSize": 0 }
+        """);
+        clamped = store.LoadSettings();
+        Assert.Equal(TodoSettings.MinStickyTitleFontSize, clamped.StickyTitleFontSize);
+
+        File.WriteAllText(Path.Combine(_rootPath, TodoStoragePaths.SettingsFileName), "{}");
+        var defaults = store.LoadSettings();
+        Assert.False(defaults.IsStickyTitleHidden);
+        Assert.False(defaults.IsStickyAddTaskMinimized);
+        Assert.False(defaults.IsStickyMenuAutoHideEnabled);
+        Assert.Equal(TodoSettings.DefaultStickyTitleFontSize, defaults.StickyTitleFontSize);
+    }
+
+    [Fact]
     public void NewTasksDefaultToTheCurrentListOnlyForValidListViews()
     {
         var data = Data();
@@ -99,7 +351,9 @@ public sealed class TodoSharedTests : IDisposable
                      TodoViewIds.Today,
                      TodoViewIds.Planned,
                      TodoViewIds.Important,
+                     TodoViewIds.Recurring,
                      TodoViewIds.All,
+                     TodoViewIds.Uncompleted,
                      TodoViewIds.Completed,
                      TodoViewIds.RecycleBin
                  })
@@ -171,12 +425,22 @@ public sealed class TodoSharedTests : IDisposable
     }
 
     [Fact]
+    public void StickyExpandedGeometryRoundTripsThroughSeparateMenuAndTaskWindows()
+    {
+        var body = TodoStickyPlacement.BodyGeometryFromExpanded(120, 568, 53);
+
+        Assert.Equal(173, body.Top);
+        Assert.Equal(515, body.Height);
+        Assert.Equal((120d, 568d), TodoStickyPlacement.ExpandedGeometryFromBody(body.Top, body.Height, 53));
+    }
+
+    [Fact]
     public void ListColorsMigrateValidateAndPersist()
     {
         Directory.CreateDirectory(_rootPath);
         File.WriteAllText(Path.Combine(_rootPath, TodoStoragePaths.DataFileName), """
         {
-          "schemaVersion": 4,
+          "schemaVersion": 1,
           "lists": [
             { "id": "default", "name": "默认清单" },
             { "id": "personal", "name": "个人" },
@@ -191,7 +455,7 @@ public sealed class TodoSharedTests : IDisposable
         var data = store.LoadData();
 
         Assert.Equal(12, TodoListColorIds.All.Count);
-        Assert.Equal(5, data.SchemaVersion);
+        Assert.Equal(1, data.SchemaVersion);
         Assert.Equal(TodoListColorIds.Cyan, data.Lists.Single(list => list.Id == "default").ColorId);
         Assert.Equal(TodoListColorIds.Green, data.Lists.Single(list => list.Id == "personal").ColorId);
         Assert.Equal(TodoListColorIds.Purple, data.Lists.Single(list => list.Id == "study").ColorId);
@@ -203,6 +467,18 @@ public sealed class TodoSharedTests : IDisposable
 
         var reloaded = new TodoStore(_rootPath).LoadData();
         Assert.Equal(TodoListColorIds.Pink, reloaded.Lists.Single(list => list.Id == "project").ColorId);
+    }
+
+    [Fact]
+    public void ListNameMatchingIgnoresWhitespaceAndLetterCasingButCanExcludeTheCurrentList()
+    {
+        var data = Data();
+        data.Lists.Add(new TodoList { Id = "work", Name = "Work" });
+
+        Assert.True(TodoQuery.HasListName(data, "  work  "));
+        Assert.True(TodoQuery.HasListName(data, "WORK"));
+        Assert.False(TodoQuery.HasListName(data, "work", "work"));
+        Assert.False(TodoQuery.HasListName(data, "personal"));
     }
 
     [Fact]
@@ -338,6 +614,45 @@ public sealed class TodoSharedTests : IDisposable
     }
 
     [Fact]
+    public void FilteredNodesKeepMatchingChildrenInTheirParentContextUnlessParentsAreStrictlyFiltered()
+    {
+        var data = Data(
+            Task("root", startDate: new DateTime(2026, 7, 1)),
+            Task(
+                "child",
+                parentId: "root",
+                startDate: new DateTime(2026, 7, 5),
+                completedAt: new DateTimeOffset(2026, 7, 5, 9, 0, 0, TimeSpan.Zero)));
+        var childDate = new TodoDateRangeFilter
+        {
+            Mode = TodoDateFilterMode.StartDate,
+            StartDate = new DateTime(2026, 7, 5),
+            EndDate = new DateTime(2026, 7, 5)
+        };
+
+        var contextual = TodoQuery.FilteredTaskNodesForView(
+                data,
+                TodoViewIds.All,
+                TodoCompletionFilter.Completed,
+                dateFilter: childDate)
+            .ToList();
+        Assert.Equal(["root", "child"], contextual.Select(node => node.Task.Id));
+        Assert.Equal([0, 1], contextual.Select(node => node.Depth));
+        Assert.Equal(["root"], TodoQuery.ActiveTasksForView(data, TodoViewIds.Uncompleted).Select(task => task.Id));
+
+        var strict = TodoQuery.FilteredTaskNodesForView(
+                data,
+                TodoViewIds.All,
+                TodoCompletionFilter.Completed,
+                dateFilter: childDate,
+                filterParentTasks: true)
+            .ToList();
+        var strictChild = Assert.Single(strict);
+        Assert.Equal("child", strictChild.Task.Id);
+        Assert.Equal(1, strictChild.Depth);
+    }
+
+    [Fact]
     public void DateFiltersMatchStartDatesAndExecutionPeriodBoundaries()
     {
         var today = new DateTime(2026, 7, 11);
@@ -410,6 +725,129 @@ public sealed class TodoSharedTests : IDisposable
                 .Select(task => task.Id));
     }
 
+    [Fact]
+    public void AllViewCountsEveryLiveTaskAcrossCompletionStates()
+    {
+        var data = Data(
+            Task("active"),
+            Task("completed", completedAt: new DateTimeOffset(2026, 7, 11, 9, 0, 0, TimeSpan.Zero)),
+            Task("deleted", deletedAt: new DateTimeOffset(2026, 7, 11, 10, 0, 0, TimeSpan.Zero)));
+
+        var active = TodoQuery.ActiveTasksForView(data, TodoViewIds.All).Count();
+        var completed = TodoQuery.CompletedTasksForView(data, TodoViewIds.All).Count();
+
+        Assert.Equal(1, active);
+        Assert.Equal(1, completed);
+        Assert.Equal(2, active + completed);
+    }
+
+    [Fact]
+    public void FilteringAllTasksDoesNotChangeUnfilteredViewCounts()
+    {
+        var data = Data(
+            Task("today", startDate: new DateTime(2026, 7, 11)),
+            Task("planned", startDate: new DateTime(2026, 7, 12)),
+            Task("completed", completedAt: new DateTimeOffset(2026, 7, 11, 9, 0, 0, TimeSpan.Zero)));
+        var dateFilter = new TodoDateRangeFilter
+        {
+            Mode = TodoDateFilterMode.StartDate,
+            StartDate = new DateTime(2026, 7, 11),
+            EndDate = new DateTime(2026, 7, 11)
+        };
+
+        var filtered = TodoQuery.FilteredTaskNodesForView(
+            data,
+            TodoViewIds.All,
+            TodoCompletionFilter.All,
+            dateFilter: dateFilter).ToList();
+
+        Assert.Equal(["today", "completed"], filtered.Select(node => node.Task.Id));
+        Assert.Single(TodoQuery.ActiveTasksForView(data, TodoViewIds.Today, new DateTime(2026, 7, 11)));
+        Assert.Single(TodoQuery.ActiveTasksForView(data, TodoViewIds.Planned, new DateTime(2026, 7, 11)));
+        Assert.Single(TodoQuery.CompletedTasksForView(data, TodoViewIds.Completed));
+    }
+
+    [Fact]
+    public void SharedTaskCommandsCompleteTheSameTreeForMainAndStickyShells()
+    {
+        var data = Data(Task("root"), Task("child", "root"), Task("grand", "child"));
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.True(TodoTaskCommands.HasIncompleteDescendants(data, "root"));
+        Assert.Equal(3, TodoTaskCommands.SetCompleted(data, "root", true, includeDescendants: true, now));
+        Assert.All(data.Tasks, task =>
+        {
+            Assert.True(task.IsCompleted);
+            Assert.Equal(now, task.CompletedAt);
+            Assert.Equal(now, task.UpdatedAt);
+        });
+        Assert.False(TodoTaskCommands.HasIncompleteDescendants(data, "root"));
+    }
+
+    [Fact]
+    public void SharedTaskCommandsDoNotChangeUnrelatedTasks()
+    {
+        var root = Task("root");
+        var sibling = Task("sibling");
+        var data = Data(root, sibling);
+        var originalSiblingUpdate = sibling.UpdatedAt;
+
+        Assert.Equal(1, TodoTaskCommands.SetCompleted(
+            data,
+            "root",
+            completed: true,
+            includeDescendants: false,
+            now: new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero)));
+        Assert.False(sibling.IsCompleted);
+        Assert.Equal(originalSiblingUpdate, sibling.UpdatedAt);
+    }
+
+    [Fact]
+    public void SharedDropControllerRejectsCyclesAndReordersForBothShells()
+    {
+        var root = Task("root");
+        var child = Task("child", "root");
+        var grand = Task("grand", "child");
+        var sibling = Task("sibling");
+        var data = Data(root, child, grand, sibling);
+        var settings = new TodoSettings { CollapsedTaskIds = ["root"] };
+
+        Assert.False(TodoTaskDropController.CanApply(
+            data,
+            "root",
+            "grand",
+            TodoTaskDropPlacement.Child));
+        Assert.True(TodoTaskDropController.TryApply(
+            data,
+            settings,
+            "sibling",
+            "root",
+            TodoTaskDropPlacement.Child,
+            new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero)));
+        Assert.Equal("root", sibling.ParentTaskId);
+        Assert.Equal(sibling.Id, data.Tasks
+            .Where(task => task.ParentTaskId == "root")
+            .OrderBy(task => task.SortOrder)
+            .First().Id);
+        Assert.DoesNotContain("root", settings.CollapsedTaskIds);
+    }
+
+    [Fact]
+    public void WorkspaceSnapshotIsImmutableAndSaveFailureRestoresCommittedState()
+    {
+        var repository = new MemoryTodoRepository();
+        repository.Data.Lists.Add(new TodoList { Id = TodoStore.DefaultListId, Name = "Inbox" });
+        var workspace = new TodoWorkspace(repository);
+        var before = workspace.State;
+        repository.FailNextDataSave = true;
+
+        Assert.Throws<IOException>(() => workspace.AddTask(
+            "will fail", TodoStore.DefaultListId, false, DateTime.Today, null));
+
+        Assert.Empty(before.Tasks);
+        Assert.Empty(workspace.State.Tasks);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
@@ -458,5 +896,81 @@ public sealed class TodoSharedTests : IDisposable
             CreatedAt = createdAt,
             UpdatedAt = completedAt ?? deletedAt ?? createdAt
         };
+    }
+
+    private static void AssertJsonSubset(string expectedJson, string actualJson)
+    {
+        using var expected = JsonDocument.Parse(expectedJson);
+        using var actual = JsonDocument.Parse(actualJson);
+        AssertJsonSubset(expected.RootElement, actual.RootElement);
+    }
+
+    private sealed class MemoryTodoRepository : ITodoRepository
+    {
+        private readonly TodoData _data = new();
+        private readonly TodoSettings _settings = new();
+
+        public TodoData Data => _data;
+
+        public TodoData? SavedData { get; private set; }
+        public TodoSettings? SavedSettings { get; private set; }
+        public bool FailNextDataSave { get; set; }
+
+        public TodoData LoadData() => _data;
+        public TodoSettings LoadSettings() => _settings;
+        public void SaveData(TodoData data)
+        {
+            if (FailNextDataSave)
+            {
+                FailNextDataSave = false;
+                throw new IOException("synthetic data save failure");
+            }
+            SavedData = data;
+        }
+        public void SaveSettings(TodoSettings settings) => SavedSettings = settings;
+        public bool UpdateData(Func<TodoData, TodoSettings, bool> update) => update(_data, _settings);
+    }
+
+    private static void AssertJsonSubset(JsonElement expected, JsonElement actual)
+    {
+        Assert.Equal(expected.ValueKind, actual.ValueKind);
+        if (expected.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in expected.EnumerateObject())
+            {
+                Assert.True(actual.TryGetProperty(property.Name, out var value), property.Name);
+                AssertJsonSubset(property.Value, value);
+            }
+            return;
+        }
+        if (expected.ValueKind == JsonValueKind.Array)
+        {
+            var expectedItems = expected.EnumerateArray().ToArray();
+            var actualItems = actual.EnumerateArray().ToArray();
+            Assert.True(actualItems.Length >= expectedItems.Length);
+            for (var index = 0; index < expectedItems.Length; index++)
+            {
+                AssertJsonSubset(expectedItems[index], actualItems[index]);
+            }
+            return;
+        }
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.String:
+                Assert.Equal(expected.GetString(), actual.GetString());
+                break;
+            case JsonValueKind.Number:
+                Assert.Equal(expected.GetDecimal(), actual.GetDecimal());
+                break;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                Assert.Equal(expected.GetBoolean(), actual.GetBoolean());
+                break;
+            case JsonValueKind.Null:
+                break;
+            default:
+                Assert.Equal(expected.GetRawText(), actual.GetRawText());
+                break;
+        }
     }
 }

@@ -111,7 +111,7 @@ Platform integration:
 ```text
 Fowan.sln
 
-apps/windows/
+apps/windows/toolbox/
   Fowan.Windows.csproj
   App.xaml
   App.xaml.cs
@@ -131,7 +131,7 @@ scripts/
   run-windows.ps1
 
 未来扩展：
-  apps/windows/
+  apps/windows/toolbox/
     Activation/
     Navigation/
     Views/

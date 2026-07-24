@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fowan.example/protocol/ai/v0.1/handshake.schema.json",
+  "title": "engine.handshake request parameters",
+  "type": "object",
+  "required": ["protocolVersion", "contractRevision", "requiredCapabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": { "const": "0.1" },
+    "contractRevision": { "const": 1 },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": { "enum": ["ai.config.v1", "ai.chat.v1", "ai.chat.context.v1", "ai.chat.branching.v1", "ai.report.v1"] },
+      "uniqueItems": true
+    }
+  }
+}

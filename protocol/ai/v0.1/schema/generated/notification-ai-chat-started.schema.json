@@ -1,0 +1,578 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "$ref": "#/$defs/notification"
+    },
+    {
+      "properties": {
+        "method": {
+          "const": "ai.chat.started"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "notification": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "enum": [
+            "ai.chat.started",
+            "ai.chat.delta",
+            "ai.chat.completed",
+            "ai.chat.cancelled",
+            "ai.chat.failed",
+            "ai.chat.context.compact.started",
+            "ai.chat.context.compact.completed",
+            "ai.chat.context.compact.failed",
+            "ai.report.started",
+            "ai.report.completed",
+            "ai.report.cancelled",
+            "ai.report.failed"
+          ]
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "conversationId",
+                  "assistantMessageId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "assistantMessageId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.delta"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "delta"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "delta": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "ai.chat.completed",
+                  "ai.chat.cancelled",
+                  "ai.chat.failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "assistantMessageId",
+                  "errorCode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "assistantMessageId": {
+                    "type": "string"
+                  },
+                  "errorCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "requestId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.context.compact.started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "conversationId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.context.compact.completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "conversationId",
+                  "summaryId",
+                  "throughMessageId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "summaryId": {
+                    "type": "string"
+                  },
+                  "throughMessageId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.chat.context.compact.failed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "conversationId",
+                  "errorCode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  },
+                  "errorCode": {
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.report.started"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/reportInvocationResult"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "ai.report.completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "output"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "output": {
+                    "$ref": "#/$defs/reportOutput"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "enum": [
+                  "ai.report.cancelled",
+                  "ai.report.failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": [
+                  "invocationId",
+                  "errorCode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "invocationId": {
+                    "type": "string"
+                  },
+                  "errorCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "requestId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "reportInvocationResult": {
+      "type": "object",
+      "required": [
+        "invocationId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "invocationId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reportOutput": {
+      "type": "object",
+      "required": [
+        "document"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/reportContentDocument"
+        }
+      }
+    },
+    "reportContentDocument": {
+      "type": "object",
+      "required": [
+        "format",
+        "blocks",
+        "sheets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "text",
+            "docx",
+            "xlsx"
+          ]
+        },
+        "blocks": {
+          "type": "array",
+          "maxItems": 2048,
+          "items": {
+            "$ref": "#/$defs/reportContentBlock"
+          }
+        },
+        "sheets": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/reportContentSheet"
+          }
+        }
+      }
+    },
+    "reportContentBlock": {
+      "type": "object",
+      "required": [
+        "kind",
+        "text",
+        "bold",
+        "italic",
+        "link",
+        "isChecked",
+        "table"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "paragraph",
+            "heading1",
+            "heading2",
+            "heading3",
+            "bulletedList",
+            "numberedList",
+            "todoList",
+            "quote",
+            "code",
+            "divider",
+            "table"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 4096
+        },
+        "isChecked": {
+          "type": "boolean"
+        },
+        "table": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reportContentTable"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "reportContentSheet": {
+      "type": "object",
+      "required": [
+        "name",
+        "rows",
+        "canAppendRows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/$defs/reportContentCell"
+            }
+          }
+        },
+        "canAppendRows": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reportContentTable": {
+      "type": "object",
+      "required": [
+        "rows",
+        "canAppendRows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/$defs/reportContentCell"
+            }
+          }
+        },
+        "canAppendRows": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reportContentCell": {
+      "type": "object",
+      "required": [
+        "value",
+        "valueKind",
+        "editable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "valueKind": {
+          "enum": [
+            "text",
+            "number",
+            "boolean",
+            "formula"
+          ]
+        },
+        "editable": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "valueKind": {
+                "const": "formula"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "editable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

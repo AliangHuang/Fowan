@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "result": {
+      "$ref": "#/$defs/toolFeaturesResult"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "toolFeaturesResult": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/toolFeature"
+      }
+    },
+    "toolFeature": {
+      "type": "object",
+      "required": [
+        "featureId",
+        "toolId",
+        "displayName",
+        "requiredCapabilities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "featureId": {
+          "type": "string"
+        },
+        "toolId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "requiredCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

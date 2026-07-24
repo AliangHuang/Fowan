@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.report.generate"
+    },
+    "params": {
+      "$ref": "#/$defs/reportGenerateParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "reportGenerateParams": {
+      "type": "object",
+      "required": [
+        "reportType",
+        "rangeStart",
+        "rangeEnd",
+        "style",
+        "customRequirements",
+        "templateMode",
+        "template",
+        "example",
+        "attempt",
+        "candidate",
+        "validationFeedback",
+        "completedTasks",
+        "unfinishedTasks"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reportType": {
+          "enum": [
+            "weekly",
+            "monthly",
+            "range"
+          ]
+        },
+        "rangeStart": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rangeEnd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "style": {
+          "enum": [
+            "professional",
+            "plain",
+            "concise"
+          ]
+        },
+        "customRequirements": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "templateMode": {
+          "enum": [
+            "text",
+            "file"
+          ]
+        },
+        "template": {
+          "$ref": "#/$defs/reportContentDocument"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reportContentDocument"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reportContentDocument"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validationFeedback": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 4096
+        },
+        "completedTasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportTask"
+          }
+        },
+        "unfinishedTasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportTask"
+          }
+        }
+      }
+    },
+    "reportContentDocument": {
+      "type": "object",
+      "required": [
+        "format",
+        "blocks",
+        "sheets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "text",
+            "docx",
+            "xlsx"
+          ]
+        },
+        "blocks": {
+          "type": "array",
+          "maxItems": 2048,
+          "items": {
+            "$ref": "#/$defs/reportContentBlock"
+          }
+        },
+        "sheets": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/reportContentSheet"
+          }
+        }
+      }
+    },
+    "reportTask": {
+      "type": "object",
+      "required": [
+        "title",
+        "notes",
+        "listName",
+        "level",
+        "important",
+        "startDate",
+        "dueDate",
+        "completedAt",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "listName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "important": {
+          "type": "boolean"
+        },
+        "startDate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dueDate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "unfinished"
+          ]
+        }
+      }
+    },
+    "reportContentBlock": {
+      "type": "object",
+      "required": [
+        "kind",
+        "text",
+        "bold",
+        "italic",
+        "link",
+        "isChecked",
+        "table"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "paragraph",
+            "heading1",
+            "heading2",
+            "heading3",
+            "bulletedList",
+            "numberedList",
+            "todoList",
+            "quote",
+            "code",
+            "divider",
+            "table"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 4096
+        },
+        "isChecked": {
+          "type": "boolean"
+        },
+        "table": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reportContentTable"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "reportContentSheet": {
+      "type": "object",
+      "required": [
+        "name",
+        "rows",
+        "canAppendRows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/$defs/reportContentCell"
+            }
+          }
+        },
+        "canAppendRows": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reportContentTable": {
+      "type": "object",
+      "required": [
+        "rows",
+        "canAppendRows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/$defs/reportContentCell"
+            }
+          }
+        },
+        "canAppendRows": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reportContentCell": {
+      "type": "object",
+      "required": [
+        "value",
+        "valueKind",
+        "editable"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65536
+        },
+        "valueKind": {
+          "enum": [
+            "text",
+            "number",
+            "boolean",
+            "formula"
+          ]
+        },
+        "editable": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "valueKind": {
+                "const": "formula"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "editable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
