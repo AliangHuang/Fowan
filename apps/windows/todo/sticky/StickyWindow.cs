@@ -85,6 +85,7 @@ public sealed class StickyWindow : Window
     private bool _isMenuHidden;
     private bool _acceptFloatingTaskbarRestore;
     private bool _isFloatingTaskbarRestorePending;
+    private bool _isWindowStateTransitionInProgress;
     private readonly DispatcherTimer _menuHideTimer;
     private readonly DispatcherTimer _recurringTaskTimer;
 
@@ -213,6 +214,7 @@ public sealed class StickyWindow : Window
             this,
             () => _workspace.State.Settings.IsStickyFloatingModeEnabled,
             RestoreFromExternalActivation,
+            BeginMinimizeTransition,
             () => _windowDrag.IsCandidate,
             () => _windowDrag.CompleteFromExternal(allowFloatingClickRestore: true),
             () => _floatingMode.TryEnter(),
@@ -328,19 +330,39 @@ public sealed class StickyWindow : Window
         };
         StateChanged += (_, _) =>
         {
-            if (!_acceptFloatingTaskbarRestore || _isFloatingTaskbarRestorePending ||
-                WindowState != WindowState.Minimized || !_workspace.State.Settings.IsStickyFloatingModeEnabled)
+            if (WindowState == WindowState.Minimized)
+            {
+                BeginMinimizeTransition();
+
+                if (_acceptFloatingTaskbarRestore && !_isFloatingTaskbarRestorePending &&
+                    _workspace.State.Settings.IsStickyFloatingModeEnabled)
+                {
+                    _isFloatingTaskbarRestorePending = true;
+                    Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                    {
+                        _isFloatingTaskbarRestorePending = false;
+                        if (WindowState == WindowState.Minimized && _workspace.State.Settings.IsStickyFloatingModeEnabled)
+                        {
+                            RestoreFromExternalActivation();
+                        }
+                    }));
+                }
+
+                return;
+            }
+
+            if (WindowState != WindowState.Normal || !_isWindowStateTransitionInProgress)
             {
                 return;
             }
 
-            _isFloatingTaskbarRestorePending = true;
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                _isFloatingTaskbarRestorePending = false;
-                if (WindowState == WindowState.Minimized && _workspace.State.Settings.IsStickyFloatingModeEnabled)
+                if (WindowState == WindowState.Normal)
                 {
-                    RestoreFromExternalActivation();
+                    _isWindowStateTransitionInProgress = false;
+                    _isPointerOverMainWindow = IsMouseOver;
+                    ApplyStickyPresentationPreferences();
                 }
             }));
         };
@@ -555,6 +577,11 @@ public sealed class StickyWindow : Window
     private void SynchronizeStickyWindows(bool reposition)
     {
         _childWindows.Synchronize(reposition);
+        if (_isWindowStateTransitionInProgress)
+        {
+            _menuWindows?.HideBeforeOwnerMinimize();
+            return;
+        }
         _menuWindows?.Synchronize(!_isMenuHidden);
     }
 
@@ -689,6 +716,12 @@ public sealed class StickyWindow : Window
     {
         var settings = _workspace.State.Settings;
 
+        if (_isWindowStateTransitionInProgress)
+        {
+            _menuWindows?.HideBeforeOwnerMinimize();
+            return;
+        }
+
         if (_isReturningToMain || !IsVisible)
         {
             _isMenuHidden = true;
@@ -719,6 +752,13 @@ public sealed class StickyWindow : Window
             ? new CornerRadius(0, 0, 8, 8)
             : new CornerRadius(8);
         _menuWindows?.ApplyPresentation(showMenu);
+    }
+
+    private void BeginMinimizeTransition()
+    {
+        _isWindowStateTransitionInProgress = true;
+        _menuHideTimer.Stop();
+        _menuWindows?.HideBeforeOwnerMinimize();
     }
 
     private bool IsPointerOverStickySurface() =>

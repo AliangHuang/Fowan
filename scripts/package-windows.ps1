@@ -27,7 +27,6 @@ $prereqRoot = Join-Path $installerRoot "prerequisites"
 $vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
 $dotNetDesktopRuntimePath = Join-Path $prereqRoot "windowsdesktop-runtime-8-x64.exe"
 $windowsAppRuntimeInstallerPath = Join-Path $prereqRoot "WindowsAppRuntimeInstall-x64.exe"
-$portablePrerequisitesScript = Join-Path $repoRoot "installer/windows/install-fowan-prerequisites.ps1"
 $windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
@@ -321,7 +320,6 @@ function Write-ChecksumManifest {
 
     $files = @(
         "FowanSetup-$Version-$RuntimeIdentifier.exe",
-        "Fowan-$Version-portable.zip",
         "fowan-update.json"
     )
     $lines = foreach ($file in $files) {
@@ -417,7 +415,7 @@ if (-not (Test-Path -LiteralPath $issPath -PathType Leaf)) {
 
 $iscc = Resolve-Iscc
 if (-not $iscc) {
-    throw "Inno Setup compiler ISCC.exe was not found. A publish directory is created only when both installer and portable zip succeed."
+    throw "Inno Setup compiler ISCC.exe was not found. A publish directory is created only after the installer succeeds."
 }
 
 & $iscc `
@@ -445,23 +443,8 @@ $updateManifestPath = Write-UpdateManifest `
     -ReleaseRepository $ReleaseRepository `
     -OutputRoot $installerRoot
 
-$portableRoot = Join-Path $installerRoot "Fowan-$Version-portable"
-Copy-BuildDirectoryContent -Source $appStage -Destination (Join-Path $portableRoot "app")
-Copy-BuildDirectoryContent -Source $prereqRoot -Destination (Join-Path $portableRoot "prerequisites")
-Copy-Item -LiteralPath $portablePrerequisitesScript -Destination (Join-Path $portableRoot "prerequisites/install-fowan-prerequisites.ps1") -Force
-[IO.File]::WriteAllText(
-    (Join-Path $portableRoot "README.txt"),
-    "首次使用前，请以管理员身份运行 prerequisites\\install-fowan-prerequisites.ps1 安装共享 .NET 8 Desktop Runtime、Windows App Runtime 和 VC++ 运行库；完成后运行 app\\Fowan.Windows.exe。`r`n",
-    [Text.UTF8Encoding]::new($false))
-$portableZip = Join-Path $installerRoot "Fowan-$Version-portable.zip"
-Compress-Archive -Path $portableRoot -DestinationPath $portableZip -CompressionLevel Optimal -Force
-if (-not (Test-Path -LiteralPath $portableZip -PathType Leaf)) {
-    throw "Portable archive was not created: $portableZip"
-}
-
 Remove-Item -LiteralPath $appStage -Recurse -Force
 Remove-Item -LiteralPath $prereqRoot -Recurse -Force
-Remove-Item -LiteralPath $portableRoot -Recurse -Force
 $checksumPath = Write-ChecksumManifest -OutputRoot $installerRoot
 $retentionPending = $true
 $expiredVersions = @(Move-ExpiredPublishDirectories `
@@ -477,7 +460,6 @@ $retentionPending = $false
 Remove-IsolatedBuildDirectory -Path $retentionRoot
 
 Write-Host "Fowan Windows installer: $(Join-Path $publishVersionRoot (Split-Path -Leaf $setupExe))"
-Write-Host "Portable archive: $(Join-Path $publishVersionRoot (Split-Path -Leaf $portableZip))"
 Write-Host "Update manifest: $(Join-Path $publishVersionRoot (Split-Path -Leaf $updateManifestPath))"
 Write-Host "Checksums: $(Join-Path $publishVersionRoot (Split-Path -Leaf $checksumPath))"
 }

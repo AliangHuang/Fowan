@@ -1,4 +1,5 @@
 using Fowan.Todo.Shared.Models;
+using Fowan.Todo.Sticky.Windows.Platform.Windows;
 using Fowan.Todo.Sticky.Windows.Presentation;
 
 namespace Fowan.Todo.Sticky.Windows.Coordination;
@@ -10,6 +11,7 @@ internal sealed class StickyMenuWindowCoordinator
 {
     private readonly Func<bool> _isFloating;
     private readonly StickyMenuWindow _menuWindow;
+    private readonly StickyMenuNativeWindowController _nativeWindow;
 
     public StickyMenuWindowCoordinator(
         StickyWindow owner,
@@ -20,6 +22,7 @@ internal sealed class StickyMenuWindowCoordinator
     {
         _isFloating = isFloating;
         _menuWindow = new StickyMenuWindow(owner, shellBuilder, settings, updatePointerState);
+        _nativeWindow = new StickyMenuNativeWindowController(_menuWindow);
     }
 
     public void ApplyPresentation(bool showMenu) =>
@@ -33,5 +36,11 @@ internal sealed class StickyMenuWindowCoordinator
 
     public void HideForOwnerTransition() => _menuWindow.HideForOwnerTransition();
 
-    public void Close() => _menuWindow.CloseMenu();
+    public void HideBeforeOwnerMinimize() => _nativeWindow.HideImmediately();
+
+    public void Close()
+    {
+        _nativeWindow.Dispose();
+        _menuWindow.CloseMenu();
+    }
 }

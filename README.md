@@ -116,14 +116,14 @@ dialog failure, and check failure all complete with an observed outcome.
 Installer creation is an explicit release-only workflow and is not run by CI:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.2.1 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
-.\scripts\package-windows.ps1 -Version 0.2.1 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
+.\scripts\package-windows.ps1 -Version 0.2.2 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.2.2 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
 The first command is a preflight only: it cleans its isolated staging directory
 and never creates a `publish/` version. A successful release atomically writes
 only these deliverables to `publish/windows/win-x64/<version>/`: the installer,
-portable ZIP, update manifest, and SHA-256 manifest. Before that atomic write,
+update manifest, and SHA-256 manifest. Before that atomic write,
 the script checks version retention and keeps only the newest four published
 versions; expired versions are restored automatically if publication fails.
 

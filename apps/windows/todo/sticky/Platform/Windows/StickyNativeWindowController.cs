@@ -8,6 +8,7 @@ internal sealed class StickyNativeWindowController(
     Window window,
     Func<bool> isFloating,
     Action restoreFloatingWindow,
+    Action beginMinimizeTransition,
     Func<bool> isWindowDragCandidate,
     Action completeWindowDrag,
     Func<bool> tryEnterFloating,
@@ -74,11 +75,15 @@ internal sealed class StickyNativeWindowController(
             window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, synchronizeForDpiChange);
             return IntPtr.Zero;
         }
-        if (message == WmSysCommand && isFloating() && (wParam.ToInt64() & SysCommandMask) == ScMinimize)
+        if (message == WmSysCommand && (wParam.ToInt64() & SysCommandMask) == ScMinimize)
         {
-            handled = true;
-            window.Dispatcher.BeginInvoke(restoreFloatingWindow);
-            return IntPtr.Zero;
+            beginMinimizeTransition();
+            if (isFloating())
+            {
+                handled = true;
+                window.Dispatcher.BeginInvoke(restoreFloatingWindow);
+                return IntPtr.Zero;
+            }
         }
         if ((message == WmLeftButtonUp || message == WmNonClientLeftButtonUp) && isWindowDragCandidate())
             window.Dispatcher.BeginInvoke(completeWindowDrag);

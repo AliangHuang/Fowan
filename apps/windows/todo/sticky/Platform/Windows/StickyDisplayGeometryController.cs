@@ -125,12 +125,13 @@ internal sealed class StickyDisplayGeometryController(
         var monitor = MonitorFromRect(ref dragRect, MonitorDefaultToNearest);
         if (!TryGetMonitorInfo(monitor, out var monitorInfo)) return;
         var bounds = monitorInfo.Monitor;
-        var dx = dragRect.Left < bounds.Left ? bounds.Left - dragRect.Left : dragRect.Right > bounds.Right ? bounds.Right - dragRect.Right : 0;
         var dy = dragRect.Top < bounds.Top ? bounds.Top - dragRect.Top : dragRect.Bottom > bounds.Bottom ? bounds.Bottom - dragRect.Bottom : 0;
-        if (dx == 0 && dy == 0) return;
-        var scale = DeviceScale();
-        window.Left += dx / scale.X;
-        window.Top += dy / scale.Y;
+        if (dy == 0) return;
+
+        // The floating-mode decision deliberately uses the window center. Do not pull a
+        // normal sticky window back horizontally before that decision, because partial
+        // left/right off-screen placement is an intentional part of the drag behavior.
+        window.Top += dy / DeviceScale().Y;
     }
 
     private bool TryGetMenuAndTaskBodyScreenRect(out NativeRect rect)

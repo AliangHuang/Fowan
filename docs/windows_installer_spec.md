@@ -2,7 +2,7 @@
 
 ## 目标
 
-Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。自 0.2.1 起，安装包采用离线全量 `.exe` 安装器，并在整套工具间共享一份 .NET Desktop Runtime、Windows App Runtime 和 Visual C++ Runtime；用户不需要手动准备运行库。
+Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。自 0.2.1 起，安装包采用离线全量 `.exe` 安装器，并在整套工具间共享一份 .NET Desktop Runtime、Windows App Runtime 和 Visual C++ Runtime；用户不需要手动准备运行库。自 0.2.2 起仅发布安装包，不再提供免安装压缩包。
 
 首版不使用 MSIX，不做在线依赖下载，也不内置代码签名流程。正式外发前应对安装包进行 Authenticode 签名，降低 Windows SmartScreen 拦截概率。
 
@@ -159,33 +159,22 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.2.1
+.\scripts\package-windows.ps1 -Version 0.2.2 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
-成功发布后，版本目录只保留安装包、免安装压缩包、更新清单和 SHA-256 校验清单：
+成功发布后，版本目录只保留安装包、更新清单和 SHA-256 校验清单：
 
 ```text
-publish\windows\win-x64\0.2.1\FowanSetup-0.2.1-win-x64.exe
-publish\windows\win-x64\0.2.1\Fowan-0.2.1-portable.zip
-publish\windows\win-x64\0.2.1\fowan-update.json
-publish\windows\win-x64\0.2.1\SHA256SUMS.txt
+publish\windows\win-x64\0.2.2\FowanSetup-0.2.2-win-x64.exe
+publish\windows\win-x64\0.2.2\fowan-update.json
+publish\windows\win-x64\0.2.2\SHA256SUMS.txt
 ```
 
 如果当前机器没有安装 Inno Setup 编译器，正式发布整体失败；脚本清理隔离 staging，且不创建不完整的版本目录。
 
 发布前脚本按版本号检查 `publish\windows\win-x64\`，最多保留最新四个版本。为新版本腾出位置时，最旧版本会先移入隔离 staging；只有新版本原子写入成功后才永久清理，失败会自动恢复旧版本。
 
-打包脚本在 `build/staging/` 中生成应用树和更新日志，再将更新日志同时放入安装包和免安装压缩包。发布目录不保留应用树、运行库或安装器 staging。
-
-```text
-Fowan-0.2.1-portable\app\ReleaseNotes\release-notes.txt
-Fowan-0.2.1-portable\app\ReleaseNotes\toolbox.md
-Fowan-0.2.1-portable\app\ReleaseNotes\todo.md
-Fowan-0.2.1-portable\app\ReleaseNotes\diary.md
-Fowan-0.2.1-portable\app\ReleaseNotes\report.md
-Fowan-0.2.1-portable\app\ReleaseNotes\ai-chat.md
-Fowan-0.2.1-portable\app\ReleaseNotes\ai-config.md
-```
+打包脚本在 `build/staging/` 中生成应用树和更新日志，并将更新日志放入安装包。发布目录不保留应用树、运行库或安装器 staging。
 
 GitHub Release 自动更新发布要求：
 
@@ -195,16 +184,7 @@ GitHub Release 自动更新发布要求：
 - 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
 - 客户端必须校验 `installerSha256` 后才能启动安装器。
 
-打包脚本会从 Microsoft 官方链接下载 .NET 8 Desktop Runtime x64、Windows App Runtime 2.2 x64 和 Visual C++ Redistributable x64 到隔离 staging；免安装压缩包保留这些运行库和管理员安装脚本：
-
-```text
-Fowan-0.2.1-portable\prerequisites\windowsdesktop-runtime-8-x64.exe
-Fowan-0.2.1-portable\prerequisites\WindowsAppRuntimeInstall-x64.exe
-Fowan-0.2.1-portable\prerequisites\vc_redist.x64.exe
-Fowan-0.2.1-portable\prerequisites\install-fowan-prerequisites.ps1
-```
-
-下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation。安装器会把该运行库打入最终 setup exe。
+打包脚本会从 Microsoft 官方链接下载 .NET 8 Desktop Runtime x64、Windows App Runtime 2.2 x64 和 Visual C++ Redistributable x64 到隔离 staging。下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation；安装器会把这些运行库打入最终 setup exe。
 
 ## 验收场景
 

@@ -27,12 +27,14 @@ $releaseChangelogs = @(
 )
 foreach ($relativePath in $releaseChangelogs) {
     $changelog = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "changelogs/$relativePath")
-    Assert-True ($changelog -match '(?m)^##\s+0\.2\.1(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.1: $relativePath"
+    Assert-True ($changelog -match '(?m)^##\s+0\.2\.2(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.2: $relativePath"
 }
 Assert-True ($packageScript.Contains('--self-contained false')) "release packaging must use the shared .NET Desktop Runtime"
 Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=false')) "release packaging must use the shared Windows App Runtime"
 Assert-True ($packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must include the .NET Desktop Runtime prerequisite"
 Assert-True ($packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must include the Windows App Runtime prerequisite"
+Assert-True (-not $packageScript.Contains('Fowan-$Version-portable.zip')) "release packaging must not create a portable ZIP"
+Assert-True (-not $packageScript.Contains('Compress-Archive')) "release packaging must not archive a portable delivery"
 Assert-True ($stopScript.Contains('"Report"')) "stop-windows must support the Report component"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.Dev.exe')) "stop-windows must stop the development Report runtime"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.exe')) "stop-windows must stop the release Report runtime"
@@ -111,7 +113,6 @@ try {
 
     $publishStage = New-IsolatedBuildDirectory -RepositoryRoot $repository -Component "publish"
     Set-Content -LiteralPath (Join-Path $publishStage "FowanSetup-1.2.3-win-x64.exe") -Value "setup"
-    Set-Content -LiteralPath (Join-Path $publishStage "Fowan-1.2.3-portable.zip") -Value "portable"
     $publishDestination = Join-Path $publishRoot "1.2.3"
     Install-IsolatedBuildDirectory -StagingDirectory $publishStage -Destination $publishDestination -AllowedOutputRoot $publishRoot
     Assert-True (Test-Path -LiteralPath (Join-Path $publishDestination "FowanSetup-1.2.3-win-x64.exe")) "publish delivery was not installed"
