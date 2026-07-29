@@ -212,6 +212,63 @@
       "stateOwner": null,
       "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
       "modules": {}
+    },
+    {
+      "id": "reminder-contracts",
+      "path": "apps/windows/reminders/contracts",
+      "kind": "contracts",
+      "stateOwner": null,
+      "proposal": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+      "modules": {
+        "Models": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md"
+      }
+    },
+    {
+      "id": "reminder-shared",
+      "path": "apps/windows/reminders/shared",
+      "kind": "shared",
+      "stateOwner": null,
+      "proposal": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+      "adrs": ["docs/adr/0008-local-reminder-and-toolbox-wake-boundary.md"],
+      "tests": ["tests/Fowan.Pomodoro.Shared.Tests"],
+      "modules": {
+        "Services": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md"
+      }
+    },
+    {
+      "id": "pomodoro-shared",
+      "path": "apps/windows/pomodoro/shared",
+      "kind": "shared",
+      "stateOwner": "PomodoroWorkspace",
+      "proposal": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+      "adrs": ["docs/adr/0008-local-reminder-and-toolbox-wake-boundary.md"],
+      "tests": ["tests/Fowan.Pomodoro.Shared.Tests"],
+      "modules": {
+        "Application": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+        "Models": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+        "Services": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md"
+      }
+    },
+    {
+      "id": "pomodoro-windows",
+      "path": "apps/windows/pomodoro/app",
+      "kind": "tool",
+      "stateOwner": "PomodoroWorkspace",
+      "proposal": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+      "adrs": ["docs/adr/0008-local-reminder-and-toolbox-wake-boundary.md"],
+      "tests": ["tests/Fowan.Pomodoro.Shared.Tests"],
+      "modules": {
+        "Application": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+        "Platform": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md"
+      }
+    },
+    {
+      "id": "pomodoro-tests",
+      "path": "tests/Fowan.Pomodoro.Shared.Tests",
+      "kind": "test",
+      "stateOwner": null,
+      "proposal": "docs/design-proposals/DP-0004-windows-pomodoro-reminders.md",
+      "modules": {}
     }
   ]
 }

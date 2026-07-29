@@ -40,6 +40,8 @@
   "Tool_QuickCapture_Description": "快速记录文本、剪贴板内容和零散想法，暂不选择最终归属。",
   "Tool_Todo": "待办",
   "Tool_Todo_Description": "打开独立待办工具，管理任务和便签模式。",
+  "Tool_Pomodoro": "番茄钟",
+  "Tool_Pomodoro_Description": "使用番茄工作法专注，并联动待办提醒和每日摘要。",
   "Tool_Diary": "日记",
   "Tool_Diary_Description": "打开独立日记工具，记录每日想法并查看时间线。",
   "Tool_Notes": "笔记",

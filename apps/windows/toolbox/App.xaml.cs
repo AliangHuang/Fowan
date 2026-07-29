@@ -37,6 +37,11 @@ public partial class App : global::Microsoft.UI.Xaml.Application
         try
         {
             StartupTrace.Mark("OnLaunched begin");
+            if (Environment.GetCommandLineArgs().Any(argument =>
+                    string.Equals(argument, "--configure-reminder-residency", StringComparison.OrdinalIgnoreCase)))
+            {
+                ConfigureReminderResidency();
+            }
             if (!TryAcquireSingleInstance())
             {
                 SignalExistingInstance();
@@ -58,6 +63,7 @@ public partial class App : global::Microsoft.UI.Xaml.Application
             else
             {
                 mainWindow.Activate();
+                mainWindow.InitializeTrayCloseInterception();
                 StartupTrace.Mark("Window activated");
             }
 
@@ -74,6 +80,15 @@ public partial class App : global::Microsoft.UI.Xaml.Application
             LogStartupFailure(exception);
             throw;
         }
+    }
+
+    private static void ConfigureReminderResidency()
+    {
+        var settingsStore = new SettingsStore();
+        var settings = settingsStore.Load();
+        settings.CloseBehavior = CloseBehaviorIds.MinimizeToTray;
+        settingsStore.Save(settings);
+        new AutoStartService().SetEnabled(true);
     }
 
     private bool TryAcquireSingleInstance()

@@ -18,7 +18,10 @@ internal sealed record TodoTaskDetailActions(
     Action<string> SaveNotes,
     Func<Task> AddSubtask,
     Func<Task> ToggleCompleted,
-    Func<Task> Delete);
+    Func<Task> Delete,
+    string ReminderSummary,
+    Action OpenReminderEditor,
+    bool IsReminderSyncPending);
 
 internal sealed record TodoTaskDetailPalette(
     Brush Transparent,
@@ -76,6 +79,7 @@ internal sealed class TodoTaskDetailView(
             Height = 1, Background = palette.Divider, Margin = new Thickness(0, 22, 0, 4)
         });
         AddSchedulingFields(panel, task, lists, actions);
+        panel.Children.Add(ReminderField(actions));
         panel.Children.Add(new Border
         {
             Height = 1, Background = palette.SoftDivider, Margin = new Thickness(0, 2, 0, 0)
@@ -266,6 +270,18 @@ internal sealed class TodoTaskDetailView(
         Grid.SetColumn(clear, 1);
         dueGrid.Children.Add(clear);
         panel.Children.Add(DetailField("\uE787", "截止日期", dueGrid));
+    }
+
+    private UIElement ReminderField(TodoTaskDetailActions actions)
+    {
+        var content = new StackPanel { Spacing = 6 };
+        content.Children.Add(new TextBlock { Text = actions.ReminderSummary, Foreground = palette.SecondaryText, TextWrapping = TextWrapping.Wrap });
+        if (actions.IsReminderSyncPending)
+            content.Children.Add(new TextBlock { Text = "提醒同步待处理，下次打开番茄钟会自动重试。", Foreground = palette.Important, TextWrapping = TextWrapping.Wrap });
+        var edit = controls.PillButton("在番茄钟中编辑", "\uE7ED");
+        edit.Click += (_, _) => actions.OpenReminderEditor();
+        content.Children.Add(edit);
+        return DetailField("\uE7ED", "提醒", content);
     }
 
     private StackPanel Actions(TodoTask task, string? childBlockedReason, TodoTaskDetailActions actions)

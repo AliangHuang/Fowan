@@ -2,7 +2,7 @@
 
 ## 目标
 
-Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。自 0.2.1 起，安装包采用离线全量 `.exe` 安装器，并在整套工具间共享一份 .NET Desktop Runtime、Windows App Runtime 和 Visual C++ Runtime；用户不需要手动准备运行库。自 0.2.2 起仅发布安装包，不再提供免安装压缩包。
+Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。自 0.2.1 起，安装包采用 framework-dependent 的 `.exe` 安装器，并在整套工具间共享系统已安装的 .NET Desktop Runtime、Windows App Runtime 和 Visual C++ Runtime；安装包不会内置这些运行库。自 0.2.2 起仅发布安装包，不再提供免安装压缩包。
 
 首版不使用 MSIX，不做在线依赖下载，也不内置代码签名流程。正式外发前应对安装包进行 Authenticode 签名，降低 Windows SmartScreen 拦截概率。
 
@@ -14,8 +14,8 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - 安装向导必须显示安装目录选择页，允许用户自定义安装目录。
 - 安装向导必须显示隐私协议页，用户同意后才能继续安装。
 - 安装向导必须询问是否创建桌面快捷方式，默认勾选创建。
-- 安装器必须随包携带并在整套工具间共享 Microsoft Visual C++ Redistributable x64、.NET 8 Desktop Runtime x64 和 Windows App Runtime 2.2 x64。
-- .NET 8 Desktop Runtime 缺失时必须静默安装；Windows App Runtime 必须通过其官方安装器完成注册；VC++ x64 v14 已存在时可以跳过安装。
+- 安装器必须在复制任何 Fowan 文件前检查 Microsoft Visual C++ Redistributable x64、.NET 8 Desktop Runtime x64 和 Windows App Runtime 2.2 x64。
+- 任一运行库缺失时，安装器必须列出缺失项、提示用户打开微软官方下载页并停止安装；不得下载、嵌入或静默安装这些运行库。用户完成安装后重新运行 Fowan 安装包。
 - 框架依赖的 WinUI 项目必须保持 Windows App SDK bootstrapper 配置，使其加载安装器注册的 Windows App Runtime。
 - 第一版只生成 `win-x64` 安装包。
 
@@ -38,7 +38,7 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 
 主工具箱通过 `{app}\Tools\Todo\Fowan.Todo.Windows.exe` 启动 Todo 工具。Todo 主窗口和 Sticky 窗口必须在同一个工具目录下，以便 Sticky 能返回 Todo 主窗口。
 
-程序文件不得写入用户业务数据。安装目录只用于应用二进制、资源、运行库和安装器辅助脚本。
+程序文件不得写入用户业务数据。安装目录只用于应用二进制、资源和安装器辅助脚本；系统运行库由 Windows 统一安装和管理。
 
 `ReleaseNotes` 目录只包含当前安装包版本的用户可见更新日志。完整历史 changelog 保留在仓库内，不随安装包全量发布。
 
@@ -159,15 +159,15 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.2.2 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
+.\scripts\package-windows.ps1 -Version 0.2.3 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
 成功发布后，版本目录只保留安装包、更新清单和 SHA-256 校验清单：
 
 ```text
-publish\windows\win-x64\0.2.2\FowanSetup-0.2.2-win-x64.exe
-publish\windows\win-x64\0.2.2\fowan-update.json
-publish\windows\win-x64\0.2.2\SHA256SUMS.txt
+publish\windows\win-x64\0.2.3\FowanSetup-0.2.3-win-x64.exe
+publish\windows\win-x64\0.2.3\fowan-update.json
+publish\windows\win-x64\0.2.3\SHA256SUMS.txt
 ```
 
 如果当前机器没有安装 Inno Setup 编译器，正式发布整体失败；脚本清理隔离 staging，且不创建不完整的版本目录。
@@ -184,12 +184,12 @@ GitHub Release 自动更新发布要求：
 - 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
 - 客户端必须校验 `installerSha256` 后才能启动安装器。
 
-打包脚本会从 Microsoft 官方链接下载 .NET 8 Desktop Runtime x64、Windows App Runtime 2.2 x64 和 Visual C++ Redistributable x64 到隔离 staging。下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation；安装器会把这些运行库打入最终 setup exe。
+打包脚本只构建 Fowan 应用文件、更新清单和安装器，不下载或嵌入 .NET 8 Desktop Runtime、Windows App Runtime 或 Visual C++ Redistributable。缺失依赖时，安装器将打开对应微软官方下载页。
 
 ## 验收场景
 
-- 干净 Windows 10 19041+ 或 Windows 11 机器上安装成功，无需手动安装运行库。
-- 干净机器缺少 .NET 8 Desktop Runtime、Windows App Runtime 或 Visual C++ Redistributable 时，安装器自动安装这些共享运行库。
+- 已安装所需运行库的 Windows 10 19041+ 或 Windows 11 机器上安装成功。
+- 缺少 .NET 8 Desktop Runtime、Windows App Runtime 或 Visual C++ Redistributable 的机器上，安装器在复制 Fowan 文件前列出缺失项并打开微软官方下载页；运行库安装完成后重跑安装包成功。
 - 安装时必须同意隐私协议。
 - 安装时可以自定义安装目录。
 - 安装时可以选择创建或不创建桌面快捷方式。

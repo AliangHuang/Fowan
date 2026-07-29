@@ -2,6 +2,7 @@ using Fowan.Todo.Shared.Application;
 using Fowan.Todo.Shared.Models;
 using Fowan.Todo.Shared.Services;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using static Fowan.Todo.Sticky.Windows.Platform.Windows.StickyNativeMethods;
 
@@ -10,7 +11,7 @@ namespace Fowan.Todo.Sticky.Windows.Platform.Windows;
 internal sealed class StickyFloatingModeController(
     Window window,
     TodoWorkspace workspace,
-    Func<FrameworkElement> brandIcon,
+    Func<(double Top, double Height)> titleBarGeometry,
     Func<(double X, double Y)> deviceScale,
     Func<(double Width, double Height)> monitorSize,
     Func<double> menuHeight,
@@ -21,12 +22,12 @@ internal sealed class StickyFloatingModeController(
     Action refresh,
     Action<bool> updateMinimumSize,
     Action<IntPtr, bool> setNativeResize,
+    Action<IntPtr, bool> setFloatingMouseInput,
     Action<bool> enforceDisplayConstraints)
 {
     private const double BaseWidth = 408;
     private const double BaseHeight = 568;
     private const double FloatingSize = 52;
-    private const double EdgeThreshold = 16;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
     public bool IsApplying { get; private set; }
@@ -41,7 +42,11 @@ internal sealed class StickyFloatingModeController(
         window.ResizeMode = ResizeMode.CanResize;
         window.Topmost = workspace.Settings.IsStickyTopmost;
         var hwnd = Handle();
-        if (hwnd != IntPtr.Zero) setNativeResize(hwnd, true);
+        if (hwnd != IntPtr.Zero)
+        {
+            setNativeResize(hwnd, true);
+            setFloatingMouseInput(hwnd, false);
+        }
         enforceDisplayConstraints(save);
     }
 
@@ -58,9 +63,14 @@ internal sealed class StickyFloatingModeController(
         var scale = deviceScale();
         var workLeft = info.WorkArea.Left / scale.X;
         var workRight = info.WorkArea.Right / scale.X;
-        var center = window.Left + (window.ActualWidth > 0 ? window.ActualWidth : window.Width) / 2;
-        var edge = TodoStickyPlacement.FindDockEdgeByCenter(workLeft, workRight, center, EdgeThreshold);
+        var windowWidth = window.ActualWidth > 0 ? window.ActualWidth : window.Width;
+        var edge = TodoStickyPlacement.FindDockEdgeByWindowBounds(
+            workLeft,
+            workRight,
+            window.Left,
+            window.Left + windowWidth);
         if (edge is null) return false;
+        var titleBar = titleBarGeometry();
         hideMenuWindow();
         var restore = startGeometry ?? new StickyWindowGeometry(window.Left, window.Top, window.Width, window.Height);
         var expanded = TodoStickyPlacement.ExpandedGeometryFromBody(restore.Top, restore.Height, menuHeight());
@@ -69,7 +79,7 @@ internal sealed class StickyFloatingModeController(
         settings.StickyWidth = restore.Width;
         settings.StickyHeight = expanded.Height;
         settings.StickyFloatingEdge = edge;
-        settings.StickyFloatingTop = AlignedTop();
+        settings.StickyFloatingTop = AlignedTop(titleBar);
         settings.IsStickyFloatingModeEnabled = true;
         workspace.SaveSettings();
         closeChildren();
@@ -117,11 +127,11 @@ internal sealed class StickyFloatingModeController(
                 body.Height,
                 window.MinHeight,
                 Math.Max(window.MinHeight, max.Height - menuHeight()));
-            if (settings.StickyLeft.HasValue && settings.StickyTop.HasValue)
+            if (TodoStickyPlacement.IsUsableStoredOrigin(settings.StickyLeft, settings.StickyTop))
             {
-                window.Left = settings.StickyLeft.Value;
+                window.Left = settings.StickyLeft!.Value;
                 window.Top = TodoStickyPlacement.BodyGeometryFromExpanded(
-                    settings.StickyTop.Value,
+                    settings.StickyTop!.Value,
                     0,
                     menuHeight()).Top;
             }
@@ -130,7 +140,11 @@ internal sealed class StickyFloatingModeController(
             applyStoredSettings();
             refresh();
             var hwnd = Handle();
-            if (hwnd != IntPtr.Zero) setNativeResize(hwnd, true);
+            if (hwnd != IntPtr.Zero)
+            {
+                setNativeResize(hwnd, true);
+                setFloatingMouseInput(hwnd, false);
+            }
         }
         finally
         {
@@ -170,6 +184,8 @@ internal sealed class StickyFloatingModeController(
             window.Topmost = true;
             settings.StickyFloatingTop = window.Top;
             setNativeResize(hwnd, false);
+            setFloatingMouseInput(hwnd, true);
+            Keyboard.ClearFocus();
         }
         finally
         {
@@ -178,13 +194,8 @@ internal sealed class StickyFloatingModeController(
         if (save) workspace.SaveSettings();
     }
 
-    private double AlignedTop()
-    {
-        var icon = brandIcon();
-        if (!icon.IsLoaded || icon.ActualHeight <= 0) return window.Top;
-        var iconTop = icon.TranslatePoint(new Point(0, 0), window).Y;
-        return TodoStickyPlacement.AlignCenters(window.Top + iconTop, icon.ActualHeight, FloatingSize);
-    }
+    private static double AlignedTop((double Top, double Height) titleBar) =>
+        TodoStickyPlacement.AlignCenters(titleBar.Top, titleBar.Height, FloatingSize);
 
     private IntPtr Handle() => new WindowInteropHelper(window).Handle;
 

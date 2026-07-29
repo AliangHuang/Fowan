@@ -40,11 +40,12 @@ $components = @(
     @{ Name = "Todo"; Changelog = "changelogs/tools/todo/CHANGELOG.md"; Pattern = '^(apps/windows/todo/|tests/Fowan\.Todo\.|docs/windows_todo_)' },
     @{ Name = "Diary"; Changelog = "changelogs/tools/diary/CHANGELOG.md"; Pattern = '^(apps/windows/diary/|tests/Fowan\.Diary\.|docs/windows_diary_)' }
 )
-$placeholder = '(?i)no[ -]user[ -](?:visible|facing) changes|maintenance release|没有用户可见变化|无用户可见变化|随.{0,30}发布包更新'
+$placeholder = '(?i)no[ -]user[ -](?:visible|facing) changes|maintenance release|\u6ca1\u6709\u7528\u6237\u53ef\u89c1\u53d8\u5316|\u65e0\u7528\u6237\u53ef\u89c1\u53d8\u5316|\u968f.{0,30}\u53d1\u5e03\u5305\u66f4\u65b0'
 foreach ($component in $components) {
     $section = Get-VersionSection $component.Changelog
     $changes = @($changedFiles | Where-Object { $_ -match $component.Pattern })
-    if (([regex]::Matches($section, '(?m)^-\s+')).Count -lt 1) {
+    $bulletCount = ([regex]::Matches($section, '(?m)^-\s+')).Count
+    if ($bulletCount -lt 1) {
         throw "$($component.Changelog) version $Version must contain at least one release-note bullet."
     }
     if ($changes.Count -gt 0 -and $section -match $placeholder -and $component.Name -notin $AllowNoUserVisibleChanges) {

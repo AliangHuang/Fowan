@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
+    <ProjectReference Include="..\pomodoro\shared\Fowan.Pomodoro.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

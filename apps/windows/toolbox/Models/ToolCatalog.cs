@@ -19,6 +19,7 @@ public static class ToolCatalog
         Available("toolbox-home", "Tool_ToolboxHome", "Tool_ToolboxHome_Description", "\uE80F", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
         Disabled("quick-capture", "Tool_QuickCapture", "Tool_QuickCapture_Description", "\uE722", "capture", ProductVersion, CurrentReleaseDate),
         Available("todo", "Tool_Todo", "Tool_Todo_Description", "\uE8FD", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
+        Available("pomodoro", "Tool_Pomodoro", "Tool_Pomodoro_Description", "\uE823", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
         Available("diary", "Tool_Diary", "Tool_Diary_Description", "\uE8A5", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
         Planned("notes", "Tool_Notes", "Tool_Notes_Description", "\uE70B", "organize"),
         Planned("knowledge", "Tool_Knowledge", "Tool_Knowledge_Description", "\uE8D2", "knowledge"),

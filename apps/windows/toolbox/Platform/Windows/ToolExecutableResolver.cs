@@ -8,12 +8,14 @@ internal static class ToolExecutableResolver
     internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.Dev.exe";
     internal const string AiConfigExecutableName = "Fowan.Ai.Config.Windows.Dev.exe";
     internal const string ReportExecutableName = "Fowan.Report.Windows.Dev.exe";
+    internal const string PomodoroExecutableName = "Fowan.Pomodoro.Windows.Dev.exe";
 #else
     internal const string TodoExecutableName = "Fowan.Todo.Windows.exe";
     internal const string DiaryExecutableName = "Fowan.Diary.Windows.exe";
     internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.exe";
     internal const string AiConfigExecutableName = "Fowan.Ai.Config.Windows.exe";
     internal const string ReportExecutableName = "Fowan.Report.Windows.exe";
+    internal const string PomodoroExecutableName = "Fowan.Pomodoro.Windows.exe";
 #endif
 
     public static string? ResolveTodo() => Resolve(
@@ -24,6 +26,9 @@ internal static class ToolExecutableResolver
 
     public static string? ResolveReport() => Resolve(
         ReportExecutableName, "Report");
+
+    public static string? ResolvePomodoro() => Resolve(
+        PomodoroExecutableName, "Pomodoro");
 
     public static string? ResolveAi(string executableName, string installedDirectory) =>
         Resolve(executableName, Path.Combine("AI", installedDirectory));

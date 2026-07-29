@@ -79,7 +79,12 @@ internal sealed class StickyDisplayGeometryController(
         if (window.WindowState != WindowState.Normal ||
             (!window.IsLoaded && PresentationSource.FromVisual(window) is null) ||
             double.IsNaN(window.Left) || double.IsNaN(window.Top) ||
-            double.IsNaN(window.Width) || double.IsNaN(window.Height)) return;
+            double.IsNaN(window.Width) || double.IsNaN(window.Height) ||
+            !TodoStickyPlacement.IsUsableStoredOrigin(
+                window.Left,
+                window.Top,
+                DeviceScale().X,
+                DeviceScale().Y)) return;
         var current = settings();
         if (current.IsStickyFloatingModeEnabled)
         {
@@ -128,9 +133,9 @@ internal sealed class StickyDisplayGeometryController(
         var dy = dragRect.Top < bounds.Top ? bounds.Top - dragRect.Top : dragRect.Bottom > bounds.Bottom ? bounds.Bottom - dragRect.Bottom : 0;
         if (dy == 0) return;
 
-        // The floating-mode decision deliberately uses the window center. Do not pull a
-        // normal sticky window back horizontally before that decision, because partial
-        // left/right off-screen placement is an intentional part of the drag behavior.
+        // The left edge enters floating mode as soon as it crosses the work area; the
+        // right edge may overhang one fifth of the window width. Do not pull the normal
+        // sticky window back horizontally before this asymmetric decision.
         window.Top += dy / DeviceScale().Y;
     }
 

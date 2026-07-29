@@ -11,7 +11,8 @@ public sealed record ProcessLaunchRequest(
     string Target,
     bool UseShellExecute = true,
     bool Elevated = false,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    string? Arguments = null);
 
 public sealed record FileOpenRequest(
     IReadOnlyCollection<string> Extensions,

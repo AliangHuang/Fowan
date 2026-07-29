@@ -28,6 +28,8 @@ internal sealed class StickyMenuWindowCoordinator
     public void ApplyPresentation(bool showMenu) =>
         _menuWindow.ApplyPresentation(showMenu && !_isFloating());
 
+    public (double Top, double Height)? TitleBarGeometry => _menuWindow.TitleBarGeometry;
+
     public void Synchronize(bool showMenu) => ApplyPresentation(showMenu);
 
     public void Rebuild() => _menuWindow.Rebuild();

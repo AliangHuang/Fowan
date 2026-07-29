@@ -153,7 +153,7 @@ internal sealed class StickyShellBuilder(
         header.MouseLeftButtonDown += onHeaderDown;
         var grid = new Grid { Margin = new Thickness(18, 0, 16, 0), VerticalAlignment = VerticalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < 6; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        for (var i = 0; i < 5; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var brandImage = new Image
         {
@@ -192,12 +192,9 @@ internal sealed class StickyShellBuilder(
         settingsButton = controls.HeaderIconButton("\uE713", "便签设置");
         settingsButton.Click += (_, _) => toggleAdjustment();
         AddHeaderButton(grid, settingsButton, 4);
-        var minimize = controls.HeaderIconButton("\uE921", "最小化便签");
-        minimize.Click += (_, _) => window.WindowState = WindowState.Minimized;
-        AddHeaderButton(grid, minimize, 5);
         var close = controls.HeaderIconButton("\uE711", "关闭便签");
         close.Click += (_, _) => window.Close();
-        AddHeaderButton(grid, close, 6);
+        AddHeaderButton(grid, close, 5);
         header.Child = grid;
         return header;
     }

@@ -25,6 +25,7 @@ try {
     }
 
     & (Join-Path $PSScriptRoot "tests/build-output.tests.ps1")
+    & (Join-Path $PSScriptRoot "tests/windows-installer-prerequisites.tests.ps1")
     & (Join-Path $PSScriptRoot "verify-ai-protocol-generation.ps1")
     & (Join-Path $PSScriptRoot "verify-development-policy.ps1")
     & (Join-Path $PSScriptRoot "tests/development-policy-fixtures.tests.ps1")

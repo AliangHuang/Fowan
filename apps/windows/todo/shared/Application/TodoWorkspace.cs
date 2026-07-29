@@ -1,5 +1,7 @@
 using Fowan.Todo.Shared.Models;
 using Fowan.Todo.Shared.Services;
+using Fowan.Reminders.Models;
+using Fowan.Reminders.Services;
 
 namespace Fowan.Todo.Shared.Application;
 
@@ -19,21 +21,23 @@ public sealed class TodoWorkspace : ITodoCommands
     private const int HistoryLimit = 100;
 
     private readonly TodoPersistenceController _persistence;
+    private readonly ReminderService? _reminders;
     private readonly List<WorkspaceHistoryState> _undoHistory = [];
     private readonly List<WorkspaceHistoryState> _redoHistory = [];
     private TodoData _committedData;
     private TodoSettings _committedSettings;
 
-    public TodoWorkspace(ITodoRepository repository)
+    public TodoWorkspace(ITodoRepository repository, ReminderService? reminders = null)
     {
         _persistence = new TodoPersistenceController(repository);
+        _reminders = reminders;
         Data = _persistence.LoadData();
         Settings = _persistence.LoadSettings();
         _committedData = Clone(Data);
         _committedSettings = Clone(Settings);
     }
 
-    public static TodoWorkspace CreateDefault() => new(new TodoStore());
+    public static TodoWorkspace CreateDefault() => new(new TodoStore(), ReminderService.CreateDefault());
 
     public TodoData Data { get; private set; }
 
@@ -46,6 +50,8 @@ public sealed class TodoWorkspace : ITodoCommands
     public bool CanUndo => _undoHistory.Count > 0;
 
     public bool CanRedo => _redoHistory.Count > 0;
+
+    public bool IsReminderSyncPending { get; private set; }
 
     public event EventHandler<TodoChangeSet>? Changed;
 
@@ -223,6 +229,7 @@ public sealed class TodoWorkspace : ITodoCommands
         if (changed > 0)
         {
             SaveData(history);
+            SynchronizeTaskReminderState(includeDescendants ? TaskTreeIds(taskId) : [taskId], completed ? ReminderSuspensionReason.TaskCompleted : null);
         }
         return changed;
     }
@@ -444,6 +451,7 @@ public sealed class TodoWorkspace : ITodoCommands
         if (!TodoRecycleBin.DeleteTaskTree(Data, Settings, taskId)) return false;
         if (!Settings.IsRecycleBinEnabled) Settings.CollapsedTaskIds.RemoveAll(treeIds.Contains);
         SaveAll(history);
+        SynchronizeTaskReminderState(treeIds, ReminderSuspensionReason.TaskDeleted);
         return true;
     }
 
@@ -452,14 +460,17 @@ public sealed class TodoWorkspace : ITodoCommands
         var history = CaptureHistoryState();
         if (!TodoRecycleBin.RestoreTaskTree(Data, taskId)) return false;
         SaveData(history);
+        SynchronizeTaskReminderState(TaskTreeIds(taskId), null);
         return true;
     }
 
     public bool PermanentlyDeleteTaskTree(string taskId)
     {
         var history = CaptureHistoryState();
+        var treeIds = TaskTreeIds(taskId);
         if (!TodoRecycleBin.PermanentlyDeleteTaskTree(Data, taskId)) return false;
         SaveData(history);
+        SynchronizeTaskReminderState(treeIds, ReminderSuspensionReason.TaskPermanentlyDeleted);
         return true;
     }
 
@@ -471,7 +482,11 @@ public sealed class TodoWorkspace : ITodoCommands
         {
             changed += TodoTaskCommands.SetCompleted(Data, taskId, false, false, DateTimeOffset.Now);
         }
-        if (changed > 0) SaveData(history);
+        if (changed > 0)
+        {
+            SaveData(history);
+            SynchronizeTaskReminderState(taskIds, null);
+        }
         return changed;
     }
 
@@ -479,11 +494,21 @@ public sealed class TodoWorkspace : ITodoCommands
     {
         var history = CaptureHistoryState();
         var changed = 0;
+        var deletedIds = new List<string>();
         foreach (var taskId in taskIds.Distinct(StringComparer.Ordinal).ToList())
         {
-            if (DeleteTaskTreeWithoutSaving(taskId)) changed++;
+            var treeIds = TaskTreeIds(taskId);
+            if (DeleteTaskTreeWithoutSaving(taskId))
+            {
+                changed++;
+                deletedIds.AddRange(treeIds);
+            }
         }
-        if (changed > 0) SaveAll(history);
+        if (changed > 0)
+        {
+            SaveAll(history);
+            SynchronizeTaskReminderState(deletedIds, ReminderSuspensionReason.TaskDeleted);
+        }
         return changed;
     }
 
@@ -612,6 +637,27 @@ public sealed class TodoWorkspace : ITodoCommands
         if (!TodoRecycleBin.DeleteTaskTree(Data, Settings, taskId)) return false;
         if (!Settings.IsRecycleBinEnabled) Settings.CollapsedTaskIds.RemoveAll(treeIds.Contains);
         return true;
+    }
+
+    private IReadOnlyCollection<string> TaskTreeIds(string taskId) => TodoRecycleBin.TaskTreeIds(Data, taskId).ToArray();
+
+    private void SynchronizeTaskReminderState(IEnumerable<string> taskIds, ReminderSuspensionReason? suspensionReason)
+    {
+        if (_reminders is null) return;
+        try
+        {
+            foreach (var taskId in taskIds.Distinct(StringComparer.Ordinal))
+            {
+                if (suspensionReason is { } reason) _reminders.SuspendForTask(taskId, reason);
+                else _reminders.RestoreForTask(taskId);
+            }
+            IsReminderSyncPending = false;
+        }
+        catch
+        {
+            // Todo persistence is authoritative; ReminderService will reconcile active task state before dispatch.
+            IsReminderSyncPending = true;
+        }
     }
 
     private TodoList? FindList(string listId) => Data.Lists.FirstOrDefault(list =>

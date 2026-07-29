@@ -5,7 +5,7 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.2.2"
+#define AppVersion "0.2.3"
 #endif
 
 #ifndef SourceDir
@@ -16,21 +16,13 @@
 #error "OutputDir must be supplied by scripts\package-windows.ps1"
 #endif
 
-#ifndef VcRedistPath
-#error "VcRedistPath must be supplied by scripts\package-windows.ps1"
-#endif
-
-#ifndef DotNetDesktopRuntimePath
-#error "DotNetDesktopRuntimePath must be supplied by scripts\package-windows.ps1"
-#endif
-
-#ifndef WindowsAppRuntimeInstallerPath
-#error "WindowsAppRuntimeInstallerPath must be supplied by scripts\package-windows.ps1"
-#endif
-
 #ifndef ReleaseNotesPath
 #error "ReleaseNotesPath must be supplied by scripts\package-windows.ps1"
 #endif
+
+#define DotNetDesktopRuntimeDownloadUrl "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe"
+#define WindowsAppRuntimeDownloadUrl "https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe"
+#define VcRedistDownloadUrl "https://aka.ms/vc14/vc_redist.x64.exe"
 
 [Setup]
 AppId={{F6DE2B72-BF97-42CC-AE78-D9A849436768}
@@ -66,9 +58,6 @@ Name: "autostart"; Description: "登录 Windows 时自动启动 Fowan"; GroupDes
 Source: "close-fowan-processes.ps1"; Flags: dontcopy noencryption
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "uninstall-clean-fowan-data.ps1"; DestDir: "{app}\Installer"; Flags: ignoreversion
-Source: "{#DotNetDesktopRuntimePath}"; DestDir: "{tmp}"; DestName: "windowsdesktop-runtime-8-x64.exe"; Flags: deleteafterinstall
-Source: "{#WindowsAppRuntimeInstallerPath}"; DestDir: "{tmp}"; DestName: "WindowsAppRuntimeInstall-x64.exe"; Flags: deleteafterinstall
-Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
 Source: "{#ReleaseNotesPath}"; Flags: dontcopy
 
 [Icons]
@@ -89,6 +78,9 @@ Type: dirifempty; Name: "{commonprograms}\Fowan"
 var
   CleanUninstallRequested: Boolean;
   ExistingInstallation: Boolean;
+  MissingDotNetDesktopRuntime: Boolean;
+  MissingWindowsAppRuntime: Boolean;
+  MissingVcRedist: Boolean;
 
 function LoadPackagedReleaseNotes(var ReleaseNotes: string): Boolean;
 var
@@ -301,17 +293,6 @@ begin
     ResultCode) and (ResultCode = 0);
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-begin
-  Result := '';
-  if ExistingInstallation and not ForceCloseInstalledFowanProcesses() then
-  begin
-    Result :=
-      '无法关闭当前安装目录中的 Fowan 进程。' + #13#10 +
-      '请手动退出 Fowan 工具箱及其工具后重试。';
-  end;
-end;
-
 function InitializeUninstall(): Boolean;
 var
   Answer: Integer;
@@ -420,106 +401,139 @@ end;
 function HasDotNetDesktopRuntime8(): Boolean;
 var
   FindRec: TFindRec;
+  DesktopRuntimeDirectory: string;
+  CoreRuntimeLibrary: string;
 begin
-  Result := FindFirst(
-    ExpandConstant('{pf}\dotnet\shared\Microsoft.WindowsDesktop.App\8.0.*'),
-    FindRec);
-  if Result then
+  Result := False;
+  if not FindFirst(ExpandConstant('{pf}\dotnet\shared\Microsoft.WindowsDesktop.App\8.0.*'), FindRec) then
   begin
+    exit;
+  end;
+
+  try
+    repeat
+      if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
+      begin
+        DesktopRuntimeDirectory :=
+          ExpandConstant('{pf}\dotnet\shared\Microsoft.WindowsDesktop.App\' + FindRec.Name);
+        CoreRuntimeLibrary :=
+          ExpandConstant('{pf}\dotnet\shared\Microsoft.NETCore.App\' + FindRec.Name + '\System.Private.CoreLib.dll');
+        if FileExists(DesktopRuntimeDirectory + '\Microsoft.WindowsDesktop.App.deps.json') and
+           FileExists(CoreRuntimeLibrary) then
+        begin
+          Result := True;
+          exit;
+        end;
+      end;
+    until not FindNext(FindRec);
+  finally
     FindClose(FindRec);
   end;
 end;
 
-procedure InstallDotNetDesktopRuntimeIfNeeded();
+function HasWindowsAppRuntime2(): Boolean;
 var
   ResultCode: Integer;
+  Params: string;
 begin
-  if HasDotNetDesktopRuntime8() then
-  begin
-    exit;
-  end;
-
-  WizardForm.StatusLabel.Caption := '正在安装 .NET 8 Desktop Runtime...';
-  WizardForm.StatusLabel.Update;
-
-  if not Exec(
-    ExpandConstant('{tmp}\windowsdesktop-runtime-8-x64.exe'),
-    '/install /quiet /norestart',
+  Params :=
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' +
+    '$ErrorActionPreference = ''Stop''; ' +
+    '$required = [version]''2.2.0.0''; ' +
+    '$runtime = @(Get-AppxPackage -AllUsers -Name ''Microsoft.WindowsAppRuntime.2'' | ' +
+    'Where-Object { $_.Architecture -eq ''X64'' -and $_.Status -eq ''Ok'' -and [version]$_.Version -ge $required }); ' +
+    'if ($runtime.Count -gt 0) { exit 0 } exit 1"';
+  Result := Exec(
+    ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    Params,
     '',
     SW_HIDE,
     ewWaitUntilTerminated,
-    ResultCode) then
-  begin
-    MsgBox('.NET 8 Desktop Runtime 无法启动。Fowan 无法继续安装。', mbError, MB_OK);
-    Abort;
-  end;
+    ResultCode) and (ResultCode = 0);
+end;
 
-  if (ResultCode <> 0) and (ResultCode <> 3010) then
+procedure DetectMissingPrerequisites();
+begin
+  MissingDotNetDesktopRuntime := not HasDotNetDesktopRuntime8();
+  MissingWindowsAppRuntime := not HasWindowsAppRuntime2();
+  MissingVcRedist := NeedsVcRedist();
+end;
+
+function MissingPrerequisitesText(): string;
+begin
+  Result := '';
+  if MissingDotNetDesktopRuntime then
   begin
-    MsgBox('.NET 8 Desktop Runtime 安装失败，退出码：' + IntToStr(ResultCode) + '。', mbError, MB_OK);
-    Abort;
+    Result := Result + '• .NET 8 Desktop Runtime x64' + #13#10;
+  end;
+  if MissingWindowsAppRuntime then
+  begin
+    Result := Result + '• Windows App Runtime 2.2 x64 或更高版本' + #13#10;
+  end;
+  if MissingVcRedist then
+  begin
+    Result := Result + '• Microsoft Visual C++ Redistributable x64' + #13#10;
   end;
 end;
 
-procedure InstallWindowsAppRuntime();
+procedure OpenPrerequisiteDownload(const Url: string);
 var
   ResultCode: Integer;
 begin
-  WizardForm.StatusLabel.Caption := '正在安装 Windows App Runtime...';
-  WizardForm.StatusLabel.Update;
-
-  if not Exec(
-    ExpandConstant('{tmp}\WindowsAppRuntimeInstall-x64.exe'),
-    '--quiet',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode) then
+  if not ShellExec('open', Url, '', '', SW_SHOWNORMAL, ewNoWait, ResultCode) then
   begin
-    MsgBox('Windows App Runtime 无法启动。Fowan 无法继续安装。', mbError, MB_OK);
-    Abort;
-  end;
-
-  if ResultCode <> 0 then
-  begin
-    MsgBox('Windows App Runtime 安装失败，退出码：' + IntToStr(ResultCode) + '。', mbError, MB_OK);
-    Abort;
+    Log('Unable to open prerequisite download URL: ' + Url + '. Error: ' + IntToStr(ResultCode));
   end;
 end;
 
-procedure InstallVcRedistIfNeeded();
-var
-  ResultCode: Integer;
+procedure OpenMissingPrerequisiteDownloads();
 begin
-  if not NeedsVcRedist() then
+  if MissingDotNetDesktopRuntime then
   begin
+    OpenPrerequisiteDownload('{#DotNetDesktopRuntimeDownloadUrl}');
+  end;
+  if MissingWindowsAppRuntime then
+  begin
+    OpenPrerequisiteDownload('{#WindowsAppRuntimeDownloadUrl}');
+  end;
+  if MissingVcRedist then
+  begin
+    OpenPrerequisiteDownload('{#VcRedistDownloadUrl}');
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Answer: Integer;
+begin
+  Result := '';
+  DetectMissingPrerequisites();
+  if MissingDotNetDesktopRuntime or MissingWindowsAppRuntime or MissingVcRedist then
+  begin
+    if not WizardSilent() then
+    begin
+      Answer := MsgBox(
+        'Fowan 需要以下系统运行库，当前安装包不再内置它们：' + #13#10 + #13#10 +
+        MissingPrerequisitesText() + #13#10 +
+        '是否现在打开微软官方下载页？安装完成后，请重新运行 Fowan 安装包。',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON1);
+      if Answer = IDYES then
+      begin
+        OpenMissingPrerequisiteDownloads();
+      end;
+    end;
+
+    Result :=
+      '缺少 Fowan 所需系统运行库。请安装提示的依赖后重新运行 Fowan 安装包。';
     exit;
   end;
 
-  WizardForm.StatusLabel.Caption := '正在安装 Microsoft Visual C++ 运行库...';
-  WizardForm.StatusLabel.Update;
-
-  if not Exec(
-    ExpandConstant('{tmp}\vc_redist.x64.exe'),
-    '/install /quiet /norestart',
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode) then
+  if ExistingInstallation and not ForceCloseInstalledFowanProcesses() then
   begin
-    MsgBox(
-      '无法启动 Microsoft Visual C++ 运行库安装程序。Fowan 可能无法在这台机器上启动。',
-      mbError,
-      MB_OK);
-    exit;
-  end;
-
-  if (ResultCode <> 0) and (ResultCode <> 3010) then
-  begin
-    MsgBox(
-      'Microsoft Visual C++ 运行库安装失败，退出码：' + IntToStr(ResultCode) + '。Fowan 可能无法在这台机器上启动。',
-      mbError,
-      MB_OK);
+    Result :=
+      '无法关闭当前安装目录中的 Fowan 进程。' + #13#10 +
+      '请手动退出 Fowan 工具箱及其工具后重试。';
   end;
 end;
 
@@ -531,10 +545,6 @@ begin
     begin
       RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Fowan');
     end;
-
-    InstallDotNetDesktopRuntimeIfNeeded();
-    InstallWindowsAppRuntime();
-    InstallVcRedistIfNeeded();
   end;
 end;
 

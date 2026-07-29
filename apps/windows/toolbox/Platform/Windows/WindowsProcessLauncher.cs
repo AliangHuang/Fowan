@@ -15,6 +15,7 @@ internal sealed class WindowsProcessLauncher : IProcessLauncher
                 WorkingDirectory = request.WorkingDirectory
                     ?? Path.GetDirectoryName(request.Target)
                     ?? AppContext.BaseDirectory,
+                Arguments = request.Arguments ?? string.Empty,
                 UseShellExecute = request.UseShellExecute,
                 Verb = request.Elevated ? "runas" : string.Empty
             });

@@ -14,27 +14,28 @@ SDK native payload into the release tree. The resulting application staging dire
 ## Decision
 
 Starting with 0.2.1, all Fowan Windows applications are published as framework-dependent
-win-x64 applications. The installer carries exactly one signed copy of each shared prerequisite:
+win-x64 applications. They require these machine-level shared prerequisites:
 
 - .NET 8 Desktop Runtime x64;
 - Windows App Runtime 2.2 x64; and
 - Microsoft Visual C++ Redistributable x64.
 
-The administrator-level Inno Setup installer installs a missing .NET 8 Desktop Runtime, always
-chains the Windows App Runtime installer as recommended for unpackaged Windows App SDK apps, and
-then installs a missing VC++ runtime. Existing WindowsPackageType=None bootstrap configuration
-loads the installed Windows App Runtime for each WinUI application.
+The administrator-level Inno Setup installer checks these prerequisites before copying Fowan files.
+When one is missing, it shows the exact missing component, offers to open its official Microsoft
+download page, and stops. It never downloads, embeds, or silently installs a runtime. Existing
+WindowsPackageType=None bootstrap configuration loads the installed Windows App Runtime for each
+WinUI application.
 
 Starting with 0.2.2, the installer is the only public Windows delivery. Fowan no longer creates or
-uploads a portable archive. All downloaded prerequisite binaries are Authenticode-checked for a
-Microsoft Corporation signer before packaging.
+uploads a portable archive. Runtime installation and servicing remain the responsibility of the
+user or the organization's software-management system.
 
 ## Consequences
 
-The release no longer duplicates runtime payloads for every tool, reducing download and installed
-size while retaining one offline installer. A fresh machine now receives machine-level runtime
-components during Fowan installation; installation must therefore remain elevated and failure to
-install either required runtime aborts setup rather than leaving a non-startable application.
+The release no longer duplicates runtime payloads for every tool or carries prerequisite installers,
+reducing delivery size further. A fresh machine must install the required runtimes first; the Fowan
+installer makes no application-file changes until those checks pass. Offline or managed deployment
+must provision the same runtimes before running Fowan setup.
 
 Fowan continues to target .NET 8 and Windows App Runtime 2.2. Runtime servicing can be delivered
 by Microsoft independently of a Fowan release. The prior 0.2.0 self-contained release remains

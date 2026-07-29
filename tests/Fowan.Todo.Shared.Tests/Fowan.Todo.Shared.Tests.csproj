@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\apps\windows\todo\shared\Fowan.Todo.Shared.csproj" />
+    <ProjectReference Include="..\..\apps\windows\reminders\shared\Fowan.Reminders.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

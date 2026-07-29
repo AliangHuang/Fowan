@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\contracts\Fowan.Todo.Contracts.csproj" />
+    <ProjectReference Include="..\..\reminders\shared\Fowan.Reminders.Shared.csproj" />
   </ItemGroup>
 </Project>

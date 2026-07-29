@@ -47,6 +47,7 @@ try {
         @{ Project = "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"; Destination = "Tools/Todo"; Exe = "Fowan.Todo.Sticky.Windows.Dev.exe"; LegacyExe = "Fowan.Todo.Sticky.Windows.exe"; Component = "todo-sticky" },
         @{ Project = "apps/windows/diary/app/Fowan.Diary.Windows.csproj"; Destination = "Tools/Diary"; Exe = "Fowan.Diary.Windows.Dev.exe"; LegacyExe = "Fowan.Diary.Windows.exe"; Component = "diary" },
         @{ Project = "apps/windows/report/app/Fowan.Report.Windows.csproj"; Destination = "Tools/Report"; Exe = "Fowan.Report.Windows.Dev.exe"; LegacyExe = "Fowan.Report.Windows.exe"; Component = "report" },
+        @{ Project = "apps/windows/pomodoro/app/Fowan.Pomodoro.Windows.csproj"; Destination = "Tools/Pomodoro"; Exe = "Fowan.Pomodoro.Windows.Dev.exe"; LegacyExe = "Fowan.Pomodoro.Windows.exe"; Component = "pomodoro" },
         @{ Project = "apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj"; Destination = "Tools/AI/Chat"; Exe = "Fowan.Ai.Chat.Windows.Dev.exe"; LegacyExe = "Fowan.Ai.Chat.Windows.exe"; Component = "ai-chat" },
         @{ Project = "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"; Destination = "Tools/AI/Config"; Exe = "Fowan.Ai.Config.Windows.Dev.exe"; LegacyExe = "Fowan.Ai.Config.Windows.exe"; Component = "ai-config" }
     )

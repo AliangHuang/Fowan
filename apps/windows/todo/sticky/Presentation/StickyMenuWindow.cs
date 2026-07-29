@@ -19,6 +19,17 @@ internal sealed class StickyMenuWindow : Window
     private Button _compactAddTaskButton = new();
     private bool _isDismissOverlayVisible;
 
+    public (double Top, double Height)? TitleBarGeometry
+    {
+        get
+        {
+            var height = ActualHeight > 0 ? ActualHeight : Height;
+            return double.IsFinite(Top) && double.IsFinite(height) && height > 0
+                ? (Top, height)
+                : null;
+        }
+    }
+
     public StickyMenuWindow(
         StickyWindow owner,
         StickyShellBuilder shellBuilder,

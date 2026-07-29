@@ -57,10 +57,16 @@ internal sealed class WindowsTrayService : ITrayService
     public event Action? RestoreRequested;
     public event Action? ExitRequested;
 
+    public PlatformOperationResult PrepareForCloseInterception()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return InstallWindowMessageHook();
+    }
+
     public PlatformOperationResult EnsureVisible()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var hookResult = InstallWindowMessageHook();
+        var hookResult = PrepareForCloseInterception();
         if (!hookResult.Succeeded)
         {
             return hookResult;

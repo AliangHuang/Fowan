@@ -23,24 +23,18 @@ $installerRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component
 $retentionRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-retention"
 $retentionPending = $false
 $appStage = Join-Path $installerRoot "app"
-$prereqRoot = Join-Path $installerRoot "prerequisites"
-$vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
-$dotNetDesktopRuntimePath = Join-Path $prereqRoot "windowsdesktop-runtime-8-x64.exe"
-$windowsAppRuntimeInstallerPath = Join-Path $prereqRoot "WindowsAppRuntimeInstall-x64.exe"
 $windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
 $diaryProject = Join-Path $repoRoot "apps/windows/diary/app/Fowan.Diary.Windows.csproj"
 $reportProject = Join-Path $repoRoot "apps/windows/report/app/Fowan.Report.Windows.csproj"
+$pomodoroProject = Join-Path $repoRoot "apps/windows/pomodoro/app/Fowan.Pomodoro.Windows.csproj"
 $aiChatProject = Join-Path $repoRoot "apps/windows/ai/chat/Fowan.Ai.Chat.Windows.csproj"
 $aiConfigProject = Join-Path $repoRoot "apps/windows/ai/config/Fowan.Ai.Config.Windows.csproj"
 $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
 $dotnet = if (Test-Path -LiteralPath $localDotnet) { $localDotnet } else { "dotnet" }
-$vcRedistUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
-$dotNetDesktopRuntimeUrl = "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe"
-$windowsAppRuntimeInstallerUrl = "https://aka.ms/windowsappsdk/2.2/latest/windowsappruntimeinstall-x64.exe"
 $assemblyVersion = if ($Version.Split('.').Count -eq 3) { "$Version.0" } else { $Version }
 
 function Assert-PathInside {
@@ -157,6 +151,11 @@ function Write-ReleaseNotes {
             Path = Join-Path $changelogRoot "tools/report/CHANGELOG.md"
         },
         @{
+            Id = "pomodoro"
+            Title = "Pomodoro"
+            Path = Join-Path $changelogRoot "tools/pomodoro/CHANGELOG.md"
+        },
+        @{
             Id = "ai-chat"
             Title = "AI Chat"
             Path = Join-Path $changelogRoot "tools/ai-chat/CHANGELOG.md"
@@ -249,72 +248,6 @@ function Resolve-Iscc {
     return $null
 }
 
-function Save-Download {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Url,
-        [Parameter(Mandatory = $true)]
-        [string]$Output
-    )
-
-    try {
-        Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
-        return
-    }
-    catch {
-        $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
-        if (-not $curl) {
-            throw
-        }
-
-        & $curl.Source -L --retry 5 --retry-delay 2 --fail --output $Output $Url
-        if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-        }
-    }
-}
-
-function Assert-MicrosoftSignature {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [Parameter(Mandatory = $true)]
-        [string]$Description
-    )
-
-    $signature = Get-AuthenticodeSignature -LiteralPath $Path
-    if ($signature.Status -ne "Valid" -or
-        $signature.SignerCertificate.Subject -notlike "*Microsoft Corporation*") {
-        throw "$Description signature validation failed: $Path"
-    }
-}
-
-function Ensure-MicrosoftPrerequisite {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Url,
-        [Parameter(Mandatory = $true)]
-        [string]$Output,
-        [Parameter(Mandatory = $true)]
-        [string]$Description
-    )
-
-    if (-not (Test-Path -LiteralPath $Output -PathType Leaf)) {
-        Write-Host "Downloading $Description..."
-        Save-Download -Url $Url -Output $Output
-    }
-
-    Assert-MicrosoftSignature -Path $Output -Description $Description
-}
-
-function Ensure-RuntimePrerequisites {
-    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
-
-    Ensure-MicrosoftPrerequisite -Url $vcRedistUrl -Output $vcRedistPath -Description "Microsoft Visual C++ Redistributable x64"
-    Ensure-MicrosoftPrerequisite -Url $dotNetDesktopRuntimeUrl -Output $dotNetDesktopRuntimePath -Description ".NET 8 Desktop Runtime x64"
-    Ensure-MicrosoftPrerequisite -Url $windowsAppRuntimeInstallerUrl -Output $windowsAppRuntimeInstallerPath -Description "Windows App Runtime 2.2 x64"
-}
-
 function Write-ChecksumManifest {
     param([Parameter(Mandatory = $true)][string]$OutputRoot)
 
@@ -336,7 +269,6 @@ function Write-ChecksumManifest {
 
 try {
 $deliveryStage = $installerRoot
-Ensure-RuntimePrerequisites
 
 if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
@@ -348,6 +280,8 @@ $diaryStage = Join-Path $appStage "Tools/Diary"
 New-Item -ItemType Directory -Force -Path $diaryStage | Out-Null
 $reportStage = Join-Path $appStage "Tools/Report"
 New-Item -ItemType Directory -Force -Path $reportStage | Out-Null
+$pomodoroStage = Join-Path $appStage "Tools/Pomodoro"
+New-Item -ItemType Directory -Force -Path $pomodoroStage | Out-Null
 $aiChatStage = Join-Path $appStage "Tools/AI/Chat"
 New-Item -ItemType Directory -Force -Path $aiChatStage | Out-Null
 $aiConfigStage = Join-Path $appStage "Tools/AI/Config"
@@ -359,6 +293,7 @@ $publishTargets = @(
     @{ Project = $stickyProject; Destination = $todoStage; Component = "publish-sticky" },
     @{ Project = $diaryProject; Destination = $diaryStage; Component = "publish-diary" },
     @{ Project = $reportProject; Destination = $reportStage; Component = "publish-report" },
+    @{ Project = $pomodoroProject; Destination = $pomodoroStage; Component = "publish-pomodoro" },
     @{ Project = $aiChatProject; Destination = $aiChatStage; Component = "publish-ai-chat" },
     @{ Project = $aiConfigProject; Destination = $aiConfigStage; Component = "publish-ai-config" }
 )
@@ -382,6 +317,7 @@ $requiredExecutables = @(
     (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
     (Join-Path $diaryStage "Fowan.Diary.Windows.exe"),
     (Join-Path $reportStage "Fowan.Report.Windows.exe"),
+    (Join-Path $pomodoroStage "Fowan.Pomodoro.Windows.exe"),
     (Join-Path $aiChatStage "Fowan.Ai.Chat.Windows.exe"),
     (Join-Path $aiConfigStage "Fowan.Ai.Config.Windows.exe"),
     (Join-Path $coreStage "fowan-core.exe")
@@ -422,9 +358,6 @@ if (-not $iscc) {
     "/DAppVersion=$Version" `
     "/DSourceDir=$appStage" `
     "/DReleaseNotesPath=$releaseNotesPath" `
-    "/DVcRedistPath=$vcRedistPath" `
-    "/DDotNetDesktopRuntimePath=$dotNetDesktopRuntimePath" `
-    "/DWindowsAppRuntimeInstallerPath=$windowsAppRuntimeInstallerPath" `
     "/DOutputDir=$installerRoot" `
     $issPath
 
@@ -444,7 +377,6 @@ $updateManifestPath = Write-UpdateManifest `
     -OutputRoot $installerRoot
 
 Remove-Item -LiteralPath $appStage -Recurse -Force
-Remove-Item -LiteralPath $prereqRoot -Recurse -Force
 $checksumPath = Write-ChecksumManifest -OutputRoot $installerRoot
 $retentionPending = $true
 $expiredVersions = @(Move-ExpiredPublishDirectories `

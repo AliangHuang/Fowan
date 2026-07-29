@@ -12,9 +12,12 @@ $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $packageScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/package-windows.ps1")
 $stopScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/stop-windows.ps1")
 Assert-True ($packageScript.Contains('apps/windows/report/app/Fowan.Report.Windows.csproj')) "release packaging must publish Report"
+Assert-True ($packageScript.Contains('apps/windows/pomodoro/app/Fowan.Pomodoro.Windows.csproj')) "release packaging must publish Pomodoro"
 Assert-True ($packageScript.Contains('Tools/Report')) "release packaging must stage Report under Tools/Report"
 Assert-True ($packageScript.Contains('Fowan.Report.Windows.exe')) "release packaging must require the Report executable"
+Assert-True ($packageScript.Contains('Fowan.Pomodoro.Windows.exe')) "release packaging must require the Pomodoro executable"
 Assert-True ($packageScript.Contains('tools/report/CHANGELOG.md')) "release notes must include Report"
+Assert-True ($packageScript.Contains('tools/pomodoro/CHANGELOG.md')) "release notes must include Pomodoro"
 Assert-True ($packageScript.Contains('tools/ai-chat/CHANGELOG.md')) "release notes must include AI Chat"
 Assert-True ($packageScript.Contains('tools/ai-config/CHANGELOG.md')) "release notes must include AI Configuration"
 $releaseChangelogs = @(
@@ -22,22 +25,26 @@ $releaseChangelogs = @(
     'tools/todo/CHANGELOG.md',
     'tools/diary/CHANGELOG.md',
     'tools/report/CHANGELOG.md',
+    'tools/pomodoro/CHANGELOG.md',
     'tools/ai-chat/CHANGELOG.md',
     'tools/ai-config/CHANGELOG.md'
 )
 foreach ($relativePath in $releaseChangelogs) {
     $changelog = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "changelogs/$relativePath")
-    Assert-True ($changelog -match '(?m)^##\s+0\.2\.2(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.2: $relativePath"
+    Assert-True ($changelog -match '(?m)^##\s+0\.2\.3(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.3: $relativePath"
 }
-Assert-True ($packageScript.Contains('--self-contained false')) "release packaging must use the shared .NET Desktop Runtime"
-Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=false')) "release packaging must use the shared Windows App Runtime"
-Assert-True ($packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must include the .NET Desktop Runtime prerequisite"
-Assert-True ($packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must include the Windows App Runtime prerequisite"
+Assert-True ($packageScript.Contains('--self-contained false')) "release packaging must remain framework-dependent"
+Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=false')) "release packaging must use the installed Windows App Runtime"
+Assert-True (-not $packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must not embed the .NET Desktop Runtime"
+Assert-True (-not $packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must not embed the Windows App Runtime"
 Assert-True (-not $packageScript.Contains('Fowan-$Version-portable.zip')) "release packaging must not create a portable ZIP"
 Assert-True (-not $packageScript.Contains('Compress-Archive')) "release packaging must not archive a portable delivery"
 Assert-True ($stopScript.Contains('"Report"')) "stop-windows must support the Report component"
+Assert-True ($stopScript.Contains('"Pomodoro"')) "stop-windows must support the Pomodoro component"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.Dev.exe')) "stop-windows must stop the development Report runtime"
 Assert-True ($stopScript.Contains('Tools/Report/Fowan.Report.Windows.exe')) "stop-windows must stop the release Report runtime"
+Assert-True ($stopScript.Contains('Tools/Pomodoro/Fowan.Pomodoro.Windows.Dev.exe')) "stop-windows must stop the development Pomodoro runtime"
+Assert-True ($stopScript.Contains('Tools/Pomodoro/Fowan.Pomodoro.Windows.exe')) "stop-windows must stop the release Pomodoro runtime"
 
 try {
     New-Item -ItemType Directory -Force -Path $root | Out-Null

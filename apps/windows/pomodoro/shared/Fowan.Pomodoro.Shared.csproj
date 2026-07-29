@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Pomodoro</RootNamespace>
+    <AssemblyName>Fowan.Pomodoro.Shared</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\reminders\contracts\Fowan.Reminders.Contracts.csproj" />
+    <ProjectReference Include="..\..\reminders\shared\Fowan.Reminders.Shared.csproj" />
+  </ItemGroup>
+</Project>

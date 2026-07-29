@@ -23,6 +23,9 @@ internal sealed class TodoTaskAreaPresenter
     private readonly Action _saveSettings;
     private readonly Action _refreshAll;
     private readonly Action _refreshAfterMutation;
+    private readonly Func<string, string> _reminderSummary;
+    private readonly Action _openReminderEditor;
+    private readonly Func<bool> _isReminderSyncPending;
     private readonly TodoTaskDragController _drag;
     private Grid _root = new();
     private ScrollViewer _scroll = new();
@@ -49,7 +52,10 @@ internal sealed class TodoTaskAreaPresenter
         Func<TodoWindowQuery> query,
         Action saveSettings,
         Action refreshAll,
-        Action refreshAfterMutation)
+        Action refreshAfterMutation,
+        Func<string, string> reminderSummary,
+        Action openReminderEditor,
+        Func<bool> isReminderSyncPending)
     {
         _applicationCommands = applicationCommands;
         _snapshot = snapshot;
@@ -66,6 +72,9 @@ internal sealed class TodoTaskAreaPresenter
         _saveSettings = saveSettings;
         _refreshAll = refreshAll;
         _refreshAfterMutation = refreshAfterMutation;
+        _reminderSummary = reminderSummary;
+        _openReminderEditor = openReminderEditor;
+        _isReminderSyncPending = isReminderSyncPending;
         _drag = new TodoTaskDragController(
             new TodoTaskDropEnvironment(
                 () => _root,
@@ -258,7 +267,10 @@ internal sealed class TodoTaskAreaPresenter
             notes => _applicationCommands.UpdateTaskNotes(task.Id, notes),
             () => _creation.ShowAddSubtaskAsync(task),
             () => _commands.ToggleCompletedAsync(task),
-            () => _commands.DeleteAsync(task));
+            () => _commands.DeleteAsync(task),
+            _reminderSummary(task.Id),
+            _openReminderEditor,
+            _isReminderSyncPending());
         return detail.Build(
             task,
             _query().OrderedLists().ToList(),

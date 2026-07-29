@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Toolbox", "Todo", "Diary", "Report", "Ai", "All")]
+    [ValidateSet("Toolbox", "Todo", "Diary", "Report", "Pomodoro", "Ai", "All")]
     [string]$Component = "All"
 )
 
@@ -18,6 +18,7 @@ $relativePaths = switch ($Component) {
     }
     "Diary" { @("Tools/Diary/Fowan.Diary.Windows.Dev.exe", "Tools/Diary/Fowan.Diary.Windows.exe") }
     "Report" { @("Tools/Report/Fowan.Report.Windows.Dev.exe", "Tools/Report/Fowan.Report.Windows.exe") }
+    "Pomodoro" { @("Tools/Pomodoro/Fowan.Pomodoro.Windows.Dev.exe", "Tools/Pomodoro/Fowan.Pomodoro.Windows.exe") }
     "Ai" {
         @(
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe",
@@ -35,6 +36,7 @@ $relativePaths = switch ($Component) {
             "Tools/Todo/Fowan.Todo.Sticky.Windows.Dev.exe",
             "Tools/Diary/Fowan.Diary.Windows.Dev.exe",
             "Tools/Report/Fowan.Report.Windows.Dev.exe",
+            "Tools/Pomodoro/Fowan.Pomodoro.Windows.Dev.exe",
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe",
             "Tools/AI/Config/Fowan.Ai.Config.Windows.Dev.exe",
             "Core/fowan-core.Dev.exe",
@@ -43,6 +45,7 @@ $relativePaths = switch ($Component) {
             "Tools/Todo/Fowan.Todo.Sticky.Windows.exe",
             "Tools/Diary/Fowan.Diary.Windows.exe",
             "Tools/Report/Fowan.Report.Windows.exe",
+            "Tools/Pomodoro/Fowan.Pomodoro.Windows.exe",
             "Tools/AI/Chat/Fowan.Ai.Chat.Windows.exe",
             "Tools/AI/Config/Fowan.Ai.Config.Windows.exe",
             "Core/fowan-core.exe"

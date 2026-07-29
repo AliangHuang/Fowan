@@ -8,5 +8,7 @@ internal interface ITrayService : IDisposable
     event Action? RestoreRequested;
     event Action? ExitRequested;
 
+    PlatformOperationResult PrepareForCloseInterception();
+
     PlatformOperationResult EnsureVisible();
 }

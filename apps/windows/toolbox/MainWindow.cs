@@ -48,6 +48,7 @@ public sealed class MainWindow : Window
     private readonly ToolboxToolGridPresenter _toolGridPresenter;
     private readonly ToolboxHeaderActionsBuilder _headerActions;
     private readonly ToolboxUiStateController _uiState;
+    private readonly PomodoroWakeCoordinator _pomodoroWakeCoordinator;
 
     private Grid _root = new();
     private StackPanel _categoryPanel = new();
@@ -97,6 +98,7 @@ public sealed class MainWindow : Window
             _processLauncher, L, ShowInfo, SelectTool,
             ShowQuickCaptureDialogAsync, ShowSettingsDialogAsync,
             ShowToolboxHome, MinimizeToolboxToTray);
+        _pomodoroWakeCoordinator = new PomodoroWakeCoordinator(_processLauncher);
         _updateInteraction = new UpdateInteractionCoordinator(
             _updateService, _processLauncher, () => _session.State, () => _root.XamlRoot,
             L, ThemeBrush, _session.DisableUpdateChecks, _session.IgnoreUpdate, ShowInfo, ExitForUpdate);
@@ -142,11 +144,23 @@ public sealed class MainWindow : Window
         StartupTrace.Mark("Window configured");
         BuildShell();
         StartupTrace.Mark("Shell built");
+        _pomodoroWakeCoordinator.Start();
         Closed += (_, _) =>
         {
             _updateCheckCoordinator.Cancel();
+            _pomodoroWakeCoordinator.Dispose();
             _trayService.Dispose();
         };
+    }
+
+    internal void InitializeTrayCloseInterception()
+    {
+        var trayHookResult = _trayService.PrepareForCloseInterception();
+        if (!trayHookResult.Succeeded)
+        {
+            StartupTrace.Mark($"Tray close interception unavailable: {trayHookResult.Error}");
+            ShowInfo(trayHookResult.Error ?? "Tray close interception could not be initialized.", InfoBarSeverity.Error);
+        }
     }
 
     private string L(string key) => _loc.Get(key);

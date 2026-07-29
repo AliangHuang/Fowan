@@ -44,6 +44,7 @@ internal sealed class ToolLaunchCoordinator(
         var opened = tool.Id switch
         {
             "todo" => Launch(ToolExecutableResolver.ResolveTodo(), "Tool_Todo"),
+            "pomodoro" => Launch(ToolExecutableResolver.ResolvePomodoro(), "Tool_Pomodoro"),
             "diary" => Launch(ToolExecutableResolver.ResolveDiary(), "Tool_Diary"),
             "report" => Launch(ToolExecutableResolver.ResolveReport(), "Tool_Report"),
             "ai-chat" => Launch(ToolExecutableResolver.ResolveAi(ToolExecutableResolver.AiChatExecutableName, "Chat"), "Tool_AIChat"),

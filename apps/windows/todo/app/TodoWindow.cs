@@ -53,6 +53,7 @@ public sealed class TodoWindow : Window
     private readonly TodoSettingsCoordinator _settingsCoordinator;
     private readonly TodoControlFactory _controls;
     private readonly IStickyProcessCoordinator _stickyProcesses = new WindowsStickyProcessCoordinator();
+    private readonly WindowsTodoReminderCoordinator _reminderCoordinator = new();
 
     private Grid _root = new();
     private StackPanel _navigationPanel = new();
@@ -130,7 +131,10 @@ public sealed class TodoWindow : Window
             Query,
             PersistNavigation,
             RefreshAll,
-            RefreshAfterMutation);
+            RefreshAfterMutation,
+            _reminderCoordinator.Summary,
+            () => _reminderCoordinator.OpenEditor(),
+            () => _workspace.IsReminderSyncPending);
         _settingsCoordinator = new TodoSettingsCoordinator(
             _dialogs,
             _onboarding,

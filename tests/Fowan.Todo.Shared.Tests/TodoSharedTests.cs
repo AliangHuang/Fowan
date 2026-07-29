@@ -390,24 +390,25 @@ public sealed class TodoSharedTests : IDisposable
     }
 
     [Theory]
-    [InlineData(0, 1920, 16, 16, TodoStickyFloatingEdges.Left)]
-    [InlineData(0, 1920, -200, 16, TodoStickyFloatingEdges.Left)]
-    [InlineData(0, 1920, 1904, 16, TodoStickyFloatingEdges.Right)]
-    [InlineData(0, 1920, 2200, 16, TodoStickyFloatingEdges.Right)]
-    [InlineData(-1920, 0, -1900, 20, TodoStickyFloatingEdges.Left)]
-    [InlineData(0, 2400, 1200, 20, null)]
-    public void StickyDockEdgeUsesWindowCenterAndIncludesCrossedEdges(
+    [InlineData(0, 1920, 0, 400, null)]
+    [InlineData(0, 1920, -0.01, 399.99, TodoStickyFloatingEdges.Left)]
+    [InlineData(0, 1920, 1600, 2000, null)]
+    [InlineData(0, 1920, 1600.01, 2000.01, TodoStickyFloatingEdges.Right)]
+    [InlineData(-1920, 0, -1920, -1520, null)]
+    [InlineData(-1920, 0, -1920.01, -1520.01, TodoStickyFloatingEdges.Left)]
+    [InlineData(0, 100, -40, 140, TodoStickyFloatingEdges.Left)]
+    public void StickyDockEdgeUsesLeftBoundaryAndAllowsRightOneFifthOverhang(
         double workLeft,
         double workRight,
-        double windowCenter,
-        double threshold,
+        double windowLeft,
+        double windowRight,
         string? expected)
     {
-        Assert.Equal(expected, TodoStickyPlacement.FindDockEdgeByCenter(
+        Assert.Equal(expected, TodoStickyPlacement.FindDockEdgeByWindowBounds(
             workLeft,
             workRight,
-            windowCenter,
-            threshold));
+            windowLeft,
+            windowRight));
     }
 
     [Fact]
@@ -418,10 +419,10 @@ public sealed class TodoSharedTests : IDisposable
     }
 
     [Fact]
-    public void StickyFloatingTopAlignsIconCenters()
+    public void StickyFloatingTopAlignsTitleBarWindowCenter()
     {
-        Assert.Equal(102, TodoStickyPlacement.AlignCenters(116, 24, 52));
-        Assert.Equal(-1918, TodoStickyPlacement.AlignCenters(-1904, 24, 52));
+        Assert.Equal(77.5, TodoStickyPlacement.AlignCenters(76, 55, 52));
+        Assert.Equal(-1902.5, TodoStickyPlacement.AlignCenters(-1904, 55, 52));
     }
 
     [Fact]
@@ -432,6 +433,27 @@ public sealed class TodoSharedTests : IDisposable
         Assert.Equal(173, body.Top);
         Assert.Equal(515, body.Height);
         Assert.Equal((120d, 568d), TodoStickyPlacement.ExpandedGeometryFromBody(body.Top, body.Height, 53));
+    }
+
+    [Theory]
+    [InlineData(120, 80, 1, 1, true)]
+    [InlineData(-1920, 80, 1, 1, true)]
+    [InlineData(-32000, 80, 1, 1, false)]
+    [InlineData(-21333.333333333332, 80, 1.5, 1, false)]
+    [InlineData(120, -16000, 1, 2, false)]
+    [InlineData(double.NaN, 80, 1, 1, false)]
+    public void StickyStoredOriginRejectsWindowsMinimizedSentinel(
+        double left,
+        double top,
+        double horizontalDpiScale,
+        double verticalDpiScale,
+        bool expected)
+    {
+        Assert.Equal(expected, TodoStickyPlacement.IsUsableStoredOrigin(
+            left,
+            top,
+            horizontalDpiScale,
+            verticalDpiScale));
     }
 
     [Fact]
