@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>Fowan.ToolCenter.Windows</RootNamespace>
+    <Title>Fowan 工具中心</Title>
+    <Description>浏览 Fowan 可用工具</Description>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.ToolCenter.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.ToolCenter.Windows</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\toolbox\Assets\fowan.ico</ApplicationIcon>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+    <EmbeddedResource Include="Resources\Strings\*.json" />
+    <Content Include="..\..\toolbox\Assets\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "ai.chat.context.compact.started",
+  "params": {
+    "invocationId": "invocation-2",
+    "conversationId": "conversation-1"
+  }
+}

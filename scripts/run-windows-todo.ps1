@@ -6,9 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$configurationName = $Configuration.ToLowerInvariant()
-$exe = Join-Path $repoRoot "out/windows-todo/$configurationName/Fowan.Todo.Windows.exe"
-$stickyExe = Join-Path $repoRoot "out/windows-todo/$configurationName/Fowan.Todo.Sticky.Windows.exe"
+$exe = Join-Path $repoRoot "build/windows/win-x64/app/Tools/Todo/Fowan.Todo.Windows.Dev.exe"
+$stickyExe = Join-Path $repoRoot "build/windows/win-x64/app/Tools/Todo/Fowan.Todo.Sticky.Windows.Dev.exe"
 
 if (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath $stickyExe)) {
     & (Join-Path $PSScriptRoot "build-windows-todo.ps1") -Configuration $Configuration

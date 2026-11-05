@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 23,
+  "method": "ai.conversations.get",
+  "params": {
+    "id": "conversation-1"
+  }
+}

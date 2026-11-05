@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "engine.handshake"
+    },
+    "params": {
+      "$ref": "#/$defs/handshakeParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "handshakeParams": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "contractRevision",
+        "requiredCapabilities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "0.1"
+        },
+        "contractRevision": {
+          "const": 1
+        },
+        "requiredCapabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ai.config.v1",
+              "ai.chat.v1",
+              "ai.chat.context.v1",
+              "ai.chat.branching.v1",
+              "ai.report.v1"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

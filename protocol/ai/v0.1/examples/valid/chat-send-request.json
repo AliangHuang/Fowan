@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"method":"ai.chat.send","params":{"conversationId":null,"credentialId":"credential-1","modelProfileId":"model-1","text":"hello"}}

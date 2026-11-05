@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <RootNamespace>Fowan.Windows.Platform.Contracts</RootNamespace>
+    <AssemblyName>Fowan.Windows.Platform.Contracts</AssemblyName>
+  </PropertyGroup>
+</Project>

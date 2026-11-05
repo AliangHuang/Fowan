@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build Fowan Windows Tools"
+  short_description: "Build Toolbox and all public Fowan Windows tools"
+  default_prompt: "Use $build-fowan-windows to rebuild the Fowan Toolbox and complete unified Windows tool tree."

@@ -15,24 +15,23 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$outRoot = Join-Path $repoRoot "out"
+$buildRoot = Join-Path $repoRoot "build"
 $fixtureRoot = Join-Path $repoRoot "tests/fixtures/diary-visual"
-$runtimeRoot = Join-Path $outRoot "visual-qa/diary-runtime"
-$configurationName = $Configuration.ToLowerInvariant()
-$defaultOutput = Join-Path $outRoot ("screenshots/fowan-diary-functional-" + $ViewId + ".png")
+$runtimeRoot = Join-Path $buildRoot "test/visual-qa/diary-runtime"
+$defaultOutput = Join-Path $buildRoot ("test/screenshots/fowan-diary-functional-" + $ViewId + ".png")
 $OutputPath = if ([string]::IsNullOrWhiteSpace($OutputPath)) { $defaultOutput } else { [System.IO.Path]::GetFullPath($OutputPath) }
 
 if (-not (Test-Path -LiteralPath $fixtureRoot)) {
     throw "Diary visual fixture was not found: $fixtureRoot"
 }
 
-$resolvedOutRoot = [System.IO.Path]::GetFullPath($outRoot).TrimEnd([char[]]@('\', '/')) + [System.IO.Path]::DirectorySeparatorChar
+$resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot).TrimEnd([char[]]@('\', '/')) + [System.IO.Path]::DirectorySeparatorChar
 $resolvedRuntimeRoot = [System.IO.Path]::GetFullPath($runtimeRoot)
-if (-not $resolvedRuntimeRoot.StartsWith($resolvedOutRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to prepare visual runtime outside the output root: $resolvedRuntimeRoot"
+if (-not $resolvedRuntimeRoot.StartsWith($resolvedBuildRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to prepare visual runtime outside the build root: $resolvedRuntimeRoot"
 }
 
-Get-Process -Name "Fowan.Diary.Windows" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "Fowan.Diary.Windows.Dev" -ErrorAction SilentlyContinue | Stop-Process -Force
 if (Test-Path -LiteralPath $runtimeRoot) {
     Remove-Item -LiteralPath $runtimeRoot -Recurse -Force
 }
@@ -111,7 +110,7 @@ try {
     $env:FOWAN_DIARY_TIMELINE_NAVIGATOR_MONTH = $TimelineNavigatorMonth
     & (Join-Path $PSScriptRoot "run-windows-diary.ps1") -Configuration $Configuration
     Start-Sleep -Seconds 4
-    $process = @(Get-Process -Name "Fowan.Diary.Windows" -ErrorAction Stop | Select-Object -First 1)[0]
+    $process = @(Get-Process -Name "Fowan.Diary.Windows.Dev" -ErrorAction Stop | Select-Object -First 1)[0]
     if ($process.MainWindowHandle -eq 0) {
         throw "Diary did not create a top-level window."
     }
@@ -127,7 +126,7 @@ try {
     Write-Host "Diary screenshot: $OutputPath"
 }
 finally {
-    Get-Process -Name "Fowan.Diary.Windows" -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process -Name "Fowan.Diary.Windows.Dev" -ErrorAction SilentlyContinue | Stop-Process -Force
     $env:FOWAN_DIARY_DATA_ROOT = $previousRoot
     $env:FOWAN_DIARY_TODAY = $previousToday
     $env:FOWAN_DIARY_TIMELINE_RANGE = $previousTimelineRange

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 30,
+  "method": "ai.chat.send",
+  "params": {
+    "conversationId": "conversation-1",
+    "parentMessageId": "message-2",
+    "credentialId": "credential-1",
+    "modelProfileId": "model-1",
+    "text": "Hello"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "method": {
+      "const": "ai.conversations.branch.select"
+    },
+    "params": {
+      "$ref": "#/$defs/branchSelectParams"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "branchSelectParams": {
+      "type": "object",
+      "required": [
+        "conversationId",
+        "leafMessageId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "conversationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leafMessageId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

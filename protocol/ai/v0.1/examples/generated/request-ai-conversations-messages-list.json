@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 26,
+  "method": "ai.conversations.messages.list",
+  "params": {
+    "conversationId": "conversation-1",
+    "branchLeafMessageId": "message-2",
+    "cursor": null,
+    "limit": 50
+  }
+}

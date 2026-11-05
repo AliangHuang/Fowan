@@ -1,0 +1,22 @@
+{
+  "jsonrpc": "2.0",
+  "id": 15,
+  "result": [
+    {
+      "featureId": "ai.chat",
+      "toolId": "ai-chat",
+      "displayName": "AI Chat",
+      "requiredCapabilities": [
+        "ai.chat.v1"
+      ]
+    },
+    {
+      "featureId": "ai.report",
+      "toolId": "report",
+      "displayName": "Report",
+      "requiredCapabilities": [
+        "ai.report.v1"
+      ]
+    }
+  ]
+}

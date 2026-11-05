@@ -3,7 +3,8 @@
 > 文档版本：v0.2 Draft
 > 日期：2026-07-01
 > 适用范围：Windows / macOS / iOS / Android 客户端通用功能
-> 全局架构：`docs/fowan_architecture_design_for_ai.md`
+> 当前边界：[`repository_boundaries.md`](repository_boundaries.md)
+> 历史架构草案：[`history/architecture/fowan_architecture_design_for_ai.md`](history/architecture/fowan_architecture_design_for_ai.md)
 > 开闭源边界：`docs/repository_boundaries.md`
 > Windows 首版 UI：`docs/windows_client_ui_design.md`
 

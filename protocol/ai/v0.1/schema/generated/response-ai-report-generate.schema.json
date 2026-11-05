@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "result": {
+      "$ref": "#/$defs/reportInvocationResult"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "reportInvocationResult": {
+      "type": "object",
+      "required": [
+        "invocationId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "invocationId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

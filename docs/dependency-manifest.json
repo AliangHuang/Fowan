@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 2,
+  "policyVersion": "2026-07-14",
+  "dependencies": {
+    "DocumentFormat.OpenXml": {
+      "proposal": "docs/design-proposals/DP-0003-windows-report-tool.md",
+      "purpose": "Parse report-template content trees and strongly validate writes to copied Word and Excel packages through typed Open XML APIs.",
+      "license": "MIT",
+      "securityImpact": "Processes user-selected Office package content locally; only validated body/table text and Excel constants are written to temporary copies. Macros, formulas, layout and source files are protected.",
+      "alternatives": "Manual ZIP/XML manipulation would be less safe and harder to validate; Office automation would require a desktop Office dependency.",
+      "removalStrategy": "Remove with file-template report mode or replace with an equivalently maintained Open XML package library."
+    },
+    "JsonSchema.Net": {
+      "proposal": "baseline",
+      "purpose": "Validate the checked-in public AI JSON schemas in contract tests.",
+      "license": "MIT",
+      "securityImpact": "Test-only schema parsing; no runtime data path.",
+      "alternatives": "Hand-written validation would be less complete and harder to audit.",
+      "removalStrategy": "Remove when protocol validation moves to an equivalent maintained validator."
+    },
+    "Markdig": {
+      "proposal": "docs/design-proposals/DP-0002-ai-chat-production-hardening.md",
+      "purpose": "Parse CommonMark into an AST for safe native WinUI chat rendering.",
+      "license": "BSD-2-Clause",
+      "securityImpact": "Runtime parsing of local/provider Markdown; raw HTML, images and automatic external navigation remain disabled.",
+      "alternatives": "The existing handwritten line parser is incomplete; WebView rendering would add a larger browser and script surface.",
+      "removalStrategy": "Replace only with an equivalent maintained AST parser and native renderer."
+    },
+    "Microsoft.CodeAnalysis.CSharp": {
+      "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+      "purpose": "Resolve C# symbols and operations for architecture tests.",
+      "license": "MIT",
+      "securityImpact": "Test-only compiler API; not shipped with applications.",
+      "alternatives": "Text matching cannot reliably resolve aliases, partial types, or dependency symbols.",
+      "removalStrategy": "Remove only if replaced by an equally semantic compiler-based gate."
+    },
+    "Microsoft.CodeAnalysis.CSharp.Workspaces": {
+      "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+      "purpose": "Provide the C# language service used by MSBuildWorkspace when loading projects.",
+      "license": "MIT",
+      "securityImpact": "Test-only compiler workspace support; not shipped with applications.",
+      "alternatives": "MSBuildWorkspace cannot semantically load C# projects without the language service.",
+      "removalStrategy": "Remove together with the Roslyn MSBuild architecture gate."
+    },
+    "Microsoft.CodeAnalysis.Workspaces.MSBuild": {
+      "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+      "purpose": "Load the real solution and project graph for semantic architecture tests.",
+      "license": "MIT",
+      "securityImpact": "Test-only MSBuild workspace loading; not shipped with applications.",
+      "alternatives": "Synthetic compilations cannot verify the actual project reference graph.",
+      "removalStrategy": "Remove only if the gate moves to an equivalent compiler-integrated analyzer."
+    },
+    "Microsoft.Build.Locator": {
+      "proposal": "docs/design-proposals/DP-0001-semantic-architecture-governance.md",
+      "purpose": "Select the installed MSBuild toolset before loading the solution in tests.",
+      "license": "MIT",
+      "securityImpact": "Test-only local tool discovery; no runtime data path.",
+      "alternatives": "Hard-coded MSBuild paths are machine-specific and unreliable.",
+      "removalStrategy": "Remove with MSBuildWorkspace if architecture loading changes."
+    },
+    "Microsoft.NET.Test.Sdk": {
+      "proposal": "baseline",
+      "purpose": "Run repository unit and architecture test projects.",
+      "license": "MIT",
+      "securityImpact": "Test infrastructure only.",
+      "alternatives": "The .NET test host is the standard runner used by the repository.",
+      "removalStrategy": "Replace only with a repository-wide test runner migration."
+    },
+    "Microsoft.WindowsAppSDK": {
+      "proposal": "baseline",
+      "purpose": "Provide the WinUI application and Windows integration runtime.",
+      "license": "MIT",
+      "securityImpact": "Runtime Windows UI dependency with native platform access.",
+      "alternatives": "Replacing it requires a separately approved UI platform migration.",
+      "removalStrategy": "Remove only through an accepted Windows UI migration proposal."
+    },
+    "xunit": {
+      "proposal": "baseline",
+      "purpose": "Define unit and architecture tests.",
+      "license": "Apache-2.0",
+      "securityImpact": "Test infrastructure only.",
+      "alternatives": "Other test frameworks offer no current migration benefit.",
+      "removalStrategy": "Replace only with a repository-wide test framework migration."
+    },
+    "xunit.runner.visualstudio": {
+      "proposal": "baseline",
+      "purpose": "Discover and run xUnit tests through dotnet test and CI.",
+      "license": "Apache-2.0",
+      "securityImpact": "Test infrastructure only.",
+      "alternatives": "A custom runner would add maintenance without stronger guarantees.",
+      "removalStrategy": "Remove together with xUnit or after adopting another runner."
+    }
+  }
+}

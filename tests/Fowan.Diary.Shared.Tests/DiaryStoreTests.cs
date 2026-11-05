@@ -1,8 +1,10 @@
 using Fowan.Diary.Shared.Models;
+using Fowan.Diary.Shared.Application;
 using Fowan.Diary.Shared.Services;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace Fowan.Diary.Shared.Tests;
@@ -10,6 +12,72 @@ namespace Fowan.Diary.Shared.Tests;
 public sealed class DiaryStoreTests : IDisposable
 {
     private readonly string _rootPath = Path.Combine(Path.GetTempPath(), "Fowan.Diary.Tests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void WorkspaceOwnsDataAndSettingsAndPublishesPersistedChanges()
+    {
+        var workspace = new DiaryWorkspace(
+            new DiaryStore(_rootPath),
+            new DiarySettingsStore(_rootPath));
+        var changes = new List<DiaryChangeSet>();
+        workspace.Changed += (_, change) => changes.Add(change);
+        var data = workspace.QueryData();
+        data.Entries.Add(new DiaryEntry
+        {
+            Id = "entry-1",
+            NotebookId = DiaryStore.DefaultNotebookId,
+            Title = "Synthetic",
+            Body = "Synthetic content",
+            CreatedAt = DateTimeOffset.Parse("2026-07-14T08:00:00+08:00"),
+            UpdatedAt = DateTimeOffset.Parse("2026-07-14T08:00:00+08:00")
+        });
+        var settings = workspace.QuerySettings();
+        settings.Theme = "dark";
+
+        var dataResult = workspace.SaveData(data);
+        var settingsResult = workspace.SaveSettings(settings);
+
+        Assert.True(dataResult.Succeeded);
+        Assert.True(settingsResult.Succeeded);
+        Assert.Contains(DiaryChangeSet.Entries | DiaryChangeSet.Metadata | DiaryChangeSet.Attachments, changes);
+        Assert.Contains(DiaryChangeSet.Settings, changes);
+        Assert.Single(new DiaryStore(_rootPath).LoadData().Entries);
+        Assert.Equal("dark", new DiarySettingsStore(_rootPath).Load().Theme);
+    }
+
+    [Fact]
+    public void FailedPersistenceKeepsTheOldSnapshotAndDoesNotPublish()
+    {
+        var repository = new MemoryDiaryRepository { FailSaves = true };
+        var workspace = new DiaryWorkspace(repository, new MemoryDiarySettingsRepository());
+        var before = workspace.State;
+        var published = 0;
+        workspace.Changed += (_, _) => published++;
+        var candidate = workspace.QueryData();
+        candidate.Entries.Add(new DiaryEntry { Id = "failed-entry", NotebookId = DiaryStore.DefaultNotebookId });
+
+        var result = workspace.SaveData(candidate);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(before, workspace.State);
+        Assert.Empty(workspace.State.Entries);
+        Assert.Equal(0, published);
+    }
+
+    [Fact]
+    public void VersionOneGoldenFixturePreservesEveryExistingFieldAndValue()
+    {
+        Directory.CreateDirectory(_rootPath);
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "fixtures", "diary-data.json");
+        var dataPath = Path.Combine(_rootPath, "diary-data.json");
+        File.Copy(fixturePath, dataPath);
+        var original = File.ReadAllText(dataPath);
+        var store = new DiaryStore(_rootPath);
+
+        store.SaveData(store.LoadData());
+
+        AssertJsonSubset(original, File.ReadAllText(dataPath));
+    }
 
     [Fact]
     public void FirstLoadCreatesAnEmptyLibraryWithTheInboxNotebook()
@@ -306,6 +374,40 @@ public sealed class DiaryStoreTests : IDisposable
         Assert.Contains("accept-language=zh-CN", handler.LastRequest!.RequestUri!.Query);
     }
 
+    [Fact]
+    public void TimelineControllerOwnsRangeNavigationAndInclusiveDateWindows()
+    {
+        var controller = new DiaryTimelineStateController(new DateTime(2026, 7, 14));
+        controller.SelectRange(DiaryTimelineStateController.RangeWeek);
+
+        var firstWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 7, 13), firstWindow.Start);
+        Assert.Equal(new DateTime(2026, 7, 19), firstWindow.End);
+        controller.MoveRange(1);
+        Assert.Equal(new DateTime(2026, 7, 21), controller.AnchorDate);
+        var nextWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 7, 20), nextWindow.Start);
+        Assert.Equal(new DateTime(2026, 7, 26), nextWindow.End);
+    }
+
+    [Fact]
+    public void TimelineControllerNormalizesSessionInputAndConsumesNavigationState()
+    {
+        var controller = new DiaryTimelineStateController(new DateTime(2026, 7, 14));
+        controller.Initialize("invalid", "2026-06-10", "2026-06-12", "2026-05-01");
+
+        Assert.Equal(DiaryTimelineStateController.RangeAll, controller.RangeId);
+        Assert.Equal(new DateTime(2026, 5, 1), controller.NavigatorMonth);
+        var selectedWindow = controller.DateWindow();
+        Assert.Equal(new DateTime(2026, 6, 12), selectedWindow.Start);
+        Assert.Equal(new DateTime(2026, 6, 12), selectedWindow.End);
+
+        controller.NavigateToDate(new DateTime(2026, 4, 20), new DateTime(2026, 4, 9));
+        Assert.Equal(new DateTime(2026, 4, 9), controller.PendingScrollDate);
+        controller.ClearPendingScroll();
+        Assert.Null(controller.PendingScrollDate);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
@@ -325,6 +427,73 @@ public sealed class DiaryStoreTests : IDisposable
             {
                 Content = new StringContent(content, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    private sealed class MemoryDiaryRepository : IDiaryRepository
+    {
+        public bool FailSaves { get; set; }
+        public DiaryData LoadData() => new() { Notebooks = [new DiaryNotebook { Id = DiaryStore.DefaultNotebookId }] };
+        public void SaveData(DiaryData data) { if (FailSaves) throw new IOException("synthetic failure"); }
+        public DiaryAttachment ImportAttachment(string entryId, string sourcePath) => new();
+        public void DeleteAttachment(DiaryAttachment attachment) { }
+        public void DeleteAttachmentDirectory(string entryId) { }
+        public string ResolveAttachmentPath(string relativePath) => relativePath;
+    }
+
+    private sealed class MemoryDiarySettingsRepository : IDiarySettingsRepository
+    {
+        public DiarySettings Load() => new();
+        public void Save(DiarySettings settings) { }
+    }
+
+    private static void AssertJsonSubset(string expectedJson, string actualJson)
+    {
+        using var expected = JsonDocument.Parse(expectedJson);
+        using var actual = JsonDocument.Parse(actualJson);
+        AssertJsonSubset(expected.RootElement, actual.RootElement);
+    }
+
+    private static void AssertJsonSubset(JsonElement expected, JsonElement actual)
+    {
+        Assert.Equal(expected.ValueKind, actual.ValueKind);
+        if (expected.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in expected.EnumerateObject())
+            {
+                Assert.True(actual.TryGetProperty(property.Name, out var value), property.Name);
+                AssertJsonSubset(property.Value, value);
+            }
+            return;
+        }
+        if (expected.ValueKind == JsonValueKind.Array)
+        {
+            var expectedItems = expected.EnumerateArray().ToArray();
+            var actualItems = actual.EnumerateArray().ToArray();
+            Assert.True(actualItems.Length >= expectedItems.Length);
+            for (var index = 0; index < expectedItems.Length; index++)
+            {
+                AssertJsonSubset(expectedItems[index], actualItems[index]);
+            }
+            return;
+        }
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.String:
+                Assert.Equal(expected.GetString(), actual.GetString());
+                break;
+            case JsonValueKind.Number:
+                Assert.Equal(expected.GetDecimal(), actual.GetDecimal());
+                break;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                Assert.Equal(expected.GetBoolean(), actual.GetBoolean());
+                break;
+            case JsonValueKind.Null:
+                break;
+            default:
+                Assert.Equal(expected.GetRawText(), actual.GetRawText());
+                break;
         }
     }
 }

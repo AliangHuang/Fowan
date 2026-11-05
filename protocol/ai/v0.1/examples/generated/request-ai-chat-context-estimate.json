@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 28,
+  "method": "ai.chat.context.estimate",
+  "params": {
+    "conversationId": "conversation-1",
+    "modelProfileId": "model-1",
+    "branchLeafMessageId": "message-2",
+    "draft": "Hello"
+  }
+}

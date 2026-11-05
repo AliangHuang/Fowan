@@ -1,0 +1,6 @@
+{
+  "jsonrpc": "2.0",
+  "id": 15,
+  "method": "ai.toolFeatures.list",
+  "params": {}
+}

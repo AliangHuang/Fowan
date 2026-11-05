@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "engine.handshake",
+  "params": {
+    "requiredCapabilities": ["ai.chat.v1"]
+  }
+}

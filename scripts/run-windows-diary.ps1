@@ -6,8 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$configurationName = $Configuration.ToLowerInvariant()
-$exe = Join-Path $repoRoot "out/windows-diary/$configurationName/Fowan.Diary.Windows.exe"
+$exe = Join-Path $repoRoot "build/windows/win-x64/app/Tools/Diary/Fowan.Diary.Windows.Dev.exe"
 
 if (-not (Test-Path -LiteralPath $exe)) {
     & (Join-Path $PSScriptRoot "build-windows-diary.ps1") -Configuration $Configuration

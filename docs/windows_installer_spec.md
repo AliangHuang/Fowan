@@ -2,9 +2,9 @@
 
 ## 目标
 
-Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。首版安装包采用离线全量 `.exe` 安装器，自带 .NET Runtime 和 Windows App SDK 依赖，用户不需要在新电脑上手动安装运行库。
+Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 机器。所有 Windows 应用采用 `win-x64` self-contained 发布，应用目录自带 .NET 与 Windows App SDK 运行文件，不检测或安装系统级 .NET Desktop Runtime 和 Windows App Runtime。安装器仅携带并按需安装 Microsoft Visual C++ Redistributable x64。自 0.2.2 起仅发布安装包，不再提供免安装压缩包。
 
-首版不使用 MSIX，不做在线依赖下载，也不内置代码签名流程。正式外发前应对安装包进行 Authenticode 签名，降低 Windows SmartScreen 拦截概率。
+首版不使用 MSIX，目标机安装时不在线下载依赖，也不内置代码签名流程。正式外发前应对安装包进行 Authenticode 签名，降低 Windows SmartScreen 拦截概率。
 
 ## 安装器形态
 
@@ -14,8 +14,11 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 - 安装向导必须显示安装目录选择页，允许用户自定义安装目录。
 - 安装向导必须显示隐私协议页，用户同意后才能继续安装。
 - 安装向导必须询问是否创建桌面快捷方式，默认勾选创建。
-- 安装器必须随包携带并静默安装 Microsoft Visual C++ Redistributable x64；如果目标机器已安装 x64 v14 运行库，可以跳过安装。
-- 自包含发布时 WinUI 项目不得启用 Windows App SDK bootstrapper；必须依赖随应用发布的 Undocked RegFree WinRT 初始化，避免干净机器因缺少系统级 Windows App Runtime 在进入应用代码前失败。
+- 安装器不得检查或要求系统级 .NET Desktop Runtime、Windows App Runtime 或 `DOTNET_ROOT`。
+- 发布脚本必须显式钉住经过评审的 .NET 8 补丁版本；当前为 `8.0.29`，不得依赖本机其他 SDK 隐式选择旧 runtime pack。
+- 安装器必须在复制任何 Fowan 文件前检查 Microsoft Visual C++ Redistributable x64；缺失时从随包载荷使用 `/install /quiet /norestart` 静默安装，已通过检测时不得重复安装。
+- VC++ 安装退出码 `0` 视为成功，`3010` 视为成功但要求重启；要求重启时不得在完成页直接启动 Fowan。
+- WinUI 项目必须启用 Windows App SDK self-contained 发布并关闭系统级 bootstrapper，使应用从自身目录加载 Windows App SDK。
 - 第一版只生成 `win-x64` 安装包。
 
 ## 程序目录布局
@@ -30,6 +33,8 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
     toolbox.md
     todo.md
   Tools\
+    ToolCenter\
+      Fowan.ToolCenter.Windows.exe
     Todo\
       Fowan.Todo.Windows.exe
       Fowan.Todo.Sticky.Windows.exe
@@ -37,7 +42,14 @@ Fowan Windows 安装包用于把工具箱和随包工具部署到其他 Windows 
 
 主工具箱通过 `{app}\Tools\Todo\Fowan.Todo.Windows.exe` 启动 Todo 工具。Todo 主窗口和 Sticky 窗口必须在同一个工具目录下，以便 Sticky 能返回 Todo 主窗口。
 
-程序文件不得写入用户业务数据。安装目录只用于应用二进制、资源、运行库和安装器辅助脚本。
+工具中心通过 `{app}\Tools\ToolCenter\Fowan.ToolCenter.Windows.exe` 独立启动，仅收录可用工具。
+笔记、知识、文件、全局搜索、工作流和插件六个规划项不在工具箱或工具中心中展示。
+首个工具为独立手动下载的痒痒猫；它不随 Fowan 安装包捆绑。默认程序位置为
+`%LOCALAPPDATA%\Fowan\ToolCenter\Tools\yym`，用户选择的位置使用专属 `FowanTools\yym` 子目录。
+用户数据继续由痒痒猫写入 `%LOCALAPPDATA%\yym`，工具中心卸载默认保留，只有明确勾选后才清理。
+开发构建对应 `.Dev.exe`，复用同一目录布局。详见 [工具中心要求](windows_tool_center_requirements.md)。
+
+程序文件不得写入用户业务数据。安装目录只用于应用二进制、自包含运行文件、资源和安装器辅助脚本。
 
 `ReleaseNotes` 目录只包含当前安装包版本的用户可见更新日志。完整历史 changelog 保留在仓库内，不随安装包全量发布。
 
@@ -158,25 +170,22 @@ C:\Users\Public\Desktop\Fowan_UserData_Backup_<yyyyMMdd_HHmmss>.zip
 从仓库根目录运行：
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.1.4
+.\scripts\package-windows.ps1 -Version 0.2.4 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
-输出安装包：
+成功发布后，版本目录只保留安装包、更新清单和 SHA-256 校验清单：
 
 ```text
-out\installer\windows\win-x64\FowanSetup-0.1.4-win-x64.exe
-out\installer\windows\win-x64\fowan-update.json
+publish\windows\win-x64\0.2.4\FowanSetup-0.2.4-win-x64.exe
+publish\windows\win-x64\0.2.4\fowan-update.json
+publish\windows\win-x64\0.2.4\SHA256SUMS.txt
 ```
 
-如果当前机器没有安装 Inno Setup 编译器，脚本仍应生成安装 staging 目录，并提示安装 Inno Setup 后重新运行。
+如果当前机器没有安装 Inno Setup 编译器，正式发布整体失败；脚本清理隔离 staging，且不创建不完整的版本目录。
 
-打包脚本必须同时生成当前版本的更新日志 staging 输出：
+发布前脚本按版本号检查 `publish\windows\win-x64\`，最多保留最新四个版本。为新版本腾出位置时，最旧版本会先移入隔离 staging；只有新版本原子写入成功后才永久清理，失败会自动恢复旧版本。
 
-```text
-out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt
-out\installer\windows\win-x64\app\ReleaseNotes\toolbox.md
-out\installer\windows\win-x64\app\ReleaseNotes\todo.md
-```
+打包脚本在 `build/staging/` 中生成自包含应用树、更新日志和临时 VC++ 安装载荷，并将它们放入安装包。发布目录不保留应用树、独立运行库文件或安装器 staging。
 
 GitHub Release 自动更新发布要求：
 
@@ -186,18 +195,13 @@ GitHub Release 自动更新发布要求：
 - 工具箱默认读取 `https://github.com/AliangHuang/Fowan/releases/latest/download/fowan-update.json`。
 - 客户端必须校验 `installerSha256` 后才能启动安装器。
 
-打包脚本会从 Microsoft 官方固定链接下载 Visual C++ Redistributable x64 到：
-
-```text
-out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe
-```
-
-下载文件必须通过 Authenticode 签名校验，签名发布者必须是 Microsoft Corporation。安装器会把该运行库打入最终 setup exe。
+打包脚本只从 Microsoft 官方固定入口下载 Visual C++ Redistributable x64。下载文件必须通过 Authenticode 校验，签名状态为有效且签名证书主题属于 Microsoft Corporation，校验失败则整个打包失败。VC++ 安装程序只嵌入最终 setup，不作为独立 Release asset 发布。
 
 ## 验收场景
 
-- 干净 Windows 10 19041+ 或 Windows 11 机器上安装成功，无需手动安装 .NET Runtime 或 Windows App SDK。
-- 干净机器缺少 Visual C++ Redistributable 时，安装器自动静默安装该运行库。
+- 未安装任何系统级 .NET Desktop Runtime 或 Windows App Runtime 的 Windows 10 19041+ 或 Windows 11 机器上，安装器不显示 .NET 提示，安装后可直接启动工具箱及全部随包工具。
+- 缺少 Visual C++ Redistributable 的机器上，安装器在复制 Fowan 文件前自动安装，目标机无需联网；已安装时跳过。
+- VC++ 安装程序返回失败码时，中止 Fowan 文件复制；返回 `3010` 时完成安装但不自动启动 Fowan，并要求用户重启 Windows。
 - 安装时必须同意隐私协议。
 - 安装时可以自定义安装目录。
 - 安装时可以选择创建或不创建桌面快捷方式。

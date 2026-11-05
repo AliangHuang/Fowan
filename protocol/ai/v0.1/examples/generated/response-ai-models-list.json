@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": [
+    {
+      "id": "model-1",
+      "credentialId": "credential-1",
+      "modelId": "gpt-4.1-mini",
+      "displayName": "GPT 4.1 mini",
+      "source": "preset",
+      "enabled": true,
+      "thinkingEnabled": true,
+      "thinkingEffortOptions": [
+        "high",
+        "max"
+      ],
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 32768,
+      "limitsConfigured": true,
+      "lastTestStatus": null,
+      "lastTestAt": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fowan 修复与验证"
+  short_description: "修复 Fowan 缺陷并验证统一运行产物"
+  default_prompt: "Use $repair-and-verify to fix and validate this Fowan Windows issue."

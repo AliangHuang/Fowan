@@ -1,0 +1,46 @@
+{
+  "jsonrpc": "2.0",
+  "id": 33,
+  "method": "ai.report.generate",
+  "params": {
+    "reportType": "weekly",
+    "rangeStart": "2026-07-20",
+    "rangeEnd": "2026-07-26",
+    "style": "professional",
+    "customRequirements": "突出完成事项",
+    "templateMode": "text",
+    "template": {
+      "format": "text",
+      "blocks": [
+        {
+          "kind": "heading1",
+          "text": "周报",
+          "bold": true,
+          "italic": false,
+          "link": null,
+          "isChecked": false,
+          "table": null
+        }
+      ],
+      "sheets": []
+    },
+    "example": null,
+    "attempt": 1,
+    "candidate": null,
+    "validationFeedback": null,
+    "completedTasks": [
+      {
+        "title": "完成汇报工具设计",
+        "notes": "已完成主界面概念图",
+        "listName": "产品研发",
+        "level": 1,
+        "important": true,
+        "startDate": "2026-07-20",
+        "dueDate": "2026-07-21",
+        "completedAt": "2026-07-21T09:00:00+08:00",
+        "status": "completed"
+      }
+    ],
+    "unfinishedTasks": []
+  }
+}

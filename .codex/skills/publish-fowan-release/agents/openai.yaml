@@ -1,4 +1,0 @@
-interface:
-  display_name: "Publish Fowan Release"
-  short_description: "Publish a confirmed Fowan release."
-  default_prompt: "Use $publish-fowan-release to confirm, package, validate, and publish a Fowan Windows release."

@@ -32,13 +32,11 @@ web/                            favicon / apple-touch-icon
 
 ### Windows
 
-使用：
+使用 `windows/fowan-app-icon-256.png` 或 `windows/fowan-app-icon-512.png` 作为安装器/商店图标来源。Windows 应用使用 Toolbox 的多尺寸品牌 ICO，避免低分辨率图标在高 DPI 下被放大。
 
-```text
-windows/fowan.ico
-```
+### 工具箱专属图标
 
-也可以使用 `windows/fowan-app-icon-256.png` 或 `windows/fowan-app-icon-512.png` 作为安装器/商店图标来源。
+工具箱的卡片、列表和详情页共用同一套专属图标渲染规范：图形的可见主体应与 AI 对话图标保持相同的视觉占比，标准 256px 画布预留约 16px 的透明安全边距。新图标应按这一画布规范导出；如历史图标的透明边距不同，只能在 `ToolboxControlFactory` 的专属图标注册表中设置画布缩放，以保证三个入口始终使用相同的视觉尺寸。
 
 ### macOS
 

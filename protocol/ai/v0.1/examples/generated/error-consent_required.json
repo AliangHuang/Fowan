@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": "consent_required",
+    "message": "Stable protocol error",
+    "data": {
+      "endpoint": "https://api.openai.com/v1"
+    }
+  }
+}

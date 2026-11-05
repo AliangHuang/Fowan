@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": [
+    {
+      "id": "openai",
+      "kind": "openai_compatible",
+      "displayName": "OpenAI",
+      "defaultBaseUrl": "https://api.openai.com/v1",
+      "builtIn": true,
+      "enabled": true
+    }
+  ]
+}

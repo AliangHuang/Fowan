@@ -12,11 +12,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot "build-windows-ai.ps1") -Configuration $Configuration
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$outputConfiguration = $Configuration.ToLowerInvariant()
 $executable = if ($Tool -eq "chat") {
-    Join-Path $repoRoot "out/windows-ai-chat/$outputConfiguration/Fowan.Ai.Chat.Windows.exe"
+    Join-Path $repoRoot "build/windows/win-x64/app/Tools/AI/Chat/Fowan.Ai.Chat.Windows.Dev.exe"
 } else {
-    Join-Path $repoRoot "out/windows-ai-config/$outputConfiguration/Fowan.Ai.Config.Windows.exe"
+    Join-Path $repoRoot "build/windows/win-x64/app/Tools/AI/Config/Fowan.Ai.Config.Windows.Dev.exe"
 }
 $arguments = if ($Tool -eq "config") { @("--page=$Page") } else { @() }
 $startProcessParameters = @{

@@ -5,23 +5,23 @@
 #define UninstallSubkey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{" + AppGuid + "}_is1"
 
 #ifndef AppVersion
-#define AppVersion "0.1.4"
+#define AppVersion "0.2.4"
 #endif
 
 #ifndef SourceDir
-#define SourceDir "..\..\out\installer\windows\win-x64\app"
+#error "SourceDir must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef OutputDir
-#define OutputDir "..\..\out\installer\windows\win-x64"
+#error "OutputDir must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef VcRedistPath
-#define VcRedistPath "..\..\out\installer\windows\win-x64\prerequisites\vc_redist.x64.exe"
+#error "VcRedistPath must be supplied by scripts\package-windows.ps1"
 #endif
 
 #ifndef ReleaseNotesPath
-#define ReleaseNotesPath "..\..\out\installer\windows\win-x64\app\ReleaseNotes\release-notes.txt"
+#error "ReleaseNotesPath must be supplied by scripts\package-windows.ps1"
 #endif
 
 [Setup]
@@ -38,7 +38,7 @@ UsePreviousAppDir=yes
 LicenseFile=privacy-zh-CN.txt
 OutputDir={#OutputDir}
 OutputBaseFilename=FowanSetup-{#AppVersion}-win-x64
-SetupIconFile=..\..\assets\brand\windows\fowan.ico
+SetupIconFile=..\..\apps\windows\toolbox\Assets\fowan.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -58,7 +58,7 @@ Name: "autostart"; Description: "登录 Windows 时自动启动 Fowan"; GroupDes
 Source: "close-fowan-processes.ps1"; Flags: dontcopy noencryption
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "uninstall-clean-fowan-data.ps1"; DestDir: "{app}\Installer"; Flags: ignoreversion
-Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
+Source: "{#VcRedistPath}"; Flags: dontcopy noencryption
 Source: "{#ReleaseNotesPath}"; Flags: dontcopy
 
 [Icons]
@@ -69,7 +69,7 @@ Name: "{commondesktop}\Fowan"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{ap
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Fowan"; ValueData: """{app}\{#AppExeName}"" --start-hidden"; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "运行 Fowan"; Flags: postinstall nowait skipifsilent runasoriginaluser
+Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "运行 Fowan"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: ShouldRunFowanAfterInstall
 
 [UninstallDelete]
 Type: files; Name: "{commondesktop}\Fowan.lnk"
@@ -79,6 +79,13 @@ Type: dirifempty; Name: "{commonprograms}\Fowan"
 var
   CleanUninstallRequested: Boolean;
   ExistingInstallation: Boolean;
+  MissingVcRedist: Boolean;
+  PrerequisiteRestartRequired: Boolean;
+
+function ShouldRunFowanAfterInstall(): Boolean;
+begin
+  Result := not PrerequisiteRestartRequired;
+end;
 
 function LoadPackagedReleaseNotes(var ReleaseNotes: string): Boolean;
 var
@@ -291,17 +298,6 @@ begin
     ResultCode) and (ResultCode = 0);
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-begin
-  Result := '';
-  if ExistingInstallation and not ForceCloseInstalledFowanProcesses() then
-  begin
-    Result :=
-      '无法关闭当前安装目录中的 Fowan 进程。' + #13#10 +
-      '请手动退出 Fowan 工具箱及其工具后重试。';
-  end;
-end;
-
 function InitializeUninstall(): Boolean;
 var
   Answer: Integer;
@@ -407,40 +403,82 @@ begin
   end;
 end;
 
-procedure InstallVcRedistIfNeeded();
+procedure DetectMissingPrerequisites();
+begin
+  MissingVcRedist := NeedsVcRedist();
+end;
+
+function RunPrerequisiteInstaller(
+  const Description: string;
+  const FileName: string;
+  const Parameters: string;
+  var NeedsRestart: Boolean): Boolean;
 var
   ResultCode: Integer;
 begin
-  if not NeedsVcRedist() then
-  begin
-    exit;
-  end;
-
-  WizardForm.StatusLabel.Caption := '正在安装 Microsoft Visual C++ 运行库...';
+  WizardForm.StatusLabel.Caption := '正在安装 ' + Description + '...';
   WizardForm.StatusLabel.Update;
+  Log('Installing prerequisite: ' + Description);
 
-  if not Exec(
-    ExpandConstant('{tmp}\vc_redist.x64.exe'),
-    '/install /quiet /norestart',
+  Result := Exec(
+    ExpandConstant('{tmp}\' + FileName),
+    Parameters,
     '',
     SW_HIDE,
     ewWaitUntilTerminated,
-    ResultCode) then
+    ResultCode);
+  if not Result then
   begin
-    MsgBox(
-      '无法启动 Microsoft Visual C++ 运行库安装程序。Fowan 可能无法在这台机器上启动。',
-      mbError,
-      MB_OK);
+    Log('Unable to start prerequisite installer: ' + Description);
     exit;
   end;
 
+  if ResultCode = 3010 then
+  begin
+    NeedsRestart := True;
+    PrerequisiteRestartRequired := True;
+    Result := True;
+  end;
   if (ResultCode <> 0) and (ResultCode <> 3010) then
   begin
-    MsgBox(
-      'Microsoft Visual C++ 运行库安装失败，退出码：' + IntToStr(ResultCode) + '。Fowan 可能无法在这台机器上启动。',
-      mbError,
-      MB_OK);
+    Log(Description + ' installer failed with exit code ' + IntToStr(ResultCode));
+    Result := False;
   end;
+end;
+
+function InstallMissingPrerequisites(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  DetectMissingPrerequisites();
+
+  if MissingVcRedist then
+  begin
+    ExtractTemporaryFile('vc_redist.x64.exe');
+    if not RunPrerequisiteInstaller(
+      'Microsoft Visual C++ Redistributable x64',
+      'vc_redist.x64.exe',
+      '/install /quiet /norestart',
+      NeedsRestart) then
+    begin
+      Result := 'Microsoft Visual C++ Redistributable x64 自动安装失败。';
+      exit;
+    end;
+  end;
+
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if ExistingInstallation and not ForceCloseInstalledFowanProcesses() then
+  begin
+    Result :=
+      '无法关闭当前安装目录中的 Fowan 进程。' + #13#10 +
+      '请手动退出 Fowan 工具箱及其工具后重试。';
+    exit;
+  end;
+
+  Result := InstallMissingPrerequisites(NeedsRestart);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -451,8 +489,6 @@ begin
     begin
       RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Fowan');
     end;
-
-    InstallVcRedistIfNeeded();
   end;
 end;
 

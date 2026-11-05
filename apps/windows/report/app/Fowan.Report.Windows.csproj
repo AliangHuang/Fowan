@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(FowanTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>Fowan.Report.Windows</RootNamespace>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Report.Windows.Dev</AssemblyName>
+    <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Report.Windows</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\toolbox\Assets\fowan.ico</ApplicationIcon>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKBootstrapInitialize Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapInitialize>
+    <WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI Condition="'$(WindowsAppSDKSelfContained)' != 'true'">true</WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(FowanWindowsAppSdkVersion)" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\shared\Fowan.Report.Shared.csproj" />
+    <ProjectReference Include="..\..\todo\shared\Fowan.Todo.Shared.csproj" />
+    <ProjectReference Include="..\..\ai\shared\Fowan.Ai.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\toolbox\Assets\fowan.ico" Link="Assets\fowan.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\..\assets\brand\windows\fowan-app-icon-256.png" Link="Assets\fowan-app-icon-256.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "result": {
+      "$ref": "#/$defs/contextEstimateResult"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "contextEstimateResult": {
+      "type": "object",
+      "required": [
+        "estimatedInputTokens",
+        "safeInputTokens",
+        "contextWindowTokens",
+        "maxOutputTokens",
+        "usageRatio",
+        "action",
+        "compactedThroughMessageId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "estimatedInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "safeInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 2048
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usageRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "action": {
+          "enum": [
+            "ready",
+            "warning",
+            "compression_required",
+            "too_large"
+          ]
+        },
+        "compactedThroughMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

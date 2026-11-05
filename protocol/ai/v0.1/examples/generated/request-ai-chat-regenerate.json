@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 32,
+  "method": "ai.chat.regenerate",
+  "params": {
+    "conversationId": "conversation-1",
+    "credentialId": "credential-1",
+    "modelProfileId": "model-1",
+    "userMessageId": "message-1"
+  }
+}

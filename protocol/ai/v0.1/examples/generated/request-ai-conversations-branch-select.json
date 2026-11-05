@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 27,
+  "method": "ai.conversations.branch.select",
+  "params": {
+    "conversationId": "conversation-1",
+    "leafMessageId": "message-2"
+  }
+}

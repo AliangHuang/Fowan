@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 1,
   "notebooks": [
     { "id": "work", "name": "工作记录", "accentColor": "#2F80FF" },
     { "id": "life", "name": "生活碎片", "accentColor": "#35B779" },

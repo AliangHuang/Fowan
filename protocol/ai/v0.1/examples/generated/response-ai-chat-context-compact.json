@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 29,
+  "result": {
+    "invocationId": "invocation-2",
+    "conversationId": "conversation-1"
+  }
+}

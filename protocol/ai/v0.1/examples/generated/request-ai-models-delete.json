@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "method": "ai.models.delete",
+  "params": {
+    "id": "model-1"
+  }
+}

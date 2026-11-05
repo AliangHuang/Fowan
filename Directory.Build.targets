@@ -1,0 +1,11 @@
+<Project>
+  <ItemGroup Condition="'$(FowanReleaseRuntimeVersion)' != '' and
+                        '$(OutputType)' == 'WinExe' and
+                        '$(TargetFrameworkIdentifier)' == '.NETCoreApp' and
+                        '$(TargetFrameworkVersion)' == 'v8.0'">
+    <KnownFrameworkReference Update="Microsoft.NETCore.App"
+                             LatestRuntimeFrameworkVersion="$(FowanReleaseRuntimeVersion)" />
+    <KnownFrameworkReference Update="Microsoft.WindowsDesktop.App"
+                             LatestRuntimeFrameworkVersion="$(FowanReleaseRuntimeVersion)" />
+  </ItemGroup>
+</Project>

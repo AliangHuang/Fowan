@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "ai.channels.create",
+  "params": {
+    "displayName": "Custom",
+    "defaultBaseUrl": "https://api.example.com/v1",
+    "enabled": true
+  }
+}
