@@ -43,6 +43,7 @@ internal sealed class ToolLaunchCoordinator(
         _lastLaunchAt = now;
         var opened = tool.Id switch
         {
+            "tool-center" => Launch(ToolExecutableResolver.ResolveToolCenter(), "Tool_ToolCenter"),
             "todo" => Launch(ToolExecutableResolver.ResolveTodo(), "Tool_Todo"),
             "pomodoro" => Launch(ToolExecutableResolver.ResolvePomodoro(), "Tool_Pomodoro"),
             "diary" => Launch(ToolExecutableResolver.ResolveDiary(), "Tool_Diary"),

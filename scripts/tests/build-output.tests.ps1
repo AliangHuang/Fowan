@@ -11,6 +11,17 @@ function Assert-True([bool]$Condition, [string]$Message) {
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $packageScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/package-windows.ps1")
 $stopScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/stop-windows.ps1")
+$buildScript = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "scripts/build-windows.ps1")
+Assert-True ($buildScript.Contains('apps/windows/tool-center/app/Fowan.ToolCenter.Windows.csproj')) "unified build must include Tool Center"
+Assert-True ($buildScript.Contains('Tools/ToolCenter')) "unified build must stage Tool Center under Tools/ToolCenter"
+Assert-True ($buildScript.Contains('Fowan.ToolCenter.Windows.Dev.exe')) "unified build must create a development Tool Center executable"
+Assert-True ($packageScript.Contains('apps/windows/tool-center/app/Fowan.ToolCenter.Windows.csproj')) "release packaging must publish Tool Center"
+Assert-True ($packageScript.Contains('Tools/ToolCenter')) "release packaging must stage Tool Center under Tools/ToolCenter"
+Assert-True ($packageScript.Contains('Fowan.ToolCenter.Windows.exe')) "release packaging must require Tool Center"
+Assert-True ($packageScript.Contains('tools/tool-center/CHANGELOG.md')) "release preparation must supply Tool Center notes for the user-confirmed release version"
+Assert-True ($stopScript.Contains('"ToolCenter"')) "stop-windows must support Tool Center"
+Assert-True ($stopScript.Contains('Tools/ToolCenter/Fowan.ToolCenter.Windows.Dev.exe')) "stop-windows must stop development Tool Center"
+Assert-True ($stopScript.Contains('Tools/ToolCenter/Fowan.ToolCenter.Windows.exe')) "stop-windows must stop production-named Tool Center in development output"
 Assert-True ($packageScript.Contains('apps/windows/report/app/Fowan.Report.Windows.csproj')) "release packaging must publish Report"
 Assert-True ($packageScript.Contains('apps/windows/pomodoro/app/Fowan.Pomodoro.Windows.csproj')) "release packaging must publish Pomodoro"
 Assert-True ($packageScript.Contains('Tools/Report')) "release packaging must stage Report under Tools/Report"
@@ -31,12 +42,23 @@ $releaseChangelogs = @(
 )
 foreach ($relativePath in $releaseChangelogs) {
     $changelog = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot "changelogs/$relativePath")
-    Assert-True ($changelog -match '(?m)^##\s+0\.2\.3(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.3: $relativePath"
+    Assert-True ($changelog -match '(?m)^##\s+0\.2\.4(?:\s+-\s+.*)?$') "release changelog is missing version 0.2.4: $relativePath"
 }
-Assert-True ($packageScript.Contains('--self-contained false')) "release packaging must remain framework-dependent"
-Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=false')) "release packaging must use the installed Windows App Runtime"
-Assert-True (-not $packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must not embed the .NET Desktop Runtime"
-Assert-True (-not $packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must not embed the Windows App Runtime"
+Assert-True ($packageScript.Contains('--self-contained true')) "release packaging must embed the .NET runtime with every application"
+Assert-True ($packageScript.Contains('-p:WindowsAppSDKSelfContained=true')) "release packaging must embed the Windows App SDK runtime"
+Assert-True ($packageScript.Contains('$dotNetRuntimeVersion = "8.0.29"')) "release packaging must pin the reviewed .NET runtime patch"
+Assert-True ($packageScript.Contains('-p:FowanReleaseRuntimeVersion=$dotNetRuntimeVersion')) "release packaging must publish with the pinned .NET runtime patch"
+$directoryBuildTargets = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'Directory.Build.targets')
+Assert-True ($directoryBuildTargets.Contains("'`$(FowanReleaseRuntimeVersion)' != ''")) "the pinned runtime override must require an explicit release version"
+Assert-True ($directoryBuildTargets.Contains("'`$(OutputType)' == 'WinExe'")) "the pinned runtime override must apply only to executable release projects"
+Assert-True ($directoryBuildTargets.Contains("'`$(TargetFrameworkIdentifier)' == '.NETCoreApp'")) "the pinned runtime override must apply only to .NET Core applications"
+Assert-True ($directoryBuildTargets.Contains("'`$(TargetFrameworkVersion)' == 'v8.0'")) "the pinned runtime override must apply only to .NET 8 projects"
+Assert-True ($directoryBuildTargets.Contains('LatestRuntimeFrameworkVersion="$(FowanReleaseRuntimeVersion)"')) "release executables must override the SDK-known runtime patch"
+Assert-True (-not $packageScript.Contains('windowsdesktop-runtime-8-x64.exe')) "release packaging must not depend on a machine-level .NET Desktop Runtime installer"
+Assert-True (-not $packageScript.Contains('WindowsAppRuntimeInstall-x64.exe')) "release packaging must not depend on a machine-level Windows App Runtime installer"
+Assert-True ($packageScript.Contains('vc_redist.x64.exe')) "release packaging must embed the Visual C++ Redistributable installer"
+Assert-True ($packageScript.Contains('Assert-MicrosoftSignature')) "release packaging must validate prerequisite Authenticode signatures"
+Assert-True ($packageScript.Contains('Ensure-RuntimePrerequisites')) "release packaging must acquire the VC++ prerequisite installer"
 Assert-True (-not $packageScript.Contains('Fowan-$Version-portable.zip')) "release packaging must not create a portable ZIP"
 Assert-True (-not $packageScript.Contains('Compress-Archive')) "release packaging must not archive a portable delivery"
 Assert-True ($stopScript.Contains('"Report"')) "stop-windows must support the Report component"

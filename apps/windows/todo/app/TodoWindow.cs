@@ -192,7 +192,7 @@ public sealed class TodoWindow : Window
     private void ConfigureWindow()
     {
         _nativeWindow.Configure("Fowan Todo", Path.Combine(AppContext.BaseDirectory, "Assets", "fowan-todo.ico"));
-        Closed += (_, _) => _stickyProcesses.TryShutdown();
+        Closed += (_, _) => _ = _stickyProcesses.TryShutdownAsync();
         Activated += (_, _) =>
         {
             _chrome.QueueRegionUpdate();
@@ -427,12 +427,16 @@ public sealed class TodoWindow : Window
         RefreshAll();
     }
 
-    private void OpenStickyMode(bool closeMainWindow = true)
+    private void OpenStickyMode(bool closeMainWindow = true) =>
+        _ = OpenStickyModeAsync(closeMainWindow);
+
+    private async Task OpenStickyModeAsync(bool closeMainWindow)
     {
         _commands.SetStickyModeEnabled(true);
 
-        if (_stickyProcesses.TryShow())
+        if (await _stickyProcesses.TryShowAsync())
         {
+            _commands.SetStickyModeEnabled(true);
             if (closeMainWindow)
             {
                 _nativeWindow.Hide();
@@ -466,7 +470,7 @@ public sealed class TodoWindow : Window
             return;
         }
 
-        _stickyProcesses.TryPrewarm();
+        _ = _stickyProcesses.TryPrewarmAsync();
     }
 
     private void ReloadDataAndSettings()
@@ -597,7 +601,10 @@ public sealed class TodoWindow : Window
 
     private SolidColorBrush Brush(uint rgb) => _palette.Brush(rgb);
 
-    internal void RestoreFromExternalActivation()
+    internal void RestoreFromExternalActivation() =>
+        _ = RestoreFromExternalActivationAsync();
+
+    private async Task RestoreFromExternalActivationAsync()
     {
         ReloadDataAndSettings();
         var wasStickyModeEnabled = _workspace.State.Settings.IsStickyModeEnabled;
@@ -609,7 +616,7 @@ public sealed class TodoWindow : Window
         _nativeWindow.RestoreAndForeground();
         if (wasStickyModeEnabled)
         {
-            _stickyProcesses.TryShutdown();
+            await _stickyProcesses.TryShutdownAsync();
         }
 
         QueueStickyPrewarm();

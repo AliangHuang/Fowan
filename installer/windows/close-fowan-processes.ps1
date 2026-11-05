@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $allowedNames = @(
     "Fowan.Windows.exe",
+    "Fowan.ToolCenter.Windows.exe",
     "Fowan.Todo.Windows.exe",
     "Fowan.Todo.Sticky.Windows.exe",
     "Fowan.Diary.Windows.exe",

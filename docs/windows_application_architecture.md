@@ -43,6 +43,10 @@ Windows APIs.
 
 - Toolbox: catalog/navigation, launch, update, tray/window lifetime, profile,
   and settings.
+- Tool Center: independent available-tool catalog owned by `ToolCenterSession`,
+  with read-only startup preferences, search, categories, and application details. Its managed
+  yym download/install/update/uninstall commands use Application ports implemented by bounded
+  Windows HTTPS, archive, ownership/receipt, filesystem and process adapters (DP-0006).
 - Todo: workspace persistence, task/list commands, main-window presentation,
   Sticky presentation, task drag geometry, window mode, and dialogs.
 - Diary: workspace persistence, timeline, editor, metadata, notebooks/tags,

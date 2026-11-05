@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Fowan.Windows.Platform.Tests" />
     <ProjectReference Include="..\shared\Fowan.Todo.Shared.csproj" />
     <ProjectReference Include="..\..\platform\contracts\Fowan.Windows.Platform.Contracts.csproj" />
   </ItemGroup>

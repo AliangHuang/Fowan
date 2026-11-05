@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "build-output.ps1")
+. (Join-Path $PSScriptRoot "core-artifact-compatibility.ps1")
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runtimeIdentifier = "win-x64"
@@ -38,10 +39,14 @@ if ([string]::IsNullOrWhiteSpace($core)) {
 if (-not (Test-Path -LiteralPath $core -PathType Leaf)) {
     throw "A Fowan Core artifact is required for the unified application tree: $core"
 }
+Test-FowanCoreArtifactCompatibility `
+    -ArtifactPath $core `
+    -ContractPath (Join-Path $repoRoot "protocol/ai/v0.1/contract.json")
 
 $staging = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "windows-app"
 try {
     $targets = @(
+        @{ Project = "apps/windows/tool-center/app/Fowan.ToolCenter.Windows.csproj"; Destination = "Tools/ToolCenter"; Exe = "Fowan.ToolCenter.Windows.Dev.exe"; LegacyExe = "Fowan.ToolCenter.Windows.exe"; Component = "tool-center" },
         @{ Project = "apps/windows/toolbox/Fowan.Windows.csproj"; Destination = "."; Exe = "Fowan.Windows.Dev.exe"; LegacyExe = "Fowan.Windows.exe"; Component = "toolbox" },
         @{ Project = "apps/windows/todo/app/Fowan.Todo.Windows.csproj"; Destination = "Tools/Todo"; Exe = "Fowan.Todo.Windows.Dev.exe"; LegacyExe = "Fowan.Todo.Windows.exe"; Component = "todo" },
         @{ Project = "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"; Destination = "Tools/Todo"; Exe = "Fowan.Todo.Sticky.Windows.Dev.exe"; LegacyExe = "Fowan.Todo.Sticky.Windows.exe"; Component = "todo-sticky" },

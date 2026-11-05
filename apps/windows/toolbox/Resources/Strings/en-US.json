@@ -1,5 +1,7 @@
 {
   "App_Title": "Fowan",
+  "Tool_ToolCenter": "Tool Center",
+  "Tool_ToolCenter_Description": "Open the independent Tool Center to browse available tools.",
   "Search_Placeholder": "Search tools",
   "Search_Shortcut": "Ctrl+K",
   "Search_Clear": "Clear search",
@@ -40,8 +42,8 @@
   "Tool_QuickCapture_Description": "Capture text, clipboard notes, and small ideas without choosing a final destination.",
   "Tool_Todo": "Todo",
   "Tool_Todo_Description": "Open the standalone Todo tool for tasks and sticky mode.",
-  "Tool_Pomodoro": "Pomodoro",
-  "Tool_Pomodoro_Description": "Focus with Pomodoro sessions, Todo reminders, and daily digests.",
+  "Tool_Pomodoro": "Reminders",
+  "Tool_Pomodoro_Description": "Manage standalone reminders, Todo reminders, and daily digests, with a built-in Pomodoro timer.",
   "Tool_Diary": "Diary",
   "Tool_Diary_Description": "Open the standalone Diary tool for daily writing and timeline review.",
   "Tool_Notes": "Notes",

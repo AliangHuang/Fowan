@@ -3,6 +3,7 @@ namespace Fowan.Windows.Platform.Windows;
 internal static class ToolExecutableResolver
 {
 #if FOWAN_DEVELOPMENT_RUNTIME
+    internal const string ToolCenterExecutableName = "Fowan.ToolCenter.Windows.Dev.exe";
     internal const string TodoExecutableName = "Fowan.Todo.Windows.Dev.exe";
     internal const string DiaryExecutableName = "Fowan.Diary.Windows.Dev.exe";
     internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.Dev.exe";
@@ -10,6 +11,7 @@ internal static class ToolExecutableResolver
     internal const string ReportExecutableName = "Fowan.Report.Windows.Dev.exe";
     internal const string PomodoroExecutableName = "Fowan.Pomodoro.Windows.Dev.exe";
 #else
+    internal const string ToolCenterExecutableName = "Fowan.ToolCenter.Windows.exe";
     internal const string TodoExecutableName = "Fowan.Todo.Windows.exe";
     internal const string DiaryExecutableName = "Fowan.Diary.Windows.exe";
     internal const string AiChatExecutableName = "Fowan.Ai.Chat.Windows.exe";
@@ -17,6 +19,8 @@ internal static class ToolExecutableResolver
     internal const string ReportExecutableName = "Fowan.Report.Windows.exe";
     internal const string PomodoroExecutableName = "Fowan.Pomodoro.Windows.exe";
 #endif
+
+    public static string? ResolveToolCenter() => Resolve(ToolCenterExecutableName, "ToolCenter");
 
     public static string? ResolveTodo() => Resolve(
         TodoExecutableName, "Todo");

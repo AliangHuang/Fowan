@@ -25,6 +25,7 @@ try {
     }
 
     & (Join-Path $PSScriptRoot "tests/build-output.tests.ps1")
+    & (Join-Path $PSScriptRoot "tests/core-artifact-compatibility.tests.ps1")
     & (Join-Path $PSScriptRoot "tests/windows-installer-prerequisites.tests.ps1")
     & (Join-Path $PSScriptRoot "verify-ai-protocol-generation.ps1")
     & (Join-Path $PSScriptRoot "verify-development-policy.ps1")
@@ -78,7 +79,7 @@ try {
     $textExtensions = @('.cs', '.csproj', '.iss', '.json', '.md', '.props', '.ps1', '.sln', '.targets', '.toml', '.xaml', '.yaml', '.yml')
     $currentSources = Get-ChildItem -LiteralPath $repoRoot -Recurse -File | Where-Object {
         $textExtensions -contains $_.Extension -and
-        $_.FullName -notmatch '[\\/](?:\.git|build|publish)[\\/]'
+        $_.FullName -notmatch '[\\/](?:\.git|build|publish)[\\/]' -and
         $_.FullName -notmatch '[\\/]docs[\\/]history[\\/]'
     }
     foreach ($source in $currentSources) {

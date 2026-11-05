@@ -35,6 +35,10 @@ public sealed class PomodoroWindow : Window
     private readonly IToolboxResidentConfigurator _residentConfigurator = new WindowsToolboxResidentConfigurator();
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly ContentControl _page = new();
+    private readonly ContentControl _reminderList = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    private readonly ContentControl _reminderDigest = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    private UIElement? _focusPage;
+    private UIElement? _remindersPage;
     private readonly TextBlock _phaseText = new();
     private readonly TextBlock _clockText = new();
     private readonly TextBlock _roundText = new();
@@ -45,11 +49,11 @@ public sealed class PomodoroWindow : Window
     private readonly ComboBox _focusTask = new();
     private readonly TextBlock _statusText = new();
     private readonly Dictionary<string, Button> _navigation = [];
-    private string _currentPage = "focus";
+    private string _currentPage = "reminders";
 
     public PomodoroWindow()
     {
-        Title = "Fowan 番茄钟";
+        Title = "Fowan 提醒";
         ExtendsContentIntoTitleBar = true;
         Content = BuildShell();
         Workspace.Changed += (_, _) => DispatcherQueue.TryEnqueue(Render);
@@ -72,10 +76,10 @@ public sealed class PomodoroWindow : Window
         sidebar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(14, 0, 0, 56) };
-        brand.Children.Add(TomatoMark(54));
+        brand.Children.Add(new FontIcon { Glyph = "\uEA8F", FontFamily = FluentIcons(), FontSize = 42, Width = 54, Height = 54, Foreground = Brush(Color.FromArgb(255, 139, 200, 255)) });
         brand.Children.Add(new TextBlock
         {
-            Text = "Fowan 番茄钟",
+            Text = "Fowan 提醒",
             Foreground = Brush(Colors.White),
             FontSize = 22,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
@@ -84,9 +88,9 @@ public sealed class PomodoroWindow : Window
         sidebar.Children.Add(brand);
 
         var nav = new StackPanel { Spacing = 10 };
-        nav.Children.Add(NavigationButton("focus", "专注", "\uE80F"));
-        nav.Children.Add(NavigationButton("reminders", "提醒", "\uE7ED"));
-        nav.Children.Add(NavigationButton("records", "记录", "\uE9D9"));
+        nav.Children.Add(NavigationButton("reminders", "提醒中心", "\uEA8F"));
+        nav.Children.Add(NavigationButton("focus", "番茄钟", "\uE823"));
+        nav.Children.Add(NavigationButton("records", "专注记录", "\uE9D9"));
         nav.Children.Add(NavigationButton("settings", "设置", "\uE713"));
         Grid.SetRow(nav, 1);
         sidebar.Children.Add(nav);
@@ -104,7 +108,7 @@ public sealed class PomodoroWindow : Window
                 Children =
                 {
                     new FontIcon { Glyph = "\uE73E", FontFamily = FluentIcons(), FontSize = 20, Foreground = Brush(Color.FromArgb(255, 202, 220, 246)) },
-                    new TextBlock { Text = "专注成就，时间自由", Foreground = Brush(Color.FromArgb(255, 225, 235, 250)), FontSize = 14, VerticalAlignment = VerticalAlignment.Center }
+                    new TextBlock { Text = "重要事项，准时提醒", Foreground = Brush(Color.FromArgb(255, 225, 235, 250)), FontSize = 14, VerticalAlignment = VerticalAlignment.Center }
                 }
             }
         };
@@ -124,7 +128,7 @@ public sealed class PomodoroWindow : Window
         content.Children.Add(_statusText);
         Grid.SetColumn(content, 1);
         root.Children.Add(content);
-        Navigate("focus");
+        Navigate("reminders");
         return root;
     }
 
@@ -171,10 +175,10 @@ public sealed class PomodoroWindow : Window
         _currentPage = id;
         _page.Content = id switch
         {
-            "reminders" => BuildRemindersPage(),
+            "reminders" => _remindersPage ??= BuildRemindersPage(),
             "records" => BuildRecordsPage(),
             "settings" => BuildSettingsPage(),
-            _ => BuildFocusPage()
+            _ => _focusPage ??= BuildFocusPage()
         };
         foreach (var pair in _navigation)
         {
@@ -195,7 +199,7 @@ public sealed class PomodoroWindow : Window
 
         var header = new Grid { Margin = new Thickness(4, 0, 0, 30) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.Children.Add(PageTitle("专注"));
+        header.Children.Add(PageTitle("番茄钟"));
         var utilities = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18, HorizontalAlignment = HorizontalAlignment.Right };
         utilities.Children.Add(IconButton("统计概览", "\uE9D9"));
         utilities.Children.Add(IconButton("外观", "\uE7C3"));
@@ -376,10 +380,10 @@ public sealed class PomodoroWindow : Window
 
         var left = new StackPanel { Spacing = 28 };
         left.Children.Add(BuildReminderEditor());
-        left.Children.Add(BuildReminderList());
+        left.Children.Add(_reminderList);
         Grid.SetRow(left, 1);
         root.Children.Add(left);
-        var summary = BuildTodayDigestCard();
+        var summary = _reminderDigest;
         summary.Margin = new Thickness(32, 0, 0, 0);
         Grid.SetColumn(summary, 1);
         Grid.SetRow(summary, 1);
@@ -551,7 +555,7 @@ public sealed class PomodoroWindow : Window
     {
         var state = Workspace.State;
         var root = new StackPanel { Spacing = 24, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Left };
-        root.Children.Add(PageTitle("记录"));
+        root.Children.Add(PageTitle("专注记录"));
         var hero = SurfaceCard(new Thickness(28), 18);
         hero.Child = new TextBlock { Text = $"今日完成 {state.TodayCompletedFocuses} 个专注 / {state.TodayCompletedMinutes} 分钟    ·    本周 {state.ThisWeekCompletedFocuses} 个专注 / {state.ThisWeekCompletedMinutes} 分钟", FontSize = 19, Foreground = Brush(Ink), TextWrapping = TextWrapping.Wrap };
         root.Children.Add(hero);
@@ -581,17 +585,18 @@ public sealed class PomodoroWindow : Window
         root.Children.Add(PageTitle("设置"));
         var card = SurfaceCard(new Thickness(28), 18);
         var panel = new StackPanel { Spacing = 17 };
+        panel.Children.Add(new TextBlock { Text = "提醒与每日摘要", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Brush(Ink) });
+        panel.Children.Add(SettingRow("每日截止任务摘要", due));
+        panel.Children.Add(SettingRow("截止摘要时间", dueTime));
+        panel.Children.Add(SettingRow("每日开始任务摘要", start));
+        panel.Children.Add(SettingRow("开始摘要时间", startTime));
+        panel.Children.Add(new Border { Height = 1, Background = Brush(Stroke), Margin = new Thickness(0, 6, 0, 6) });
+        panel.Children.Add(new TextBlock { Text = "番茄钟", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Brush(Ink) });
         panel.Children.Add(SettingRow("专注分钟", focus));
         panel.Children.Add(SettingRow("短休息分钟", shortBreak));
         panel.Children.Add(SettingRow("长休息分钟", longBreak));
         panel.Children.Add(SettingRow("长休息前专注轮数", cycle));
         panel.Children.Add(SettingRow("自动开始下一阶段", auto));
-        panel.Children.Add(new Border { Height = 1, Background = Brush(Stroke), Margin = new Thickness(0, 6, 0, 6) });
-        panel.Children.Add(new TextBlock { Text = "每日摘要", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Brush(Ink) });
-        panel.Children.Add(SettingRow("每日截止任务摘要", due));
-        panel.Children.Add(SettingRow("截止摘要时间", dueTime));
-        panel.Children.Add(SettingRow("每日开始任务摘要", start));
-        panel.Children.Add(SettingRow("开始摘要时间", startTime));
         var save = PrimaryActionButton("保存设置", "\uE74E", async (_, _) =>
         {
             Workspace.UpdateSettings(new PomodoroSettings { FocusMinutes = (int)focus.Value, ShortBreakMinutes = (int)shortBreak.Value, LongBreakMinutes = (int)longBreak.Value, FocusesPerCycle = (int)cycle.Value, AutoStartNextPhase = auto.IsOn });
@@ -631,6 +636,12 @@ public sealed class PomodoroWindow : Window
 
     private void Render()
     {
+        if (_currentPage == "reminders")
+        {
+            _reminderList.Content = BuildReminderList();
+            _reminderDigest.Content = BuildTodayDigestCard();
+            return;
+        }
         if (_currentPage != "focus") return;
         var state = Workspace.State;
         _phaseText.Text = state.Phase.State == PomodoroRunState.Idle ? "准备开始" : PhaseLabel(state.Phase.Phase) + StateSuffix(state.Phase.State);

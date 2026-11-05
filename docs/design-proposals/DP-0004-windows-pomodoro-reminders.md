@@ -1,7 +1,7 @@
 ---
 id: DP-0004
 status: accepted
-title: Windows Pomodoro and reminder tool
+title: Windows Reminders tool with built-in Pomodoro
 components:
   - reminder-contracts
   - reminder-shared
@@ -17,14 +17,16 @@ adrs:
 
 # Problem and users
 
-Users need a local focus timer that can work with Todo tasks and reliably surface reminders
-while the Toolbox remains in the notification area. Existing Todo intentionally excludes focus
+Users need a local Reminders tool that works with Todo tasks and reliably surfaces reminders
+while the Toolbox remains in the notification area. Pomodoro is a feature inside Reminders,
+alongside standalone reminders and daily digests. Existing Todo intentionally excludes focus
 time and must retain its JSON compatibility.
 
 ## Goals and non-goals
 
-Provide local Pomodoro phases, lightweight session history, standalone and Todo-linked reminders,
-and daily start/due summaries. Cloud sync, AI, collaboration, calendar integration, productivity
+Provide standalone and Todo-linked reminders and daily start/due summaries as the default home,
+with local Pomodoro phases and lightweight session history accessible inside the same application.
+Cloud sync, AI, collaboration, calendar integration, productivity
 scoring, generic alarm services, and a Todo JSON migration are out of scope.
 
 ## Repository and component boundaries
@@ -50,6 +52,9 @@ rechecks task state before delivery. Corrupt reminder data is backed up and open
 
 ## Compatibility, migration, and rollback
 
+The application is displayed as Reminders; its existing `pomodoro` catalog ID, executable names,
+source projects, installation directories, and local data paths remain stable. This is a product
+navigation change within the registered components, with no new process, service, or migration.
 New V1 Pomodoro and Reminder files are additive. Todo paths and JSON fields remain unchanged.
 Removing the feature leaves Todo data intact; old Todo builds cannot erase reminder data because
 they never write the separate Reminder store.

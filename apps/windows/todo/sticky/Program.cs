@@ -11,11 +11,15 @@ internal static class Program
 {
     private const string SingleInstanceMutexName = @"Local\Fowan.Todo.Sticky.Windows.SingleInstance";
     private const string ActivationEventName = @"Local\Fowan.Todo.Sticky.Windows.Activate";
+    private const string ActivationAcknowledgedEventName = @"Local\Fowan.Todo.Sticky.Windows.Activated";
+    private const string ReadyEventName = @"Local\Fowan.Todo.Sticky.Windows.Ready";
     private const string ShutdownEventName = @"Local\Fowan.Todo.Sticky.Windows.Shutdown";
     private const string StartHiddenArgument = "--start-hidden";
 
     private static Mutex? _singleInstanceMutex;
     private static EventWaitHandle? _activationEvent;
+    private static EventWaitHandle? _activationAcknowledgedEvent;
+    private static EventWaitHandle? _readyEvent;
     private static EventWaitHandle? _shutdownEvent;
     private static CancellationTokenSource? _activationListenerCts;
 
@@ -44,6 +48,7 @@ internal static class Program
 
             var window = new StickyWindow(args);
             StartActivationListener(window);
+            QueueReadySignal(window);
             if (startHidden)
             {
                 app.MainWindow = window;
@@ -95,16 +100,24 @@ internal static class Program
         }
 
         _singleInstanceMutex = mutex;
-        EnsureActivationEvent();
+        EnsureSingleInstanceEvents();
         return true;
     }
 
-    private static void EnsureActivationEvent()
+    private static void EnsureSingleInstanceEvents()
     {
         _activationEvent ??= new EventWaitHandle(
             initialState: false,
             mode: EventResetMode.AutoReset,
             name: ActivationEventName);
+        _activationAcknowledgedEvent ??= new EventWaitHandle(
+            initialState: false,
+            mode: EventResetMode.AutoReset,
+            name: ActivationAcknowledgedEventName);
+        _readyEvent ??= new EventWaitHandle(
+            initialState: false,
+            mode: EventResetMode.ManualReset,
+            name: ReadyEventName);
         _shutdownEvent ??= new EventWaitHandle(
             initialState: false,
             mode: EventResetMode.AutoReset,
@@ -130,7 +143,7 @@ internal static class Program
 
     private static void StartActivationListener(StickyWindow window)
     {
-        EnsureActivationEvent();
+        EnsureSingleInstanceEvents();
         _activationListenerCts = new CancellationTokenSource();
         var token = _activationListenerCts.Token;
         var activationEvent = _activationEvent;
@@ -158,7 +171,11 @@ internal static class Program
 
                 if (signaled == 0)
                 {
-                    window.Dispatcher.BeginInvoke((Action)window.RestoreFromExternalActivation);
+                    window.Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        window.RestoreFromExternalActivation();
+                        _activationAcknowledgedEvent?.Set();
+                    }));
                 }
                 else if (signaled == 1)
                 {
@@ -169,6 +186,11 @@ internal static class Program
         }, token);
     }
 
+    private static void QueueReadySignal(StickyWindow window)
+    {
+        window.Dispatcher.BeginInvoke((Action)(() => _readyEvent?.Set()));
+    }
+
     private static void DisposeSingleInstanceResources()
     {
         _activationListenerCts?.Cancel();
@@ -177,6 +199,12 @@ internal static class Program
 
         _activationEvent?.Dispose();
         _activationEvent = null;
+
+        _activationAcknowledgedEvent?.Dispose();
+        _activationAcknowledgedEvent = null;
+
+        _readyEvent?.Dispose();
+        _readyEvent = null;
 
         _shutdownEvent?.Dispose();
         _shutdownEvent = null;

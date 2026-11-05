@@ -151,7 +151,12 @@ internal sealed class StickyFloatingModeController(
             IsApplying = false;
         }
         enforceDisplayConstraints(true);
-        window.Activate();
+        // A prewarmed window has a handle but has never been shown. Its caller
+        // completes external activation after restoring the expanded geometry.
+        if (window.IsVisible)
+        {
+            window.Activate();
+        }
     }
 
     public void ApplyFloatingGeometry(bool save)

@@ -8,6 +8,7 @@ Fowan Orchestrates Workflows with AI, Natively.
 apps/windows/
   platform/contracts/ # WinUI-free process, clipboard, dialog and dispatcher ports
   toolbox/             # WinUI 3 toolbox shell and launcher
+  tool-center/app/     # Independent catalog admitting only available tools
   todo/
     contracts/         # Stable Todo JSON contract shared with Diary
     shared/            # Todo storage and business services
@@ -87,6 +88,7 @@ Release is still a normal build unless `-Publish` is supplied:
 ```
 
 Development executables in this tree use a `.Dev.exe` suffix, including
+`Tools/ToolCenter/Fowan.ToolCenter.Windows.Dev.exe`,
 `Fowan.Windows.Dev.exe` and `Core/fowan-core.Dev.exe`. Release packaging builds
 the production executable names independently. Before replacing the development
 tree, the build stops only matching `.Dev` processes whose executable paths are
@@ -116,8 +118,8 @@ dialog failure, and check failure all complete with an observed outcome.
 Installer creation is an explicit release-only workflow and is not run by CI:
 
 ```powershell
-.\scripts\package-windows.ps1 -Version 0.2.3 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
-.\scripts\package-windows.ps1 -Version 0.2.3 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
+.\scripts\package-windows.ps1 -Version 0.2.4 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe -SkipInstaller
+.\scripts\package-windows.ps1 -Version 0.2.4 -CoreArtifactPath ..\FowanCore\out\core\windows\win-x64\release\fowan-core.exe
 ```
 
 The first command is a preflight only: it cleans its isolated staging directory

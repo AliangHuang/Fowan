@@ -4,6 +4,22 @@
   "repository": "Fowan",
   "components": [
     {
+      "id": "tool-center-windows",
+      "path": "apps/windows/tool-center/app",
+      "kind": "tool",
+      "stateOwner": "ToolCenterSession",
+      "proposal": "docs/design-proposals/DP-0005-windows-tool-center.md",
+      "adrs": ["docs/adr/0011-independent-tool-center.md", "docs/adr/0012-managed-tool-installations.md"],
+      "tests": ["tests/Fowan.Windows.Platform.Tests"],
+      "modules": {
+        "Application": "docs/design-proposals/DP-0006-managed-yym-tool.md",
+        "Platform": "docs/design-proposals/DP-0006-managed-yym-tool.md",
+        "Presentation": "docs/design-proposals/DP-0006-managed-yym-tool.md",
+        "Properties": "docs/design-proposals/DP-0005-windows-tool-center.md",
+        "Resources": "docs/design-proposals/DP-0005-windows-tool-center.md"
+      }
+    },
+    {
       "id": "architecture-tests",
       "path": "tests/Fowan.Architecture.Tests",
       "kind": "test",
@@ -67,6 +83,7 @@
       "kind": "tool",
       "stateOwner": "TodoWorkspace",
       "proposal": "baseline",
+      "adrs": ["docs/adr/0010-todo-sticky-activation-handshake.md"],
       "tests": ["tests/Fowan.Todo.Shared.Tests"],
       "modules": {
         "Application": "baseline",
@@ -81,7 +98,8 @@
       "kind": "tool",
       "stateOwner": "TodoWorkspace",
       "proposal": "baseline",
-      "tests": ["tests/Fowan.Todo.Shared.Tests"],
+      "adrs": ["docs/adr/0010-todo-sticky-activation-handshake.md"],
+      "tests": ["tests/Fowan.Todo.Shared.Tests", "tests/Fowan.Windows.Platform.Tests"],
       "modules": {
         "Application": "baseline",
         "Coordination": "baseline",

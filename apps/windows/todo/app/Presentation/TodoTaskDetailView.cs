@@ -277,8 +277,8 @@ internal sealed class TodoTaskDetailView(
         var content = new StackPanel { Spacing = 6 };
         content.Children.Add(new TextBlock { Text = actions.ReminderSummary, Foreground = palette.SecondaryText, TextWrapping = TextWrapping.Wrap });
         if (actions.IsReminderSyncPending)
-            content.Children.Add(new TextBlock { Text = "提醒同步待处理，下次打开番茄钟会自动重试。", Foreground = palette.Important, TextWrapping = TextWrapping.Wrap });
-        var edit = controls.PillButton("在番茄钟中编辑", "\uE7ED");
+            content.Children.Add(new TextBlock { Text = "提醒同步待处理，下次打开提醒应用会自动重试。", Foreground = palette.Important, TextWrapping = TextWrapping.Wrap });
+        var edit = controls.PillButton("在提醒中编辑", "\uE7ED");
         edit.Click += (_, _) => actions.OpenReminderEditor();
         content.Children.Add(edit);
         return DetailField("\uE7ED", "提醒", content);

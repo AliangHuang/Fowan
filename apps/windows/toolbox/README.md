@@ -7,9 +7,9 @@ Toolbox Home experience as an interactive WinUI 3 desktop app.
 
 - Native WinUI 3 / Windows App SDK desktop app.
 - Toolbox shell with category navigation, tool search, tool card grid, and detail panel.
-- Available tools: Toolbox Home, Settings, Diagnostics.
+- Available tools: Toolbox Home, Tool Center, Todo, Reminders, Diary, AI Chat, Report, AI Config, Settings, Diagnostics.
 - Disabled tools: Quick Capture.
-- Planned tools: Todo, Notes, Knowledge, Files, Global Search, Workflows, AI, Plugins.
+- Tool Center admits only available tools. Its first tool is yym, downloaded and managed manually through the independent center; planning placeholders remain absent from both catalogs.
 - Mock engine status and diagnostics data.
 - Theme preference: system, light, dark.
 - Language preference: system, zh-CN, en-US.

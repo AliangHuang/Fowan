@@ -13,32 +13,115 @@ internal sealed class WindowsStickyProcessCoordinator : IStickyProcessCoordinato
     private const string MainExecutableName = "Fowan.Todo.Windows.exe";
 #endif
     private const string ActivationEventName = @"Local\Fowan.Todo.Sticky.Windows.Activate";
+    private const string ActivationAcknowledgedEventName = @"Local\Fowan.Todo.Sticky.Windows.Activated";
+    private const string ReadyEventName = @"Local\Fowan.Todo.Sticky.Windows.Ready";
     private const string ShutdownEventName = @"Local\Fowan.Todo.Sticky.Windows.Shutdown";
     private const string StartHiddenArgument = "--start-hidden";
+    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
+    private readonly SemaphoreSlim _transitionGate = new(initialCount: 1, maxCount: 1);
 
-    public bool TryPrewarm() => TryEnsureStarted(show: false);
+    public Task<bool> TryPrewarmAsync(CancellationToken cancellationToken = default) =>
+        TryEnsureStartedAsync(show: false, cancellationToken);
 
-    public bool TryShow() => TryEnsureStarted(show: true);
+    public Task<bool> TryShowAsync(CancellationToken cancellationToken = default) =>
+        TryEnsureStartedAsync(show: true, cancellationToken);
 
-    public bool TryShutdown() => TrySignalEvent(ShutdownEventName, attempts: 4);
-
-    private static bool TryEnsureStarted(bool show)
+    public async Task<bool> TryShutdownAsync(CancellationToken cancellationToken = default)
     {
-        using var process = FindRunningStickyProcess();
-        if (process is not null && !process.HasExited)
+        try
         {
-            return !show || TrySignalEvent(ActivationEventName);
-        }
+            await _transitionGate.WaitAsync(cancellationToken);
+            try
+            {
+                using var process = FindRunningStickyProcess();
+                if (process is null || process.HasExited)
+                {
+                    return true;
+                }
 
-        return TryLaunch(show);
+                if (!await TrySignalEventAsync(ShutdownEventName, process, cancellationToken))
+                {
+                    return process.HasExited;
+                }
+
+                return await WaitForExitAsync(process, ShutdownTimeout, cancellationToken);
+            }
+            finally
+            {
+                _transitionGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
-    private static bool TryLaunch(bool show)
+    private async Task<bool> TryEnsureStartedAsync(bool show, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _transitionGate.WaitAsync(cancellationToken);
+            try
+            {
+                using var runningProcess = FindRunningStickyProcess();
+                if (runningProcess is not null && !runningProcess.HasExited)
+                {
+                    if (!show)
+                    {
+                        return true;
+                    }
+
+                    if (await TryActivateAsync(runningProcess, cancellationToken))
+                    {
+                        return true;
+                    }
+
+                    if (!runningProcess.HasExited)
+                    {
+                        return false;
+                    }
+                }
+
+                using var launchedProcess = TryLaunchHidden();
+                if (launchedProcess is null ||
+                    !await WaitForNamedEventAsync(
+                        ReadyEventName,
+                        launchedProcess,
+                        ActivationTimeout,
+                        cancellationToken))
+                {
+                    return false;
+                }
+
+                return !show || await TryActivateAsync(launchedProcess, cancellationToken);
+            }
+            finally
+            {
+                _transitionGate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Process? TryLaunchHidden()
     {
         var stickyExe = Path.Combine(AppContext.BaseDirectory, StickyExecutableName);
         if (!File.Exists(stickyExe))
         {
-            return false;
+            return null;
         }
 
         var mainExe = Process.GetCurrentProcess().MainModule?.FileName
@@ -53,17 +136,13 @@ internal sealed class WindowsStickyProcessCoordinator : IStickyProcessCoordinato
             };
             startInfo.ArgumentList.Add("--main-exe");
             startInfo.ArgumentList.Add(mainExe);
-            if (!show)
-            {
-                startInfo.ArgumentList.Add(StartHiddenArgument);
-            }
+            startInfo.ArgumentList.Add(StartHiddenArgument);
 
-            using var process = Process.Start(startInfo);
-            return process is not null;
+            return Process.Start(startInfo);
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
@@ -93,22 +172,121 @@ internal sealed class WindowsStickyProcessCoordinator : IStickyProcessCoordinato
         return null;
     }
 
-    private static bool TrySignalEvent(string eventName, int attempts = 20)
+    private static async Task<bool> TryActivateAsync(Process process, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < attempts; attempt++)
+        using var acknowledged = await TryOpenEventAsync(
+            ActivationAcknowledgedEventName,
+            process,
+            ActivationTimeout,
+            cancellationToken);
+        if (acknowledged is null)
         {
+            return false;
+        }
+
+        acknowledged.Reset();
+        return await TrySignalEventAsync(ActivationEventName, process, cancellationToken) &&
+               await WaitForEventAsync(acknowledged, process, ActivationTimeout, cancellationToken);
+    }
+
+    private static async Task<bool> TrySignalEventAsync(
+        string eventName,
+        Process process,
+        CancellationToken cancellationToken)
+    {
+        using var signal = await TryOpenEventAsync(
+            eventName,
+            process,
+            ActivationTimeout,
+            cancellationToken);
+        if (signal is null)
+        {
+            return false;
+        }
+
+        signal.Set();
+        return true;
+    }
+
+    private static async Task<EventWaitHandle?> TryOpenEventAsync(
+        string eventName,
+        Process process,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(startedAt) < timeout)
+        {
+            if (process.HasExited)
+            {
+                return null;
+            }
+
             try
             {
-                using var activationEvent = EventWaitHandle.OpenExisting(eventName);
-                activationEvent.Set();
-                return true;
+                return EventWaitHandle.OpenExisting(eventName);
             }
             catch (WaitHandleCannotBeOpenedException)
             {
-                Thread.Sleep(50);
+                await Task.Delay(50, cancellationToken);
             }
         }
 
+        return null;
+    }
+
+    private static async Task<bool> WaitForNamedEventAsync(
+        string eventName,
+        Process process,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var signal = await TryOpenEventAsync(eventName, process, timeout, cancellationToken);
+        return signal is not null &&
+               await WaitForEventAsync(signal, process, timeout, cancellationToken);
+    }
+
+    private static async Task<bool> WaitForEventAsync(
+        EventWaitHandle signal,
+        Process process,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(startedAt) < timeout)
+        {
+            if (process.HasExited)
+            {
+                return false;
+            }
+
+            if (signal.WaitOne(0))
+            {
+                return true;
+            }
+
+            await Task.Delay(50, cancellationToken);
+        }
+
         return false;
+    }
+
+    private static async Task<bool> WaitForExitAsync(
+        Process process,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(startedAt) < timeout)
+        {
+            if (process.HasExited)
+            {
+                return true;
+            }
+
+            await Task.Delay(50, cancellationToken);
+        }
+
+        return process.HasExited;
     }
 }

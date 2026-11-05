@@ -4,6 +4,11 @@
 
 Accepted
 
+## Amendment
+
+The prerequisite delivery portion is amended by
+[ADR-0009](0009-self-contained-windows-runtime-distribution.md).
+
 ## Context
 
 Fowan 0.2.0 publishes Toolbox, Todo, Sticky Todo, Diary, Report, AI Chat and AI Configuration as

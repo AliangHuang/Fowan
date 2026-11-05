@@ -2,7 +2,7 @@ namespace Fowan.Windows.Models;
 
 public static class ToolCatalog
 {
-    private const string CurrentReleaseDate = "2026-07-23";
+    private const string CurrentReleaseDate = "2026-11-05";
 
     public static IReadOnlyList<ToolCategory> Categories { get; } =
     [
@@ -17,19 +17,14 @@ public static class ToolCatalog
     public static IReadOnlyList<ToolCard> Tools { get; } =
     [
         Available("toolbox-home", "Tool_ToolboxHome", "Tool_ToolboxHome_Description", "\uE80F", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
+        Available("tool-center", "Tool_ToolCenter", "Tool_ToolCenter_Description", "\uECA5", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
         Disabled("quick-capture", "Tool_QuickCapture", "Tool_QuickCapture_Description", "\uE722", "capture", ProductVersion, CurrentReleaseDate),
         Available("todo", "Tool_Todo", "Tool_Todo_Description", "\uE8FD", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
-        Available("pomodoro", "Tool_Pomodoro", "Tool_Pomodoro_Description", "\uE823", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
+        Available("pomodoro", "Tool_Pomodoro", "Tool_Pomodoro_Description", "\uEA8F", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
         Available("diary", "Tool_Diary", "Tool_Diary_Description", "\uE8A5", "organize", "Action_Open", ProductVersion, CurrentReleaseDate),
-        Planned("notes", "Tool_Notes", "Tool_Notes_Description", "\uE70B", "organize"),
-        Planned("knowledge", "Tool_Knowledge", "Tool_Knowledge_Description", "\uE8D2", "knowledge"),
-        Planned("files", "Tool_Files", "Tool_Files_Description", "\uE8B7", "knowledge"),
-        Planned("global-search", "Tool_GlobalSearch", "Tool_GlobalSearch_Description", "\uE721", "knowledge"),
-        Planned("workflows", "Tool_Workflows", "Tool_Workflows_Description", "\uE8F1", "automation"),
         AvailableAiChat(),
         AvailableReport(),
         AvailableAiConfig(),
-        Planned("plugins", "Tool_Plugins", "Tool_Plugins_Description", "\uECAA", "automation"),
         Available("settings", "Tool_Settings", "Tool_Settings_Description", "\uE713", "system", "Action_Open", ProductVersion, CurrentReleaseDate),
         Available("diagnostics", "Tool_Diagnostics", "Tool_Diagnostics_Description", "\uE9D9", "system", "Action_Open", ProductVersion, CurrentReleaseDate)
     ];

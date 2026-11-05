@@ -2,9 +2,9 @@ namespace Fowan.Todo.Windows.AppPorts;
 
 internal interface IStickyProcessCoordinator
 {
-    bool TryPrewarm();
+    Task<bool> TryPrewarmAsync(CancellationToken cancellationToken = default);
 
-    bool TryShow();
+    Task<bool> TryShowAsync(CancellationToken cancellationToken = default);
 
-    bool TryShutdown();
+    Task<bool> TryShutdownAsync(CancellationToken cancellationToken = default);
 }

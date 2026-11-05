@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Toolbox", "Todo", "Diary", "Report", "Pomodoro", "Ai", "All")]
+    [ValidateSet("Toolbox", "ToolCenter", "Todo", "Diary", "Report", "Pomodoro", "Ai", "All")]
     [string]$Component = "All"
 )
 
@@ -8,6 +8,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $repoRoot "build/windows/win-x64/app"
 $relativePaths = switch ($Component) {
     "Toolbox" { @("Fowan.Windows.Dev.exe", "Fowan.Windows.exe") }
+    "ToolCenter" { @("Tools/ToolCenter/Fowan.ToolCenter.Windows.Dev.exe", "Tools/ToolCenter/Fowan.ToolCenter.Windows.exe") }
     "Todo" {
         @(
             "Tools/Todo/Fowan.Todo.Windows.Dev.exe",
@@ -32,6 +33,7 @@ $relativePaths = switch ($Component) {
     default {
         @(
             "Fowan.Windows.Dev.exe",
+            "Tools/ToolCenter/Fowan.ToolCenter.Windows.Dev.exe",
             "Tools/Todo/Fowan.Todo.Windows.Dev.exe",
             "Tools/Todo/Fowan.Todo.Sticky.Windows.Dev.exe",
             "Tools/Diary/Fowan.Diary.Windows.Dev.exe",
@@ -41,6 +43,7 @@ $relativePaths = switch ($Component) {
             "Tools/AI/Config/Fowan.Ai.Config.Windows.Dev.exe",
             "Core/fowan-core.Dev.exe",
             "Fowan.Windows.exe",
+            "Tools/ToolCenter/Fowan.ToolCenter.Windows.exe",
             "Tools/Todo/Fowan.Todo.Windows.exe",
             "Tools/Todo/Fowan.Todo.Sticky.Windows.exe",
             "Tools/Diary/Fowan.Diary.Windows.exe",

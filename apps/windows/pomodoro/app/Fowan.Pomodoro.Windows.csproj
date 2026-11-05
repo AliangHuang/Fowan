@@ -4,6 +4,8 @@
     <TargetFramework>$(FowanTargetFramework)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>Fowan.Pomodoro.Windows</RootNamespace>
+    <Title>Fowan 提醒</Title>
+    <Description>本地提醒、待办摘要与番茄钟</Description>
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' == 'true'">Fowan.Pomodoro.Windows.Dev</AssemblyName>
     <AssemblyName Condition="'$(FowanDevelopmentRuntime)' != 'true'">Fowan.Pomodoro.Windows</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>

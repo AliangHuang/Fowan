@@ -23,6 +23,8 @@ $installerRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component
 $retentionRoot = New-IsolatedBuildDirectory -RepositoryRoot $repoRoot -Component "package-retention"
 $retentionPending = $false
 $appStage = Join-Path $installerRoot "app"
+$prereqRoot = Join-Path $installerRoot "prerequisites"
+$vcRedistPath = Join-Path $prereqRoot "vc_redist.x64.exe"
 $windowsProject = Join-Path $repoRoot "apps/windows/toolbox/Fowan.Windows.csproj"
 $todoProject = Join-Path $repoRoot "apps/windows/todo/app/Fowan.Todo.Windows.csproj"
 $stickyProject = Join-Path $repoRoot "apps/windows/todo/sticky/Fowan.Todo.Sticky.Windows.csproj"
@@ -35,6 +37,8 @@ $issPath = Join-Path $repoRoot "installer/windows/Fowan.iss"
 $changelogRoot = Join-Path $repoRoot "changelogs"
 $localDotnet = Join-Path $env:USERPROFILE ".dotnet/dotnet.exe"
 $dotnet = if (Test-Path -LiteralPath $localDotnet) { $localDotnet } else { "dotnet" }
+$vcRedistUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
+$dotNetRuntimeVersion = "8.0.29"
 $assemblyVersion = if ($Version.Split('.').Count -eq 3) { "$Version.0" } else { $Version }
 
 function Assert-PathInside {
@@ -65,9 +69,10 @@ function Publish-FowanProject {
     & $dotnet publish $Project `
         -c $Configuration `
         -r $RuntimeIdentifier `
-        --self-contained false `
+        --self-contained true `
         -p:WindowsPackageType=None `
-        -p:WindowsAppSDKSelfContained=false `
+        -p:WindowsAppSDKSelfContained=true `
+        -p:FowanReleaseRuntimeVersion=$dotNetRuntimeVersion `
         -p:FowanVersion=$Version `
         -p:FowanAssemblyVersion=$assemblyVersion `
         -p:PublishSingleFile=false `
@@ -131,6 +136,11 @@ function Write-ReleaseNotes {
 
     $componentChangelogs = @(
         @{
+            Id = "tool-center"
+            Title = "Tool Center"
+            Path = Join-Path $changelogRoot "tools/tool-center/CHANGELOG.md"
+        },
+        @{
             Id = "toolbox"
             Title = "Fowan Toolbox"
             Path = Join-Path $changelogRoot "toolbox/CHANGELOG.md"
@@ -152,7 +162,7 @@ function Write-ReleaseNotes {
         },
         @{
             Id = "pomodoro"
-            Title = "Pomodoro"
+            Title = "Reminders"
             Path = Join-Path $changelogRoot "tools/pomodoro/CHANGELOG.md"
         },
         @{
@@ -248,6 +258,70 @@ function Resolve-Iscc {
     return $null
 }
 
+function Save-Download {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Output
+    )
+
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
+        return
+    }
+    catch {
+        $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+        if (-not $curl) {
+            throw
+        }
+
+        & $curl.Source -L --retry 5 --retry-delay 2 --fail --output $Output $Url
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    }
+}
+
+function Assert-MicrosoftSignature {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if ($signature.Status -ne "Valid" -or
+        $signature.SignerCertificate.Subject -notlike "*Microsoft Corporation*") {
+        throw "$Description signature validation failed: $Path"
+    }
+}
+
+function Ensure-MicrosoftPrerequisite {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Output,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Output -PathType Leaf)) {
+        Write-Host "Downloading $Description..."
+        Save-Download -Url $Url -Output $Output
+    }
+
+    Assert-MicrosoftSignature -Path $Output -Description $Description
+}
+
+function Ensure-RuntimePrerequisites {
+    New-Item -ItemType Directory -Force -Path $prereqRoot | Out-Null
+
+    Ensure-MicrosoftPrerequisite -Url $vcRedistUrl -Output $vcRedistPath -Description "Microsoft Visual C++ Redistributable x64"
+}
+
 function Write-ChecksumManifest {
     param([Parameter(Mandatory = $true)][string]$OutputRoot)
 
@@ -274,6 +348,10 @@ if (-not (Test-Path -LiteralPath $CoreArtifactPath -PathType Leaf)) {
     throw "Fowan Core artifact was not found: $CoreArtifactPath"
 }
 
+Ensure-RuntimePrerequisites
+
+$toolCenterStage = Join-Path $appStage "Tools/ToolCenter"
+New-Item -ItemType Directory -Force -Path $toolCenterStage | Out-Null
 $todoStage = Join-Path $appStage "Tools/Todo"
 New-Item -ItemType Directory -Force -Path $todoStage | Out-Null
 $diaryStage = Join-Path $appStage "Tools/Diary"
@@ -288,6 +366,7 @@ $aiConfigStage = Join-Path $appStage "Tools/AI/Config"
 New-Item -ItemType Directory -Force -Path $aiConfigStage | Out-Null
 
 $publishTargets = @(
+    @{ Project = (Join-Path $repoRoot "apps/windows/tool-center/app/Fowan.ToolCenter.Windows.csproj"); Destination = $toolCenterStage; Component = "publish-tool-center" },
     @{ Project = $windowsProject; Destination = $appStage; Component = "publish-toolbox" },
     @{ Project = $todoProject; Destination = $todoStage; Component = "publish-todo" },
     @{ Project = $stickyProject; Destination = $todoStage; Component = "publish-sticky" },
@@ -312,6 +391,7 @@ New-Item -ItemType Directory -Force -Path $coreStage | Out-Null
 Copy-Item -LiteralPath $CoreArtifactPath -Destination (Join-Path $coreStage "fowan-core.exe") -Force
 
 $requiredExecutables = @(
+    (Join-Path $toolCenterStage "Fowan.ToolCenter.Windows.exe"),
     (Join-Path $appStage "Fowan.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Windows.exe"),
     (Join-Path $todoStage "Fowan.Todo.Sticky.Windows.exe"),
@@ -358,6 +438,7 @@ if (-not $iscc) {
     "/DAppVersion=$Version" `
     "/DSourceDir=$appStage" `
     "/DReleaseNotesPath=$releaseNotesPath" `
+    "/DVcRedistPath=$vcRedistPath" `
     "/DOutputDir=$installerRoot" `
     $issPath
 
@@ -377,6 +458,7 @@ $updateManifestPath = Write-UpdateManifest `
     -OutputRoot $installerRoot
 
 Remove-Item -LiteralPath $appStage -Recurse -Force
+Remove-Item -LiteralPath $prereqRoot -Recurse -Force
 $checksumPath = Write-ChecksumManifest -OutputRoot $installerRoot
 $retentionPending = $true
 $expiredVersions = @(Move-ExpiredPublishDirectories `
