@@ -41,7 +41,9 @@ try {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     foreach ($configuration in @("Debug", "Release")) {
-        & dotnet test .\Fowan.sln -c $configuration --no-build --nologo
+        & dotnet test .\Fowan.sln -c $configuration --no-build --nologo `
+            --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none `
+            --results-directory (Join-Path $repoRoot "build/test-results/$configuration")
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & dotnet test .\tests\Fowan.Architecture.Tests\Fowan.Architecture.Tests.csproj -c $configuration --nologo
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

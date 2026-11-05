@@ -38,5 +38,11 @@ Window。PR 必须填写设计提案、状态所有者、失败模型、兼容�
 CI 会校验组件清单、提案状态、分层依赖、状态所有权、构建和测试。缺少 accepted
 提案的新组件不能合并。
 
+普通 Debug/Release 构建使用的 WinUI 应用程序集会被 Windows 测试项目引用。运行这些
+测试需要与仓库 Windows App SDK 版本匹配的 Windows App Runtime；CI 在验证前从微软
+下载固定版本、校验签名并静默安装。更新 Windows App SDK 时应同时审查 CI 的运行库
+版本。测试进程设有 5 分钟挂起超时，诊断结果写入 `build/test-results`，超时时终止
+测试主机并返回失败，不收集进程转储。正式安装包按自包含分发策略携带应用运行文件。
+
 `baseline` 仅适用于 `docs/architecture-baseline.json` 已冻结的精确条目。新增组件、
 模块或依赖不得自行声明为基线；修改冻结清单必须同时引用 accepted 提案和 ADR。
